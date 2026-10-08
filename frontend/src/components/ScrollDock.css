@@ -1,0 +1,82 @@
+.scroll-dock {
+  position: fixed;
+  /* Над полосой проигрывателя, когда она видна (PlayerBar пишет её высоту). */
+  bottom: calc(1.5rem + var(--player-bar-height, 0px));
+  inset-inline-end: 1.5rem;
+  z-index: 90; /* выше содержимого, ниже .site-header (100) и шторок (1000) */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+
+.scroll-dock-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 16rem;
+  /* Плавающая цель для пальца: 44px — нижняя граница рекомендации, одних
+     0.6rem по вертикали хватало только на 38. */
+  min-height: 44px;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  background-color: var(--color-card-bg);
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+/* Кнопка подглавы стала ссылкой (у места есть адрес), поэтому её достают
+   глобальные правила для `a` из index.css: `a:visited` и `a:hover` весят
+   0,1,1 против 0,1,0 у `.scroll-dock-button`. Без этих правил уже посещённая
+   подглава красилась бы цветом посещённой ссылки, а наведение подчёркивало бы
+   подпись — рядом с кнопкой «Наверх», которая ссылкой не стала. */
+.scroll-dock-button:visited {
+  color: var(--color-text-primary);
+}
+
+.scroll-dock-button:hover {
+  background-color: var(--color-button-secondary-hover);
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.scroll-dock-arrow {
+  color: var(--color-accent);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* Название подглавы бывает длиной в строку каталожной карточки —
+   обрезаем, полное лежит в доступном имени. */
+.scroll-dock-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* На узком экране подписи съедают половину ширины, но убрать их обе нельзя:
+   останутся два глифа, ↑ против ⇈, и подсказка «где я» — то, ради чего блок
+   и задуман, — пропадёт как раз там, где экран меньше всего. «Наверх»
+   понятна без подписи (её доступное имя задано явно, см. ScrollDock.tsx),
+   а название подглавы остаётся, укороченное по ширине экрана. */
+@media (max-width: 640px) {
+  .scroll-dock {
+    bottom: 1rem;
+    inset-inline-end: 1rem;
+  }
+
+  .scroll-dock-top .scroll-dock-label {
+    display: none;
+  }
+
+  .scroll-dock-chapter .scroll-dock-label {
+    max-width: 55vw;
+  }
+
+  .scroll-dock-button {
+    padding: 0.7rem 0.8rem;
+  }
+}

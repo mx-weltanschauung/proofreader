@@ -1,0 +1,73 @@
+.scope-picker {
+  margin: 0.75rem 0 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.scope-picker-loading,
+.scope-picker-error {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.scope-picker-editions,
+.scope-picker-volumes,
+.scope-picker-loose {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scope-picker-edition + .scope-picker-edition {
+  margin-top: 0.35rem;
+}
+
+.scope-picker-edition-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scope-picker-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.scope-picker-toggle {
+  margin-left: auto;
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scope-picker-toggle:hover {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+}
+
+/* Собственная прокрутка у длинного списка томов, а не растягивание всего
+   блока: у Ленина 55 томов, и без этого раскрытое собрание вытолкнуло бы
+   приёмы запроса и остальную панель далеко вниз. */
+.scope-picker-volumes {
+  margin: 0.3rem 0 0 1.5rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.scope-picker-loose {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}

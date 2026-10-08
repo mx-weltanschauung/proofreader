@@ -1,0 +1,89 @@
+.audio-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+}
+
+.audio-row--current {
+  background-color: var(--color-success-tint);
+}
+
+.audio-row-play,
+.audio-row-play-gap {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.audio-row-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--color-accent);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.audio-row--current .audio-row-play {
+  background-color: var(--color-accent);
+  color: var(--color-accent-on);
+}
+
+.audio-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.audio-row-progress {
+  height: 3px;
+  margin-top: 0.3rem;
+  border-radius: 2px;
+  background: var(--color-border-light);
+}
+
+.audio-row-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+
+.audio-row-duration {
+  flex: none;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.audio-row-download {
+  flex: none;
+  display: inline-flex;
+  padding: 0.4rem;
+  border-radius: 50%;
+  color: var(--color-text-secondary);
+}
+
+/* Ссылку достают глобальные a:visited / a:hover из index.css — значок
+   перекрашивался бы цветом посещённой ссылки. */
+.audio-row-download:visited {
+  color: var(--color-text-secondary);
+}
+
+.audio-row-download:hover {
+  color: var(--color-text-primary);
+}
+
+.icon-spin {
+  transform-origin: 12px 12px;
+  animation: icon-spin 0.9s linear infinite;
+}
+
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

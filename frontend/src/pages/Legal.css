@@ -1,0 +1,34 @@
+/* Ширина и ритм — как у справки: обе страницы читаются подряд, и разъезжаться
+   им незачем. Якоря отбиваются от липкой шапки, иначе заголовок раздела
+   уезжает под неё при переходе со знака «18+». */
+.legal {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  line-height: 1.6;
+}
+
+.legal h2 {
+  margin-top: 2rem;
+}
+
+.legal h3 {
+  margin-top: 1.5rem;
+}
+
+.legal section[id],
+.legal h3[id] {
+  scroll-margin-top: calc(var(--site-header-height) + 1rem);
+}
+
+.legal ul {
+  padding-left: 1.4rem;
+}
+
+.legal li {
+  margin-bottom: 0.4rem;
+}
+
+.legal-back {
+  margin-top: 2.5rem;
+}

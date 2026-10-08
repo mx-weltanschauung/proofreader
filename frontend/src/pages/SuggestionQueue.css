@@ -1,0 +1,167 @@
+.suggestion-queue-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.suggestion-queue-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.suggestion-queue-empty {
+  color: var(--color-text-secondary);
+  padding: 1rem 0;
+}
+
+.suggestion-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Строка списка — ссылка плюс кнопка удаления рядом с ней: кнопка внутри
+   ссылки была бы недопустимой разметкой. Ссылка занимает всю ширину, кнопка
+   держится справа. */
+.suggestion-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.suggestion-queue-item .suggestion-queue-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.suggestion-queue-delete {
+  flex: none;
+  line-height: 1;
+}
+
+.suggestion-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.suggestion-queue-row:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+.suggestion-queue-work {
+  font-weight: 600;
+  flex: 1 1 auto;
+}
+
+.suggestion-queue-page,
+.suggestion-queue-date {
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.suggestion-queue-delta {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.suggestion-queue-delta-positive {
+  color: var(--color-success-ink);
+}
+
+.suggestion-queue-delta-negative {
+  color: var(--color-error-ink);
+}
+
+/* Фон и цвет текста заданы парой намеренно: сторожевой тест контраста
+   (src/test/contrast.test.ts) проверяет каждое правило «фон+текст» и падает,
+   если задан только фон. */
+.suggestion-queue-stale {
+  background-color: var(--color-warning-tint);
+  color: var(--color-warning-ink);
+  border-radius: 2px;
+  padding: 0 0.4em;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.suggestion-queue-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  color: var(--color-text-secondary);
+}
+
+.suggestion-queue-detail h2 {
+  margin-top: 0.75rem;
+}
+
+/* --color-bg-tertiary + --color-text-secondary: та же пара, что несут плашки
+   статусов и панель оглавления (см. contrast.test.ts) — вычитанная пара, не
+   произвольная. */
+.suggestion-queue-note {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.suggestion-queue-stale-warning {
+  background-color: var(--color-warning-tint);
+  color: var(--color-warning-ink);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.suggestion-queue-two-columns {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.suggestion-queue-left {
+  flex: 1 1 480px;
+  min-width: 320px;
+}
+
+.suggestion-queue-right {
+  flex: 0 1 360px;
+  min-width: 240px;
+}
+
+.suggestion-queue-editor,
+.suggestion-queue-comment {
+  margin-top: 1rem;
+}
+
+.suggestion-queue-comment textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.suggestion-queue-error {
+  color: var(--color-error-ink);
+  margin-top: 0.5rem;
+}
+
+.suggestion-queue-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}

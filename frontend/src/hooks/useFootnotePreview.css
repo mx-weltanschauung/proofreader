@@ -1,0 +1,9 @@
+/* Layout, colours and scrolling come from .popover-panel. */
+.footnote-preview-popover {
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.footnote-preview-popover p {
+  margin: 0;
+}

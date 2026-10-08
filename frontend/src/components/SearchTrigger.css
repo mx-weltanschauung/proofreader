@@ -1,0 +1,52 @@
+.search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  background-color: var(--color-input-bg);
+  color: var(--color-text-secondary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-trigger:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.search-trigger-icon {
+  flex: 0 0 auto;
+}
+
+.search-trigger-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-trigger.is-compact {
+  width: 200px;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+}
+
+/* Тесный экран — читальне негде развернуть подпись рядом с лупой в один ряд с
+   остальной шапкой (замерено headless Chrome на 360 CSS px). Текст прячет
+   именно CSS, а не условный рендер: aria-label кнопки остаётся видимым имени
+   доступности, только его визуальный дубль исчезает. */
+@media (max-width: 480px) {
+  .search-trigger.is-compact {
+    width: auto;
+    padding: 6px;
+  }
+
+  .search-trigger.is-compact .search-trigger-text {
+    display: none;
+  }
+}

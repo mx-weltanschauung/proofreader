@@ -1,0 +1,87 @@
+.help {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  line-height: 1.6;
+}
+
+.help h2 {
+  margin-top: 2rem;
+}
+
+.help h3 {
+  margin-top: 1.5rem;
+  scroll-margin-top: calc(var(--site-header-height) + 1rem);
+}
+
+.help section[id],
+.help h2[id] {
+  scroll-margin-top: calc(var(--site-header-height) + 1rem);
+}
+
+/* Значок органа: та же графика, что на кнопке в интерфейсе. */
+.help-key {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-right: 0.4em;
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  text-align: center;
+  font-family: var(--reading-font-fira);
+  font-size: 0.9em;
+}
+
+.help-legend {
+  margin: 0.5rem 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.help-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0;
+}
+
+.help-reset {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.help-reset-note {
+  margin-top: 0.5rem;
+  color: var(--color-text-secondary);
+}
+
+.help-search-syntax {
+  margin: 1rem 0;
+}
+
+.help-search-syntax dt {
+  margin-top: 0.75rem;
+  font-family: var(--reading-font-fira);
+  font-size: 0.95em;
+}
+
+.help-search-syntax dd {
+  margin: 0.15rem 0 0;
+  color: var(--color-text-secondary);
+}
+
+/* Раздел «Вся читальня одним архивом» (/help#offline). Кнопка и подпись к
+   ней — одной строкой, на узком экране подпись уходит под кнопку. */
+.help-archive-get {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+/* Сумма и адрес — длинные слова без пробелов: на телефоне без переноса они
+   растягивали бы страницу вбок. */
+.help-archive-long code {
+  word-break: break-all;
+}

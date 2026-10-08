@@ -1,0 +1,23 @@
+.scan-viewer-full {
+  margin-top: 0.6rem;
+}
+
+/* Скан в натуральную величину с прокруткой: то, ради чего его и открывают —
+   разглядеть букву, а не вписать страницу в экран. */
+.scan-viewer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow: auto;
+  padding: 1.5rem;
+  /* Литерал, не токен: --color-overlay нигде не объявлен ни в одной из
+     палитр, а заводить токен ради единственного использования незачем. */
+  background-color: rgba(0, 0, 0, 0.85);
+  cursor: zoom-out;
+}
+
+.scan-viewer-overlay img {
+  display: block;
+  margin: 0 auto;
+  cursor: default;
+}

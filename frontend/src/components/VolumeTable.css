@@ -1,0 +1,46 @@
+.volume-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.volume-table th {
+  padding: 0 0.6rem 0.45rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--color-text-tertiary);
+}
+
+.volume-table td {
+  padding: 0.55rem 0.6rem 0.55rem 0;
+  border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text-secondary);
+  vertical-align: middle;
+}
+
+/* Специфичность выше базового `.volume-table td` (два класса против одного) —
+   иначе его color: var(--color-text-secondary) перебивал бы приглушённый цвет
+   координат. Одного td-префикса тут мало: `td.volume-table-coord` весит
+   столько же, сколько `.volume-table td`, и выигрывал бы только за счёт
+   порядка в файле. */
+.volume-table td.volume-table-coord {
+  width: 7rem;
+  color: var(--color-text-tertiary);
+}
+
+.volume-table-title {
+  font-family: var(--reading-font-literata);
+}
+
+/* Тот же приём: два класса против одного у базовых `.volume-table th`/`td`,
+   иначе их `text-align: left` перебивал бы выравнивание числовых колонок
+   вправо — и держалось бы это лишь на порядке правил в файле. */
+.volume-table th.volume-table-num,
+.volume-table td.volume-table-num {
+  text-align: right;
+  white-space: nowrap;
+}

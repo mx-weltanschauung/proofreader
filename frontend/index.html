@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- .ico держится ради выдачи Гугла: он берёт квадрат, кратный 48, и
+         svg показывает не всегда. Порядок важен — браузер выбирает
+         последний подходящий, так что svg должен идти после ico. -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- theme_color в манифесте один и статичный, а тем у читальни шесть:
+         в установленном приложении строка состояния останется светлой
+         даже под oled-темой. Осознанно. -->
+    <link rel="manifest" href="/site.webmanifest" />
+    <link
+      rel="related"
+      type="application/atom+xml;profile=opds-catalog;kind=navigation"
+      href="/opds"
+      title="Каталог OPDS"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Читальня</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

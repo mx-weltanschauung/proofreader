@@ -1,0 +1,56 @@
+/* Шапка собрания: заглавие и одна фраза под ним.
+
+   Отсюда убран эйбрау «СОБРАНИЕ» капсом с разрядкой. Он стоял над заголовком,
+   в котором слово «собрание» и так написано — «В. И. Ленин. Полное собрание
+   сочинений», — то есть повторял содержимое строкой ниже, набранной крупнее.
+   Такой ярлык не сообщает ничего и виден на пяти шапках главной пять раз. */
+.edition-summary {
+  margin-bottom: 1.4rem;
+  /* Заглавие и фраза под ним — узкая колонка слева, а не строка во всю
+     страницу: собрание называет себя один раз, длиной оно с полку. 54rem, а
+     не 46: при кегле 1.75rem самое длинное заглавие корпуса («Н. Г.
+     Чернышевский. Полное собрание сочинений в 15 томах») переносилось на
+     вторую строку словом «томах». */
+  max-width: 54rem;
+}
+
+/* Заглавие собрания — якорь, по которому страницу просматривают: собраний
+   пять, и найти среди них Выготского надо с одного взгляда. Прежние 1.5rem
+   отстояли от строки книги (15px) недостаточно, чтобы заголовок читался
+   заголовком, а не первой книгой полки. */
+.edition-summary-title {
+  margin: 0;
+  font-family: var(--reading-font-literata);
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+}
+
+/* Заглавие-ссылка выглядит заголовком: affordance только на hover/focus. */
+.edition-summary-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.edition-summary-title a:hover,
+.edition-summary-title a:focus-visible {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+.edition-summary-description {
+  margin: 0.3rem 0 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+/* Фактическая строка — единственное место страницы, набранное не Literata:
+   счёт томов и страниц не читают, а сверяют, и гротеск здесь честнее. */
+.edition-summary-counts {
+  margin: 0.35rem 0 0;
+  font-family: var(--reading-font-fira);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}

@@ -1,0 +1,25 @@
+.edition-prefaces {
+  margin: 0 0 1.5rem;
+}
+
+.edition-prefaces-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.edition-prefaces-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--color-border);
+}
+
+.edition-prefaces-pages {
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}

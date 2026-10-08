@@ -1,0 +1,116 @@
+.stats-admin {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+  overflow-wrap: anywhere;
+}
+.stats-admin-note {
+  color: var(--color-text-secondary);
+}
+.stats-admin-section {
+  margin: 2rem 0;
+}
+.stats-admin-error {
+  color: var(--color-error-ink);
+}
+.stats-admin-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+.stats-admin-totals dt {
+  font-weight: 600;
+}
+.stats-admin-totals dd {
+  margin: 0;
+}
+.stats-admin-bars {
+  width: 100%;
+  height: 160px;
+  display: block;
+}
+.stats-admin-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  list-style: none;
+  padding: 0;
+}
+.stats-swatch {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.3em;
+  vertical-align: middle;
+}
+.stats-admin-periods,
+.stats-admin-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.stats-admin-periods button[aria-pressed='true'],
+.stats-admin-kinds button[aria-pressed='true'] {
+  font-weight: 700;
+}
+/* таблица шире экрана прокручивается сама, а не растягивает страницу */
+.stats-admin-scroll {
+  overflow-x: auto;
+}
+.stats-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.stats-admin-table td,
+.stats-admin-table th {
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+.stats-admin-table td + td,
+.stats-admin-table th + th {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.stats-admin-table tr.is-missing td {
+  opacity: 0.6;
+}
+.stats-admin-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+  gap: 0.25rem 1rem;
+}
+.stats-admin-values dd {
+  margin: 0;
+}
+.stats-admin-values dt {
+  font-family: monospace;
+  font-size: 0.85em;
+}
+@media (max-width: 600px) {
+  .stats-admin-table {
+    font-size: 0.85em;
+  }
+}
+
+/* цвета каналов — токены --stats-* в index.css, заливка без текста поверх */
+.stats-bar-spa {
+  fill: var(--stats-spa);
+  background: var(--stats-spa);
+}
+.stats-bar-md {
+  fill: var(--stats-md);
+  background: var(--stats-md);
+}
+.stats-bar-download {
+  fill: var(--stats-download);
+  background: var(--stats-download);
+}
+.stats-bar-seo {
+  fill: var(--stats-seo);
+  background: var(--stats-seo);
+}
+.stats-bar-mcp {
+  fill: var(--stats-mcp);
+  background: var(--stats-mcp);
+}

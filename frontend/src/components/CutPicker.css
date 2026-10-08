@@ -1,0 +1,117 @@
+/* Подборщик вклейки (CutPicker.tsx). Классы не пересекаются ни с чем в
+   проекте (сверено grep'ом), но правило проекта в силе и для новых: фон и
+   текст не смешиваются в одном блоке, кроме уже доказанной пары
+   --color-bg-tertiary / --color-text-primary (documentCut.css), которую
+   переиспользует .cut-picker-search-result:hover ниже. */
+
+.cut-picker {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 16px;
+  margin: 12px 0;
+  background: var(--color-bg-secondary);
+}
+
+.cut-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.cut-picker-header h3 {
+  margin: 0;
+}
+
+.cut-picker-close {
+  border: none;
+  background: none;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 4px 8px;
+}
+
+.cut-picker-section {
+  margin-bottom: 14px;
+}
+
+.cut-picker-section label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.cut-picker-work-select {
+  width: 100%;
+  max-width: 420px;
+}
+
+.cut-picker-search {
+  display: flex;
+  gap: 8px;
+}
+
+.cut-picker-search-results {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.cut-picker-search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.cut-picker-search-result:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.cut-picker-page-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.cut-picker-page-input {
+  width: 100px;
+}
+
+.cut-picker-actions {
+  margin-top: 10px;
+}
+
+.cut-picker-hint {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+/* Кнопка «Вклеить» вынесена из секции полосы в собственную секцию-подвал:
+   она обязана оставаться доступной после смены полосы (конец вклейки может
+   лежать на другой полосе, чем начало), а секция с BlockPicker перерисовы-
+   вается на каждую загрузку страницы. */
+.cut-picker-footer {
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+}
+
+.cut-picker-marks {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.cut-picker-error {
+  color: var(--color-error-ink);
+  font-size: 0.9rem;
+}

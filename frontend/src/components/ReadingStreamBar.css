@@ -1,0 +1,91 @@
+.reading-stream-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-border);
+  transition: transform 160ms ease;
+}
+
+/* Сдвиг, а не display:none: панель обязана уметь вернуться на место, а
+   выключенный из потока элемент возвращался бы рывком. */
+.reading-stream-bar.is-hidden {
+  transform: translateY(-100%);
+}
+
+.reading-stream-progress {
+  height: 2px;
+  background: currentColor;
+  opacity: 0.4;
+  transition: width 120ms linear;
+}
+
+/* Долю прочитанного цифрой печатает .reading-percent — правило объявлено
+   один раз, в ReadingSurface.css, вместе с остальной панелью чтения. */
+.reading-stream-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+}
+
+/* Заголовок забирает свободное место и обрезается: в томе 3 цепочка глав
+   доходит до одиннадцати уровней, и длинное название иначе разорвало бы
+   панель на две строки. */
+.reading-stream-chapter {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
+/* Отказ перехода к странице (PageJump.css) привязан к левому краю поля — у
+   панели главы поле стоит первым в ряду. Здесь номер стоит в середине ряда,
+   за ним ещё четыре органа управления, и на телефоне левая привязка уводила
+   плашку за правый край (замер на 360px: 203..383). */
+.reading-stream-bar .page-jump-error {
+  left: auto;
+  right: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-stream-progress,
+  .reading-stream-bar {
+    transition: none;
+  }
+}
+
+/* Панель потока узкая: «Выйти из чтения», доля, две ссылки на видимую полосу,
+   номера и «Aa» стоят в один ряд, и полными надписями две ссылки в телефон уже
+   не влезают — они налезали друг на друга. Правило зеркалит такое же у панели
+   чтения главы (.chapter-view-actions в ReadingSurface.css) и привязано к
+   своей панели по той же причине: класс подписи глобальный, а решать, какая
+   из пары видна, должна каждая панель за себя. */
+@media (max-width: 768px) {
+  /* Ряд переносится, как и панель чтения главы: «Выйти из чтения», доля, две
+     ссылки на видимую полосу, номера и «Aa» в ширину телефона не влезают
+     даже короткими подписями. Без переноса flex ужимал коробки, и надписи
+     вылезали одна на другую — «Предложить исправление» ложилось на «№» ещё
+     до того, как рядом встала ссылка на скан. */
+  .reading-stream-bar-row {
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+  }
+
+  /* Заголовок главы забирает всю первую строку: ему и так остаётся многоточие,
+     а зажатый между органами управления он не показал бы и слова. */
+  .reading-stream-chapter {
+    flex: 1 1 100%;
+    order: -1;
+  }
+
+  .reading-stream-bar-row .toolbar-label-full {
+    display: none;
+  }
+
+  .reading-stream-bar-row .toolbar-label-short {
+    display: inline;
+  }
+}

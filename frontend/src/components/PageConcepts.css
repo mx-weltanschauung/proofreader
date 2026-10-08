@@ -1,0 +1,45 @@
+.page-concepts {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.page-concepts h2 {
+  font-size: 1.1rem;
+}
+
+.page-concepts-list,
+.page-concepts-rubrics {
+  list-style: none;
+  padding: 0;
+}
+
+.page-concepts-rubrics {
+  margin: 0.15rem 0 0.75rem 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.page-concepts-error {
+  color: var(--color-text-tertiary);
+  font-size: 0.9rem;
+}
+
+/* Тот же приём, что у .concept-load-more (ConceptList.css) — второстепенное
+   действие на странице, заливка и текст — проверенная контрастом пара. */
+.page-concepts-more {
+  display: block;
+  margin: 0.6rem 0 0;
+  padding: 0.4rem 0.75rem;
+  border: none;
+  border-radius: 5px;
+  background-color: var(--color-accent);
+  color: var(--color-accent-on);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.page-concepts-more:hover {
+  filter: brightness(1.12);
+}

@@ -1,0 +1,110 @@
+/* .reading-progress-bar переехал в ReadingSurface.css — тот гарантированно
+   загружен и здесь, и на CollectionRead, дублировать правило незачем. */
+
+.chapter-view-crumb-sep {
+  color: var(--color-text-secondary);
+  font-weight: 300;
+}
+
+.chapter-header {
+  margin-bottom: 3rem;
+}
+
+.chapter-type-badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+}
+
+.chapter-header h1 {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 1rem 0;
+  color: var(--color-text-primary);
+}
+
+.chapter-meta {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Действия главы — одной строкой под метаданными. Отбивка живёт на ряду, а не
+   на .btn: тот глобальный, своего отступа у него быть не должно. Шаг тот же,
+   что между заголовком и метаданными, — шапка идёт одним ритмом. Селекторы
+   привязаны к шапке главы: .chapter-meta и .chapter-header больше нигде не
+   встречаются (CollectionRead завёл свои классы намеренно). */
+.chapter-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 3rem;
+}
+
+.error-state {
+  color: var(--color-error-ink);
+}
+
+@media (max-width: 768px) {
+  .chapter-header h1 {
+    font-size: 2rem;
+  }
+  .chapter-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
+/* Prev/next chapter navigation */
+.chapter-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.chapter-nav-prev,
+.chapter-nav-next {
+  color: var(--color-button-primary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  max-width: 45%;
+}
+
+.chapter-nav-prev {
+  text-align: left;
+}
+
+.chapter-nav-next {
+  text-align: right;
+  margin-left: auto;
+}
+
+.chapter-nav-prev:hover,
+.chapter-nav-next:hover {
+  color: var(--color-button-primary-hover);
+  text-decoration: underline;
+}

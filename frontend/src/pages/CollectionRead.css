@@ -1,0 +1,73 @@
+/* Свои классы, а не переиспользование .chapter-header/.chapter-meta/.chapter-nav*
+   из ChapterView.css: те приходят вместе с этим файлом только потому, что он
+   сегодня где-то в приложении уже подключён, а не потому, что чтение
+   элемента подборки его импортирует. Явная зависимость лучше случайной.
+   .reading-progress-bar сюда не дублируется — она в ReadingSurface.css,
+   общем для обоих потребителей. */
+
+.collection-read-header {
+  margin-bottom: 3rem;
+}
+
+.collection-read-header h1 {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 1rem 0;
+  color: var(--color-text-primary);
+}
+
+.collection-read-meta {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 768px) {
+  .collection-read-header h1 {
+    font-size: 2rem;
+  }
+  .collection-read-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+
+/* Переход по составу подборки, а не по главам тома. */
+.collection-read-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.collection-read-nav-prev,
+.collection-read-nav-next {
+  color: var(--color-button-primary);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  max-width: 45%;
+}
+
+.collection-read-nav-prev {
+  text-align: left;
+}
+
+.collection-read-nav-next {
+  text-align: right;
+  margin-left: auto;
+}
+
+.collection-read-nav-prev:hover,
+.collection-read-nav-next:hover {
+  color: var(--color-button-primary-hover);
+  text-decoration: underline;
+}

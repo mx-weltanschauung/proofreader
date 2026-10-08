@@ -1,0 +1,20 @@
+{
+  "identities": [
+    {
+      "name": "proofreader",
+      "credentials": [
+        {
+          "accessKey": "proofreader_dev",
+          "secretKey": "proofreader_dev_secret"
+        }
+      ],
+      "actions": [
+        "Read",
+        "Write",
+        "List",
+        "Tagging",
+        "Admin"
+      ]
+    }
+  ]
+}

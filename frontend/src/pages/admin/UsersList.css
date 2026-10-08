@@ -1,0 +1,137 @@
+.users-list-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.users-list-container h1 {
+  margin: 0 0 20px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.user-create-form {
+  background-color: var(--color-card-bg);
+  padding: 24px;
+  border-radius: 8px;
+  border: 1px solid var(--color-card-border);
+  box-shadow: 0 2px 4px var(--color-shadow);
+  margin-bottom: 24px;
+}
+
+.user-create-form h2 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.user-create-form-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.user-create-form-fields input,
+.user-create-form-fields select {
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--color-input-border);
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.user-create-form-fields button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--color-button-primary);
+  color: var(--color-info-on);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.user-create-form-fields button:hover:not(:disabled) {
+  background-color: var(--color-button-primary-hover);
+}
+
+.user-create-form-fields button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.users-table th,
+.users-table td {
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text-primary);
+}
+
+.users-table th {
+  background-color: var(--color-bg-tertiary);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-secondary);
+}
+
+.users-table tr:last-child td {
+  border-bottom: none;
+}
+
+.users-table select {
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--color-input-border);
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+}
+
+.users-table-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.users-table-actions button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  transition: background-color 0.15s ease;
+}
+
+.users-table-actions button:hover:not(:disabled) {
+  background-color: var(--color-button-secondary-hover);
+}
+
+.users-table-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.users-table-actions .danger-button {
+  border-color: var(--color-error);
+  color: var(--color-error-ink);
+  background-color: transparent;
+}
+
+.users-table-actions .danger-button:hover:not(:disabled) {
+  background-color: var(--color-error);
+  color: var(--color-error-on);
+}

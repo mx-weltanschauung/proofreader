@@ -1,0 +1,67 @@
+.feedback-list-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.error-message {
+  color: var(--color-error-ink);
+  font-size: 14px;
+  padding: 10px;
+  background-color: var(--color-error-tint);
+  border-radius: 4px;
+  border: 1px solid var(--color-error);
+  margin-bottom: 8px;
+}
+
+.feedback-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.feedback-letters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.feedback-letter {
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  padding: 12px 16px;
+  background-color: var(--color-card-bg);
+}
+
+/* Новое письмо помечено полосой слева, а не только цветом текста: цвет один
+   не отличит письмо на контрастной теме. */
+.feedback-letter.is-new {
+  border-left: 4px solid var(--color-accent);
+}
+
+.feedback-letter-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.feedback-letter-body {
+  white-space: pre-wrap;
+  margin: 8px 0;
+  color: var(--color-text-primary);
+}
+
+.feedback-letter-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.feedback-empty {
+  color: var(--color-text-secondary);
+}

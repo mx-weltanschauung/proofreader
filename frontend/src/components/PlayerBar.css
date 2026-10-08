@@ -1,0 +1,222 @@
+/* Полоса стоит поверх содержимого — текст получает отступ её высоты, иначе
+   конец главы и подвал прятались бы под ней. Переменную пишет PlayerBar. */
+body {
+  padding-bottom: var(--player-bar-height, 0px);
+}
+
+.player-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* Выше .scroll-dock (90), ниже .site-header (100) и шторок (1000). */
+  z-index: 95;
+  display: grid;
+  grid-template-columns:
+    auto auto auto minmax(8rem, 18rem) auto minmax(6rem, 1fr)
+    auto auto auto auto;
+  grid-template-areas: 'prev play next info at seek total rate dl close';
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  background-color: var(--color-card-bg);
+  color: var(--color-text-primary);
+  border-top: 1px solid var(--color-border-light);
+  box-shadow: 0 -4px 14px var(--color-shadow);
+}
+
+.player-bar-prev {
+  grid-area: prev;
+}
+.player-bar-play {
+  grid-area: play;
+}
+.player-bar-next {
+  grid-area: next;
+}
+.player-bar-info {
+  grid-area: info;
+}
+.player-bar-time-at {
+  grid-area: at;
+}
+.player-bar-seek {
+  grid-area: seek;
+}
+.player-bar-time-total {
+  grid-area: total;
+}
+.rate-menu {
+  grid-area: rate;
+}
+.player-bar-download {
+  grid-area: dl;
+}
+.player-bar-close {
+  grid-area: close;
+}
+
+.player-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.player-bar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.player-bar-btn:visited {
+  color: var(--color-text-primary);
+}
+
+.player-bar-play {
+  width: 2.75rem;
+  height: 2.75rem;
+  background-color: var(--color-accent);
+  color: var(--color-accent-on);
+}
+
+.player-bar-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.player-bar-title {
+  overflow: hidden;
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-bar-title:visited {
+  color: var(--color-text-primary);
+}
+
+.player-bar-sub {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-bar-clock {
+  display: none;
+}
+
+.player-bar-error {
+  color: var(--color-error-ink);
+}
+
+.player-bar-retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.player-bar-time {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-bar-seek {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.rate-menu {
+  position: relative;
+}
+
+.rate-menu-toggle {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 999px;
+  background-color: var(--color-card-bg);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.rate-menu-list {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 50%;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  transform: translateX(-50%);
+  background-color: var(--color-card-bg);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px var(--color-shadow);
+}
+
+.rate-menu-list button {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rate-menu-list button[aria-checked='true'] {
+  background-color: var(--color-accent);
+  color: var(--color-accent-on);
+  font-weight: 600;
+}
+
+/* Телефон: перемотка во всю ширину сверху, ниже — одна строка кнопок.
+   Стрелка «скачать» в полосе не нужна — она у каждой строки списка. */
+@media (max-width: 640px) {
+  .player-bar {
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    grid-template-areas:
+      'seek seek seek seek seek'
+      'play info rate next close';
+    row-gap: 0.25rem;
+    padding-top: 0.25rem;
+  }
+
+  .player-bar-prev,
+  .player-bar-time,
+  .player-bar-download,
+  .player-bar-subtitle {
+    display: none;
+  }
+
+  .player-bar-clock {
+    display: block;
+  }
+
+  /* Тонкая полоса, но зона касания не меньше 24px. */
+  .player-bar-seek {
+    height: 24px;
+  }
+}

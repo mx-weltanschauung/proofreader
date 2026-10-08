@@ -1,0 +1,209 @@
+.page-editor-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-editor-header {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--color-border-light);
+}
+
+.page-title-section {
+  margin-bottom: 15px;
+}
+
+.work-breadcrumb {
+  display: flex;
+  align-items: center;
+  /* Пять глав с длинными заголовками не влезают в строку, а без переноса
+     flex-контейнер выпускает их за экран. */
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+/* Цвет даёт глобальное правило `a` в index.css. Раньше здесь стоял
+   var(--color-primary) — переменная, не объявленная нигде в проекте.
+   Неразрешимый var() невалиден на этапе вычисления значения, поэтому
+   перекрывал глобальное правило и красил ссылку цветом обычного текста. */
+.work-link {
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.work-link:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-separator {
+  color: var(--color-text-secondary);
+  font-weight: 300;
+}
+
+.page-editor-header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.page-controls {
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.page-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.page-controls select {
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--color-input-border);
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+  font-size: 14px;
+}
+
+.save-button {
+  padding: 8px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  background-color: var(--color-accent);
+  color: var(--color-accent-on);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.save-button:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px var(--color-shadow);
+}
+
+.save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: var(--color-error-ink);
+  padding: 12px;
+  background-color: var(--color-error-tint);
+  border-radius: 6px;
+  border: 1px solid var(--color-error);
+  margin: 15px 0;
+}
+
+.version-comment-section {
+  margin-bottom: 20px;
+}
+
+.version-comment-section label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.version-comment-section input {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+}
+
+.version-comment-section input:focus {
+  border-color: var(--color-input-focus);
+}
+
+.version-comment-section input:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.content-section {
+  margin-bottom: 30px;
+}
+
+.content-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 15px 0;
+}
+
+.preview-section {
+  margin-top: 30px;
+}
+
+.preview-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 15px 0;
+}
+
+.preview-image-container {
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.preview-image {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+}
+
+.error-state {
+  color: var(--color-error-ink);
+}
+
+@media (max-width: 768px) {
+  .page-editor-header h1 {
+    font-size: 22px;
+  }
+
+  .page-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-controls label {
+    width: 100%;
+  }
+
+  .page-controls select,
+  .save-button {
+    width: 100%;
+  }
+
+  .preview-image-container {
+    padding: 15px;
+  }
+}

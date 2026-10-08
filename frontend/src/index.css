@@ -1,0 +1,1080 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Base transitions */
+  --transition-speed: 0.3s;
+
+  /* Reading preferences (see ReadingPreferencesContext).
+     The provider sets data- attributes on <html>; the rules below turn those
+     into the custom properties that reading surfaces consume. */
+  --reading-font-literata: 'Literata', Georgia, 'Times New Roman', serif;
+  --reading-font-fira: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --reading-font-andika: 'Andika', 'Fira Sans', -apple-system, sans-serif;
+
+  --reading-font: var(--reading-font-literata);
+  --reading-size: 18px;
+  --reading-line: 1.6;
+  --reading-measure: 65ch;
+  --reading-letter-spacing: 0em;
+  --reading-word-spacing: 0em;
+  --reading-indent: 1.4em;
+  --reading-para-gap: 0em;
+  --reading-align: left;
+  --reading-hyphens: manual;
+
+  /* Height of the sticky .site-header; the chapter toolbar sticks right below
+     it. Header.tsx measures the real header and overwrites this on the root
+     element - this value only covers the first frame, before the measurement
+     lands. Measured breakdown, all from Header.css:
+
+       14 + 14  .header-content padding-top + padding-bottom
+       + 35     tallest child of .header-content - .logo-words, the two-line
+                logo caption: 22px .logo-text (19px Literata at line-height
+                normal) + 1px column gap + 12px .logo-tagline (11px Fira).
+                Note it is taller than the 34px .logo-initial box beside it,
+                but only just - by one pixel.
+       + 1      .site-header border-bottom
+       = 64
+
+     Re-measured with CDP after the tagline dropped its uppercase + 0.16em
+     tracking (Header.css); `npm run measure:header-nav` confirms 64px for the
+     anonymous header at 1100-1440px. */
+  --site-header-height: 64px;
+
+  /* Машинная вычитка — тот же зелёный, что и вычитка человеком, но штрихом.
+     Цветом её от пустой дорожки не отличить: сплошной заливки, отстоящей на
+     3:1 и от --color-bg-tertiary, и от --color-success, в этой палитре нет ни
+     в одной теме (перебор всей палитры даёт максимум 2.15:1 в gray-dim). Тот
+     же приём уже принят для значка статуса страницы — пунктирная рамка у
+     .page-status.status-вычитано_машиной: машинная вычитка не подтверждена
+     человеком, и это должно быть видно без цвета.
+
+     Объявлен один раз здесь, а не шестью копиями по темам: var() внутри
+     разворачивается в месте ПРИМЕНЕНИЯ, поэтому каждая тема получает свой
+     зелёный сама. Промежутки прозрачные — под ними уже лежит дорожка. */
+  --pattern-machine: repeating-linear-gradient(
+    45deg,
+    var(--color-success) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+/* Заголовок, нужный обходу по заголовкам, но не глазу: на главной то же самое
+   уже написано в шапке сайта, и видимый повтор занял бы первый экран ничем.
+   Не `display: none` и не `visibility: hidden` — они убирают элемент и из
+   чтения с экрана, то есть ровно оттуда, где он и нужен. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+[data-reading-font='literata'] {
+  --reading-font: var(--reading-font-literata);
+}
+[data-reading-font='fira'] {
+  --reading-font: var(--reading-font-fira);
+}
+[data-reading-font='andika'] {
+  --reading-font: var(--reading-font-andika);
+}
+
+[data-reading-line='tight'] {
+  --reading-line: 1.45;
+}
+[data-reading-line='normal'] {
+  --reading-line: 1.6;
+}
+[data-reading-line='loose'] {
+  --reading-line: 1.75;
+}
+[data-reading-line='x-loose'] {
+  --reading-line: 1.9;
+}
+
+/* Measure is in ch, resolved against the reading font on the column itself. */
+[data-reading-measure='narrow'] {
+  --reading-measure: 55ch;
+}
+[data-reading-measure='normal'] {
+  --reading-measure: 65ch;
+}
+[data-reading-measure='wide'] {
+  --reading-measure: 75ch;
+}
+[data-reading-measure='full'] {
+  --reading-measure: none;
+}
+
+[data-reading-spacing='normal'] {
+  --reading-letter-spacing: 0em;
+  --reading-word-spacing: 0em;
+}
+[data-reading-spacing='roomy'] {
+  --reading-letter-spacing: 0.02em;
+  --reading-word-spacing: 0.06em;
+}
+[data-reading-spacing='x-roomy'] {
+  --reading-letter-spacing: 0.05em;
+  --reading-word-spacing: 0.14em;
+}
+
+[data-reading-paragraph='indent'] {
+  --reading-indent: 1.4em;
+  --reading-para-gap: 0em;
+}
+[data-reading-paragraph='spaced'] {
+  --reading-indent: 0em;
+  --reading-para-gap: 1em;
+}
+
+/* Justified Russian text without hyphenation opens rivers, so the two travel together. */
+[data-reading-align='left'] {
+  --reading-align: left;
+  --reading-hyphens: manual;
+}
+[data-reading-align='justify'] {
+  --reading-align: justify;
+  --reading-hyphens: auto;
+}
+
+/* Каналы на экране статистики — заливка столбиков и образцов, текста поверх нет. */
+:root {
+  --stats-spa: #3b6ea8;
+  --stats-md: #8a5fb0;
+  --stats-download: #3c9a6b;
+  --stats-seo: #b0873c;
+  --stats-mcp: #b05c5c;
+}
+[data-theme='dark'],
+[data-theme='oled'],
+[data-theme='gray-dim'] {
+  --stats-spa: #6da9d3;
+  --stats-md: #b795d4;
+  --stats-download: #5cc794;
+  --stats-seo: #d9b060;
+  --stats-mcp: #d98a8a;
+}
+
+/* Light Theme - Wikipedia-inspired, modernized */
+[data-theme='light'] {
+  --color-bg-primary: #f8f9fa;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #eaecf0;
+  --color-text-primary: #202122;
+  --color-text-secondary: #54595d;
+  --color-text-tertiary: #63686e;
+  --color-link: #0645ad;
+  --color-link-visited: #0b0080;
+  --color-link-hover: #0b4ba8;
+  --color-border: #a2a9b1;
+  --color-border-light: #c8ccd1;
+  --color-header-bg: #f8f9fa;
+  --color-header-border: #a2a9b1;
+  --color-footer-bg: #f8f9fa;
+  --color-footer-text: #54595d;
+  --color-card-bg: #ffffff;
+  --color-card-border: #a2a9b1;
+  --color-button-primary: var(--color-info);
+  --color-button-primary-hover: var(--color-info-hover);
+  --color-button-secondary: #eaecf0;
+  --color-button-secondary-hover: #c8ccd1;
+  --color-success: #14866d;
+  --color-warning: #fc3;
+  --color-error: #d33;
+  --color-input-bg: #ffffff;
+  --color-input-border: #a2a9b1;
+  --color-input-focus: #0645ad;
+  --color-shadow: rgba(0, 0, 0, 0.1);
+  --color-accent: #0f7a63;
+  --color-accent-on: #ffffff;
+  --color-accent-hover: #0b5f4d;
+  --color-focus: #0645ad;
+  --color-border-strong: #72777d;
+  --color-success-on: #ffffff;
+  --color-success-tint: #e3f3ef;
+  --color-success-ink: #0b6151;
+  --color-warning-on: #202122;
+  --color-warning-tint: #fbeed0;
+  --color-warning-ink: #6b5200;
+  --color-error-on: #ffffff;
+  --color-error-tint: #fbe9e9;
+  --color-error-ink: #a51b1b;
+  --color-error-hover: #b02525;
+  --color-info: #0645ad;
+  --color-info-on: #ffffff;
+  --color-info-tint: #e8f0fb;
+  --color-info-ink: #0645ad;
+  --color-info-hover: #053584;
+  --color-scrim: rgba(20, 18, 16, 0.38);
+}
+
+/* Dark Theme */
+[data-theme='dark'] {
+  --color-bg-primary: #1a1a1a;
+  --color-bg-secondary: #2d2d2d;
+  --color-bg-tertiary: #3a3a3a;
+  --color-text-primary: #e8e6e3;
+  --color-text-secondary: #c8c8c8;
+  --color-text-tertiary: #a8a8a8;
+  --color-link: #6da9d3;
+  --color-link-visited: #b795d4;
+  --color-link-hover: #8ac1e3;
+  --color-border: #4c4f52;
+  --color-border-light: #5a5e61;
+  --color-header-bg: #2d2d2d;
+  --color-header-border: #404040;
+  --color-footer-bg: #2d2d2d;
+  --color-footer-text: #c8c8c8;
+  --color-card-bg: #2d2d2d;
+  --color-card-border: #4c4f52;
+  --color-button-primary: var(--color-info);
+  --color-button-primary-hover: var(--color-info-hover);
+  --color-button-secondary: #3a3a3a;
+  --color-button-secondary-hover: #4a4a4a;
+  --color-success: #3fb89f;
+  --color-warning: #ffd966;
+  --color-error: #ff6b6b;
+  --color-input-bg: #3a3a3a;
+  --color-input-border: #757a7d;
+  --color-input-focus: #6da9d3;
+  --color-shadow: rgba(0, 0, 0, 0.3);
+  --color-accent: #3fb89f;
+  --color-accent-on: #06231e;
+  --color-accent-hover: #63cfb8;
+  --color-focus: #8fc0e0;
+  --color-border-strong: #757a7d;
+  --color-success-on: #06231e;
+  --color-success-tint: #16302b;
+  --color-success-ink: #57cdb3;
+  --color-warning-on: #2b2205;
+  --color-warning-tint: #332b12;
+  --color-warning-ink: #ffd966;
+  --color-error-on: #2d0707;
+  --color-error-tint: #3a1c1c;
+  --color-error-ink: #ff9b9b;
+  --color-error-hover: #ff9494;
+  --color-info: #6da9d3;
+  --color-info-on: #05202e;
+  --color-info-tint: #1a2b36;
+  --color-info-ink: #8fc0e0;
+  --color-info-hover: #8ac1e3;
+  --color-scrim: rgba(0, 0, 0, 0.6);
+}
+
+/* Sepia Theme - Warm, paper-like for reading */
+[data-theme='sepia'] {
+  --color-bg-primary: #f4ecd8;
+  --color-bg-secondary: #fbf5e9;
+  --color-bg-tertiary: #ede1c8;
+  --color-text-primary: #3e2f21;
+  --color-text-secondary: #5a4a3a;
+  --color-text-tertiary: #6b5b49;
+  --color-link: #0645ad;
+  --color-link-visited: #663366;
+  --color-link-hover: #0b4ba8;
+  --color-border: #d9c9a8;
+  --color-border-light: #e5dcc8;
+  --color-header-bg: #f4ecd8;
+  --color-header-border: #d9c9a8;
+  --color-footer-bg: #f4ecd8;
+  --color-footer-text: #5a4a3a;
+  --color-card-bg: #fbf5e9;
+  --color-card-border: #d9c9a8;
+  --color-button-primary: var(--color-info);
+  --color-button-primary-hover: var(--color-info-hover);
+  --color-button-secondary: #ede1c8;
+  --color-button-secondary-hover: #d9c9a8;
+  --color-success: #2d8659;
+  --color-warning: #d4a046;
+  --color-error: #b33;
+  --color-input-bg: #fbf5e9;
+  --color-input-border: #d9c9a8;
+  --color-input-focus: #0645ad;
+  --color-shadow: rgba(62, 47, 33, 0.1);
+  --color-accent: #26714f;
+  --color-accent-on: #ffffff;
+  --color-accent-hover: #1c5a3e;
+  --color-focus: #0645ad;
+  --color-border-strong: #8a7757;
+  --color-success-on: #ffffff;
+  --color-success-tint: #e3efe3;
+  --color-success-ink: #1d5c3c;
+  --color-warning-on: #3e2f21;
+  --color-warning-tint: #f3e6c8;
+  --color-warning-ink: #6b4e10;
+  --color-error-on: #ffffff;
+  --color-error-tint: #f6e3dc;
+  --color-error-ink: #8f2020;
+  --color-error-hover: #992323;
+  --color-info: #0645ad;
+  --color-info-on: #ffffff;
+  --color-info-tint: #e6ecf6;
+  --color-info-ink: #0645ad;
+  --color-info-hover: #053584;
+  --color-scrim: rgba(62, 47, 33, 0.38);
+}
+
+/* OLED Theme - pure black background for OLED screens */
+[data-theme='oled'] {
+  --color-bg-primary: #000000;
+  --color-bg-secondary: #0a0a0a;
+  --color-bg-tertiary: #141414;
+  --color-text-primary: #e8e6e3;
+  --color-text-secondary: #b8b8b8;
+  --color-text-tertiary: #8a8a8a;
+  --color-link: #6da9d3;
+  --color-link-visited: #b795d4;
+  --color-link-hover: #8ac1e3;
+  --color-border: #33383a;
+  --color-border-light: #40454a;
+  --color-header-bg: #000000;
+  --color-header-border: #222222;
+  --color-footer-bg: #000000;
+  --color-footer-text: #b8b8b8;
+  --color-card-bg: #0a0a0a;
+  --color-card-border: #33383a;
+  --color-button-primary: var(--color-info);
+  --color-button-primary-hover: var(--color-info-hover);
+  --color-button-secondary: #141414;
+  --color-button-secondary-hover: #222222;
+  --color-success: #3fb89f;
+  --color-warning: #ffd966;
+  --color-error: #ff6b6b;
+  --color-input-bg: #141414;
+  --color-input-border: #63676a;
+  --color-input-focus: #6da9d3;
+  --color-shadow: rgba(0, 0, 0, 0.6);
+  --color-accent: #3fb89f;
+  --color-accent-on: #06231e;
+  --color-accent-hover: #63cfb8;
+  --color-focus: #8fc0e0;
+  --color-border-strong: #63676a;
+  --color-success-on: #06231e;
+  --color-success-tint: #0c211d;
+  --color-success-ink: #57cdb3;
+  --color-warning-on: #2b2205;
+  --color-warning-tint: #241e0c;
+  --color-warning-ink: #ffd966;
+  --color-error-on: #2d0707;
+  --color-error-tint: #2b1414;
+  --color-error-ink: #ff9b9b;
+  --color-error-hover: #ff9494;
+  --color-info: #6da9d3;
+  --color-info-on: #05202e;
+  --color-info-tint: #111f28;
+  --color-info-ink: #8fc0e0;
+  --color-info-hover: #8ac1e3;
+  --color-scrim: rgba(0, 0, 0, 0.72);
+}
+
+/* High Contrast Theme - black on white, strong borders */
+[data-theme='high-contrast'] {
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #ffffff;
+  --color-bg-tertiary: #f0f0f0;
+  --color-text-primary: #000000;
+  --color-text-secondary: #000000;
+  --color-text-tertiary: #1a1a1a;
+  --color-link: #0000ee;
+  --color-link-visited: #551a8b;
+  --color-link-hover: #0000cc;
+  --color-border: #000000;
+  --color-border-light: #000000;
+  --color-header-bg: #ffffff;
+  --color-header-border: #000000;
+  --color-footer-bg: #ffffff;
+  --color-footer-text: #000000;
+  --color-card-bg: #ffffff;
+  --color-card-border: #000000;
+  --color-button-primary: var(--color-info);
+  --color-button-primary-hover: var(--color-info-hover);
+  --color-button-secondary: #e0e0e0;
+  --color-button-secondary-hover: #c0c0c0;
+  --color-success: #006400;
+  --color-warning: #8a6d00;
+  --color-error: #a00000;
+  --color-input-bg: #ffffff;
+  --color-input-border: #000000;
+  --color-input-focus: #0000ee;
+  --color-shadow: rgba(0, 0, 0, 0.25);
+  --color-accent: #00006a;
+  --color-accent-on: #ffffff;
+  /* Единственная тема, где наведение светлее базы: #00006a почти чёрный,
+     темнеть ему некуда — сдвиг вниз читался бы как 1.11:1 к базе, то есть
+     никак. Вверх остаётся 11.45:1 к белому тексту. */
+  --color-accent-hover: #0000c8;
+  --color-focus: #0000ee;
+  --color-border-strong: #000000;
+  --color-success-on: #ffffff;
+  --color-success-tint: #ffffff;
+  --color-success-ink: #004d00;
+  --color-warning-on: #ffffff;
+  --color-warning-tint: #ffffff;
+  --color-warning-ink: #6b5400;
+  --color-error-on: #ffffff;
+  --color-error-tint: #ffffff;
+  --color-error-ink: #8b0000;
+  --color-error-hover: #7a0000;
+  --color-info: #0000ee;
+  --color-info-on: #ffffff;
+  --color-info-tint: #ffffff;
+  --color-info-ink: #00008b;
+  --color-info-hover: #0000aa;
+  --color-scrim: rgba(0, 0, 0, 0.7);
+}
+
+/* Gray Dim Theme - soft dark, not black */
+[data-theme='gray-dim'] {
+  --color-bg-primary: #2b2f33;
+  --color-bg-secondary: #34393e;
+  --color-bg-tertiary: #3d434a;
+  --color-text-primary: #d7dade;
+  --color-text-secondary: #c2c7cd;
+  --color-text-tertiary: #aeb4bb;
+  --color-link: #7fb3d5;
+  --color-link-visited: #c3aee5;
+  --color-link-hover: #9cc7e0;
+  --color-border: #50565d;
+  --color-border-light: #5f666d;
+  --color-header-bg: #2b2f33;
+  --color-header-border: #454b52;
+  --color-footer-bg: #2b2f33;
+  --color-footer-text: #c2c7cd;
+  --color-card-bg: #34393e;
+  --color-card-border: #50565d;
+  --color-button-primary: var(--color-info);
+  --color-button-primary-hover: var(--color-info-hover);
+  --color-button-secondary: #3d434a;
+  --color-button-secondary-hover: #474d54;
+  --color-success: #6cc0a6;
+  --color-warning: #e0c068;
+  --color-error: #e08080;
+  --color-input-bg: #3d434a;
+  --color-input-border: #8e949b;
+  --color-input-focus: #7fb3d5;
+  --color-shadow: rgba(0, 0, 0, 0.4);
+  --color-accent: #6cc0a6;
+  --color-accent-on: #08231d;
+  --color-accent-hover: #8ad4bd;
+  --color-focus: #93c1de;
+  --color-border-strong: #8e949b;
+  --color-success-on: #08231d;
+  --color-success-tint: #28403a;
+  --color-success-ink: #82d3ba;
+  --color-warning-on: #2b2205;
+  --color-warning-tint: #3d3722;
+  --color-warning-ink: #e8cd82;
+  --color-error-on: #2d0707;
+  --color-error-tint: #412c2c;
+  --color-error-ink: #f0a0a0;
+  --color-error-hover: #eda0a0;
+  --color-info: #7fb3d5;
+  --color-info-on: #05202e;
+  --color-info-tint: #2b3a45;
+  --color-info-ink: #93c1de;
+  --color-info-hover: #9cc7e0;
+  --color-scrim: rgba(0, 0, 0, 0.55);
+}
+
+html {
+  transition:
+    background-color var(--transition-speed) ease,
+    color var(--transition-speed) ease;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell',
+    'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+  transition:
+    background-color var(--transition-speed) ease,
+    color var(--transition-speed) ease;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+a {
+  color: var(--color-link);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:visited {
+  color: var(--color-link-visited);
+}
+
+a:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* Единственные в приложении правила для disabled/active-состояния кнопок —
+   раньше жили в CSS одной страницы (WorkDetail.css), хотя используются
+   повсеместно (панель управления томом, DocumentForm, ConceptEntryExpand,
+   WorkVolumeFields, ConceptFragmentStream и др.); перенесены сюда, к общему
+   правилу `button`, чтобы не зависеть от того, какая страница загружена. */
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Единственный кнопочный класс проекта. До него каждый экран красил кнопки
+   сам: .create-edition-button, .continue-reading-button, .edition-delete-button,
+   .toggle-page-info-button, .logout-button — и .immersive-toggle, у которой
+   не было ни одного правила вовсе, отчего на экране чтения она выглядела
+   дефолтной кнопкой браузера. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition-property: background-color, color, border-color;
+  transition-duration: 0.2s;
+  transition-timing-function: ease;
+}
+
+/* Кнопка бывает и ссылкой (<Link className="btn">): общее правило `a:hover`
+   подчёркивает текст, кнопке это ни к чему. */
+a.btn:hover {
+  text-decoration: none;
+}
+
+.btn-primary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-on);
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-accent-on);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.btn-ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--color-text-secondary);
+}
+
+.btn-ghost:hover {
+  color: var(--color-text-primary);
+}
+
+.btn-danger {
+  background-color: transparent;
+  border-color: var(--color-error);
+  color: var(--color-error-ink);
+}
+
+.btn-danger:hover {
+  background-color: var(--color-error);
+  color: var(--color-error-on);
+}
+
+.btn-sm {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+/* Состояние тумблера объявлено через aria-pressed, а не через класс .active:
+   один источник правды для стиля и для вспомогательных технологий. Заливка —
+   акцент проекта, а не --color-info: синяя кнопка среди бирюзовых читалась
+   как чужая. */
+.btn[aria-pressed='true'] {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-on);
+  font-weight: 600;
+}
+
+.btn[aria-pressed='true']:hover {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  color: var(--color-accent-on);
+}
+
+/* .empty-state тоже раньше держал подложку и рамку в CSS одной страницы
+   (WorkDetail.css), но класс объявлен на шести экранах (Dashboard,
+   EditionDetail, DocumentList, ConceptList, ChapterView) — их
+   собственные CSS-файлы задают только text-align/padding/color и
+   переопределяют то, что нужно им самим; пунктирная рамка и подложка общие
+   для всех и не должны зависеть от того, какая именно страница загружена. */
+.empty-state {
+  background-color: var(--color-bg-tertiary);
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+}
+
+.empty-state p {
+  color: var(--color-text-secondary);
+  margin-bottom: 10px;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-input-border);
+  transition:
+    border-color 0.2s ease,
+    background-color var(--transition-speed) ease;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--color-input-focus);
+}
+
+/* Гасить кольцо можно только там, где его быть и не должно. Голое
+   `outline: none` на :focus имеет специфичность выше, чем :focus-visible
+   ниже, и убивает кольцо насовсем — поле остаётся с одной сменой цвета
+   рамки. С :not(:focus-visible) правило просто не совпадает, когда кольцо
+   нужно. */
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Кольцо фокуса — одно на весь интерфейс. :focus-visible, а не :focus:
+   мышиный клик по кнопке кольца не рисует, клавиатурный обход — рисует. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Настройка операционной системы, а не пожелание: гасим и переходы, и
+   анимации, и плавную прокрутку разом. 0.01ms вместо 0s — чтобы события
+   transitionend всё-таки приходили и обработчики, которые их ждут, не
+   зависали навсегда. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Immersive reading mode */
+body.reading-immersive .site-header,
+body.reading-immersive .site-footer {
+  display: none;
+}
+
+/* The global header is hidden here, so it takes up no offset. Declaring the
+   variable on body overrides the measured value inherited from html for the
+   whole subtree, which fixes both the toolbar's stick point and the
+   scroll-margin used when jumping to a note. */
+body.reading-immersive {
+  --site-header-height: 0px;
+}
+
+/* Подсветка совпадения поиска — общая между отрывками /search (Task 9) и
+   подсветкой в режиме чтения (Task 11). Вычитанная пара из contrast.test.ts:
+   --color-warning-tint/-ink, во всех шести темах. */
+mark.search-hit {
+  background-color: var(--color-warning-tint);
+  color: var(--color-warning-ink);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Подсветка цитаты, по которой пришли извне. Отличается от search-hit: там
+   найденные слова запроса, здесь — точное место, на которое сослались; тон
+   намеренно другой (info, а не warning), чтобы две подсветки не сливались
+   на одной полосе. Пара --color-info-tint/-ink та же, что уже вычитана
+   contrast.test.ts во всех шести темах. */
+mark.quote-hit {
+  background-color: var(--color-info-tint);
+  color: var(--color-info-ink);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* ------------------------------------------------------------------
+   Маргиналии и рукописная раскладка «Тетрадей» (ПСС Ленина, тома 28 и 29).
+
+   В этих томах печатается не связный текст, а конспект: отчёркивания на
+   поле с «NB», фигурные скобки на несколько строк, рамки вокруг блока,
+   «крыша» над столбцами. Источник разметки — сырой HTML в
+   content_markdown: рендерер пропускает блочный HTML дословно
+   (pkg/markdown, тот же путь, которым уже едут печатные таблицы с
+   rowspan/colspan), поэтому весь словарь ниже — классы, а не разметка.
+
+   Живут здесь, в index.css, а не в PageView.css: одну и ту же полосу
+   рисуют и отдельная страница, и режим чтения (ReadingSurface), а их CSS
+   уезжает в разные ленивые чанки — правило из PageView.css до читалки не
+   доедет.
+
+   Селекторы намеренно ведутся от `.page-html-content`. Голого `.ln-fig`
+   не хватает: общее правило `.page-html-content table` (PageView.css,
+   ReadingSurface.css) специфичнее одного класса и навязывает
+   `display: block; min-width: 100%` — от него раскладочная таблица
+   растягивалась во всю колонку и рвала ячейки по словам («20—25»
+   уезжало на три строки).
+
+   Цвет везде currentColor: линейки на бумаге — та же типографская краска,
+   что и буквы, поэтому во всех шести темах они верны сами собой и не
+   заводят пары «фон + текст», которые сторожит contrast.test.ts.
+   ------------------------------------------------------------------ */
+
+/* Отчёркнутый на поле кусок. Модификаторы --l/--r/--lr говорят, с какой
+   стороны стоит линейка; в книге это двойная черта, отсюда `double`. */
+.page-html-content .ln-marg {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6em;
+  margin: 1em 0;
+}
+
+.page-html-content .ln-marg-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-html-content .ln-marg-body > :first-child {
+  margin-top: 0;
+}
+
+.page-html-content .ln-marg-body > :last-child {
+  margin-bottom: 0;
+}
+
+.page-html-content .ln-marg--l .ln-marg-body,
+.page-html-content .ln-marg--lr .ln-marg-body {
+  border-left: 4px double currentColor;
+  padding-left: 0.7em;
+}
+
+.page-html-content .ln-marg--r .ln-marg-body,
+.page-html-content .ln-marg--lr .ln-marg-body {
+  border-right: 4px double currentColor;
+  padding-right: 0.7em;
+}
+
+/* Метка на поле — «NB», «NB!», «!!» и прочее, что Ленин ставил слева. */
+.page-html-content .ln-marg-mark {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 0.9em;
+  letter-spacing: 0.05em;
+  padding-top: 0.15em;
+  white-space: nowrap;
+}
+
+/* Блок в рамке. На полосе 124 рамка открыта справа — так на бумаге. */
+.page-html-content .ln-box {
+  border-left: 1px solid currentColor;
+  border-top: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  padding: 0.6em 0.4em;
+  margin: 1em 0;
+}
+
+.page-html-content .ln-box > :first-child {
+  margin-top: 0;
+}
+
+.page-html-content .ln-box > :last-child {
+  margin-bottom: 0;
+}
+
+/* Подпись над блоком — печатается вподбор, мельче основного кегля. */
+.page-html-content .ln-cap {
+  text-align: center;
+  font-size: 0.9em;
+  margin: 0 0 0.4em 0;
+}
+
+/* Раскладочная таблица шире колонки прокручивается, а не наезжает на
+   скан — та же беда и то же лечение, что у обычных таблиц полосы, только
+   обёрткой: сама таблица здесь обязана остаться `display: table`, иначе
+   rowspan под фигурной скобкой перестаёт работать. */
+.page-html-content .ln-scroll {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+/* Столбцы жмутся по содержимому, рамок нет — на бумаге их тоже нет, есть
+   только выключка. */
+.page-html-content table.ln-fig {
+  display: table;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  border-collapse: collapse;
+  margin: 0 auto;
+}
+
+/* Таблица с выводными точками тянется во всю ширину: слак съедает ячейка
+   .ln-lead, за счёт чего числа выстраиваются по общему правому краю. */
+.page-html-content table.ln-fig--full {
+  width: 100%;
+}
+
+/* Числовая решётка. В книге такие столбцы набраны мельче основного кегля —
+   без этого одиннадцать колонок не встают в читательскую колонку и
+   последняя («(1880)») уходит за край, в прокрутку. */
+.page-html-content table.ln-fig--tight {
+  font-size: 0.75em;
+}
+
+.page-html-content .ln-fig--tight td {
+  padding: 0.1em 0.28em;
+}
+
+/* Числовая решётка, развёрнутая в настоящую таблицу данных: строка —
+   десятилетие, столбец — год по счёту внутри него. В книге у решётки нет
+   ни шапки, ни рамок — числа стоят россыпью, и структуру читатель должен
+   восстановить сам. Восстанавливается она однозначно (строка «1871 …
+   (1880)» — ровно десять лет, и текст полосы говорит «погодные данные
+   эмиссий с 1871 г. по 1910»), но добавка всё-таки наша, поэтому её
+   называет подпись под таблицей — .ln-note. */
+.page-html-content .ln-fig.ln-fig--grid td,
+.page-html-content .ln-fig.ln-fig--grid th {
+  border: 1px solid var(--color-border);
+  padding: 0.18em 0.3em;
+  text-align: right;
+}
+
+.page-html-content .ln-fig.ln-fig--grid th {
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.page-html-content .ln-fig.ln-fig--grid th.ln-rowhead {
+  text-align: left;
+  font-weight: 500;
+}
+
+/* Строка с «крышей» — часть раскладки, а не данных: рамок у неё нет. */
+.page-html-content .ln-fig.ln-fig--grid .ln-roof-row td {
+  border: 0;
+  padding: 0;
+}
+
+/* Подпись о том, что в разборе добавлено сверх напечатанного. */
+.page-html-content .ln-note {
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+  text-align: center;
+  margin: 0.3em 0 1em 0;
+}
+
+.page-html-content .ln-fig td,
+.page-html-content .ln-fig th {
+  border: 0;
+  padding: 0.1em 0.45em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Ячейка с прозой — единственная, которой перенос по словам разрешён. */
+.page-html-content .ln-fig td.ln-wrap {
+  white-space: normal;
+}
+
+.page-html-content .ln-fig td.ln-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Выключка по центру внутри раскладочной таблицы — ею формула и «крыша»
+   под ней сводятся к одной оси. */
+.page-html-content .ln-fig td.ln-mid {
+  text-align: center;
+}
+
+/* Черта подытоживания — та самая, что в книге проведена над суммой. */
+.page-html-content .ln-fig td.ln-sum {
+  border-top: 1px solid currentColor;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Выводные точки: ячейка-распорка тянет пунктир от подписи к числу.
+   Точки на бумаге — не текст, а набор, поэтому ячейка пустая; но линейка
+   кладётся на носитель со своей высотой строки, а не на саму ячейку —
+   у пустой ячейки нижняя граница ложится по низу бокса, и пунктир
+   уезжает заметно ниже строки. */
+.page-html-content .ln-fig td.ln-lead {
+  width: 100%;
+  min-width: 2.5em;
+  padding: 0 0.3em;
+  vertical-align: middle;
+}
+
+.page-html-content .ln-fig td.ln-lead > span {
+  display: block;
+  line-height: 1;
+  border-bottom: 1px dotted currentColor;
+}
+
+/* Фигурная скобка на N строк. Кегль задаёт высоту, поэтому у конвертера
+   ровно один параметр — rowspan ячейки, из которого и берётся модификатор. */
+.page-html-content .ln-brace {
+  font-weight: 300;
+  line-height: 0.8;
+  text-align: center;
+  padding: 0 0.15em;
+}
+
+.page-html-content .ln-brace--1 {
+  font-size: 1.7em;
+}
+
+.page-html-content .ln-brace--2 {
+  font-size: 2.6em;
+}
+
+.page-html-content .ln-brace--3 {
+  font-size: 3.6em;
+}
+
+.page-html-content .ln-brace--4 {
+  font-size: 4.6em;
+}
+
+/* Стрелка, которой Ленин указывал на строку снизу. */
+.page-html-content .ln-arrow {
+  text-align: center;
+  font-size: 1.3em;
+  line-height: 1;
+}
+
+/* «Крыша» — штрихи, сводящие столбцы к итогу над ними. Текстового
+   эквивалента у неё нет, поэтому рисуется, а не набирается. */
+.page-html-content .ln-roof {
+  padding: 0;
+}
+
+.page-html-content .ln-roof svg {
+  display: block;
+  width: 100%;
+  height: 1.6em;
+  color: currentColor;
+}
+
+/* ------------------------------------------------------------------
+   Сноски одной полосы: одиночная страница тома и вырезка понятия.
+   Сервер отдаёт их разметкой главы (RenderWithNotes → RenderNotesWith,
+   подпись раздела абзацем): два раздела, «Подстрочные примечания» и
+   «Примечания», пункт — маркер-ссылка и тело. Прежде это был <ol>
+   gomarkdown, и браузер нумеровал пункты подряд: примечание тома 27
+   читалось «1».
+
+   Здесь, а не в PageView.css, по той же причине, что и маргиналии выше:
+   страница понятия и отдельная полоса уезжают в разные ленивые чанки.
+   Селекторы ведутся от .page-html-content: у главы и потока чтения блок
+   сносок стоит ВНЕ этого контейнера (.chapter-footnotes, сосед), так что
+   их оформление отсюда не задевается. Специфичность двух-трёх классов
+   перебивает общие .page-html-content p/ul/li из PageView.css.
+   ------------------------------------------------------------------ */
+.page-html-content .footnotes {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border-light);
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.page-html-content .footnotes .notes-group + .notes-group {
+  margin-top: 1rem;
+}
+
+.page-html-content .footnotes .notes-group-caption {
+  margin: 0 0 0.4rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.page-html-content .footnotes .fn-list {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+}
+
+.page-html-content .footnotes .fn-item {
+  margin: 0.35rem 0;
+}
+
+/* Тело многоабзацного примечания приходит абзацами; первый ставится в
+   строку с маркером, иначе «27» висит одиноко над текстом. */
+.page-html-content .footnotes .fn-item p {
+  margin: 0 0 0.4rem;
+}
+
+.page-html-content .footnotes .fn-back + p {
+  display: inline;
+}
+
+.page-html-content .footnotes .fn-back {
+  margin-right: 0.4rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.page-html-content .footnotes .fn-item--endnote .fn-back {
+  color: var(--color-info-ink);
+}
+
+.page-html-content .footnotes .fn-item--subscript .fn-back {
+  color: var(--color-warning-ink);
+}

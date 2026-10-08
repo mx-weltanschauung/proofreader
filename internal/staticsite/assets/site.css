@@ -1,0 +1,44 @@
+/* Статическая читальня: один файл стилей на всю сборку. Шрифт лежит рядом,
+   в assets/fonts — внешних ресурсов у сборки нет. */
+@font-face { font-family: "Literata"; src: url(fonts/Literata-Regular.ttf) format("truetype"); font-weight: 400; }
+@font-face { font-family: "Literata"; src: url(fonts/Literata-Bold.ttf) format("truetype"); font-weight: 700; }
+:root { --ink: #1a1a1a; --paper: #fdfdfb; --muted: #7a7568; --rule: #ddd8cc; --link: #2b4c7e; }
+@media (prefers-color-scheme: dark) {
+  :root { --ink: #ded9d0; --paper: #17181a; --muted: #8f8a80; --rule: #34332f; --link: #9db8e0; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; color: var(--ink); background: var(--paper);
+  font-family: "Literata", "PT Serif", Georgia, "Times New Roman", serif;
+  font-size: 1.05rem; line-height: 1.6;
+}
+a { color: var(--link); }
+header.site, nav.crumbs, main, footer.site { max-width: 40em; margin: 0 auto; padding: 0 16px; }
+header.site { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: baseline; padding-top: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--rule); }
+header.site .brand { font-weight: 700; color: var(--ink); text-decoration: none; }
+header.site nav a { margin-right: 0.75rem; }
+.site-search { flex: 1 1 12em; }
+.site-search input { width: 100%; font: inherit; padding: 0.2rem 0.4rem; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); }
+nav.crumbs { margin-top: 0.75rem; color: var(--muted); font-size: 0.9rem; }
+main { padding-top: 1rem; padding-bottom: 2rem; overflow-wrap: break-word; hyphens: auto; }
+footer.site { padding-bottom: 2rem; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--rule); }
+h1, h2, h3, h4, h5, h6 { line-height: 1.25; }
+.work-line, .pages, .author, .proofread, .note { color: var(--muted); }
+.toc ul, .shelf ul { list-style: none; padding-left: 1rem; }
+.toc > ul, .shelf > ul { padding-left: 0; }
+.page-marker { float: left; margin-left: -3.5rem; width: 3rem; text-align: right; color: var(--muted); font-size: 0.75rem; user-select: none; }
+@media (max-width: 52em) { .page-marker { float: none; margin: 0 0 0 0.5rem; display: inline-block; width: auto; } }
+/* Без курсива: курсив в корпусе — выделение автора, и в цитате набранной
+   курсивом целиком он бы пропал (так же в SPA, PageView.css). */
+blockquote { margin: 1rem 0 1rem 1.5rem; padding-left: 0.75rem; border-left: 2px solid var(--rule); }
+table { border-collapse: collapse; margin: 1rem 0; display: block; overflow-x: auto; }
+td, th { border: 1px solid var(--muted); padding: 0.3rem 0.5rem; }
+.footnotes { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); font-size: 0.9rem; }
+nav.prevnext { display: flex; justify-content: space-between; gap: 1rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+.broken, .absent { color: var(--muted); }
+.results li { margin: 0.4rem 0; }
+.results .kind { color: var(--muted); font-size: 0.85rem; margin-right: 0.5rem; }
+.results .sub { color: var(--muted); font-size: 0.85rem; margin-left: 0.5rem; }
+.hint { color: var(--muted); }
+mark { background: #f3e2a0; color: inherit; }
+@media (prefers-color-scheme: dark) { mark { background: #5c4f1c; } }

@@ -1,0 +1,137 @@
+.site-footer {
+  background-color: var(--color-footer-bg);
+  border-top: 1px solid var(--color-header-border);
+  margin-top: auto;
+  transition:
+    background-color var(--transition-speed) ease,
+    border-color var(--transition-speed) ease;
+}
+
+.footer-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px 20px 20px;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 32px;
+}
+
+.footer-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+/* Заголовок столбца подвала — слово, а не капсовый ярлычок: тот же довод, что
+   у подписи логотипа и ссылок навигации в Header.css. Капс остаётся там, где
+   он приехал из книги, а не там, где его поставила вёрстка. */
+.footer-heading {
+  margin: 0 0 4px;
+  font-family: var(--reading-font-literata);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-footer-text);
+}
+
+.footer-about {
+  margin: 0 0 4px;
+  color: var(--color-footer-text);
+  max-width: 40ch;
+}
+
+.footer-column a {
+  color: var(--color-link);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.footer-column a:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+.footer-bottom {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 12px 20px 20px;
+  border-top: 1px solid var(--color-header-border);
+  color: var(--color-footer-text);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  /* Не space-between: знак и копирайт идут слева вместе, правый нижний угол
+     оставлен .scroll-dock, который висит там fixed и накрывал знак. */
+  gap: 12px;
+}
+
+/* Знак без заливки: он наследует --color-footer-bg, чья пара с
+   --color-footer-text уже проверена в contrast.test.ts. Своя заливка
+   завела бы сюда новую пару на все шесть тем без всякой нужды.
+   Цвет задан явно: знак — ссылка, и без этого он взял бы синий
+   --color-link и перестал читаться как часть фирменной графики. */
+.age-badge {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 2px;
+  padding: 1px 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--color-footer-text);
+  text-decoration: none;
+}
+
+.age-badge:hover {
+  color: var(--color-link-hover);
+  border-color: var(--color-link-hover);
+  text-decoration: none;
+}
+
+.footer-bottom p {
+  margin: 0;
+}
+
+/* Неприметная дверь для сотрудников: тот же приглушённый цвет подвала, что у
+   остального .footer-bottom, без своей заливки — пара с --color-footer-bg
+   уже проверена contrast.test.ts, заводить новую незачем. margin-left: auto
+   прижимает её к правому краю строки, не трогая .scroll-dock (fixed, свой
+   слой) и не превращая раскладку в space-between (см. комментарий выше). */
+.footer-staff-link {
+  margin-left: auto;
+  color: var(--color-footer-text);
+  text-decoration: none;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.footer-staff-link:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .footer-content {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 20px 15px 15px;
+  }
+
+  .footer-bottom {
+    padding: 12px 15px 15px;
+    text-align: center;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* margin-left: auto держит правку на широком экране (строка, поперечная
+     ось вертикальная — margin туда не смотрит), но в column-раскладке
+     поперечная ось становится горизонтальной, и auto-отступ выталкивает
+     именно эту ссылку к правому краю, отменяя для неё унаследованный
+     align-items: center — соседи (знак, копирайт) остаются по центру. */
+  .footer-staff-link {
+    margin-left: 0;
+  }
+}

@@ -1,0 +1,244 @@
+.page-suggest-container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-suggest-header {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid var(--color-border-light);
+}
+
+/* Цвет даёт глобальное правило `a` в index.css — см. тот же приём и
+   комментарий в PageEditor.css. */
+.page-suggest-header .work-link {
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.page-suggest-header .work-link:hover {
+  text-decoration: underline;
+}
+
+.page-suggest-header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 8px 0;
+}
+
+/* Заголовок теперь и ссылка (вторая крошка пути назад к полосе): наследует
+   цвет и начертание у h1, а не берёт цвет ссылки из глобального правила `a`
+   в index.css — иначе название полосы вспыхнуло бы синим только оттого, что
+   стало кликабельным. Подчёркивание при наведении — единственная подсказка,
+   что это ссылка. */
+.page-suggest-page-link,
+.page-suggest-page-link:visited {
+  color: inherit;
+  font-weight: inherit;
+  text-decoration: none;
+}
+
+.page-suggest-page-link:hover {
+  text-decoration: underline;
+}
+
+.page-suggest-folio {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.page-suggest-intro {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  margin: 0;
+}
+
+.page-suggest-two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  align-items: start;
+}
+
+.page-suggest-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.page-suggest-right {
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+}
+
+.page-suggest-note-section {
+  margin-bottom: 16px;
+}
+
+.page-suggest-note-section label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.page-suggest-note-section textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+  resize: vertical;
+}
+
+.page-suggest-note-section textarea:focus {
+  border-color: var(--color-input-focus);
+}
+
+.page-suggest-note-section textarea:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Ловушка от ботов: не display:none — часть ботов пропускает такие поля, а
+   это остаётся в потоке разметки и в DOM, просто вынесено за пределы экрана. */
+.suggest-trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.page-suggest-content-section {
+  margin-bottom: 20px;
+}
+
+.page-suggest-content-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 12px 0;
+}
+
+.page-suggest-preview-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 12px 0;
+}
+
+.page-suggest-conflict {
+  background-color: var(--color-warning-tint);
+  color: var(--color-warning-ink);
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--color-warning);
+  margin: 15px 0;
+}
+
+.page-suggest-conflict p {
+  margin: 0 0 10px 0;
+}
+
+.page-suggest-fresh-text {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-warning);
+}
+
+.page-suggest-fresh-text h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.page-suggest-fresh-text pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 10px 12px;
+  max-height: 300px;
+  overflow: auto;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.page-suggest-error {
+  background-color: var(--color-error-tint);
+  color: var(--color-error-ink);
+  padding: 12px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--color-error);
+  margin: 15px 0;
+}
+
+.page-suggest-success {
+  background-color: var(--color-success-tint);
+  color: var(--color-success-ink);
+  padding: 20px;
+  border-radius: 8px;
+  border: 1px solid var(--color-success);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.page-suggest-actions {
+  margin: 10px 0;
+}
+
+.page-suggest-footnote {
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.loading-state,
+.error-state,
+.page-suggest-join-invite {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+}
+
+.page-suggest-join-invite p {
+  margin: 0 0 16px 0;
+}
+
+.error-state {
+  color: var(--color-error-ink);
+}
+
+/* Тот же приём, что в WorkDetail.css: не полагаемся на чужой CSS-чанк —
+   у публичного экрана свой набор классов целиком. */
+.back-link {
+  display: inline-block;
+  margin-bottom: 1.25rem;
+  color: var(--color-link);
+  font-weight: 500;
+}
+
+.back-link:hover {
+  color: var(--color-link-hover);
+}
+
+@media (max-width: 900px) {
+  .page-suggest-two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .page-suggest-right {
+    position: static;
+  }
+}

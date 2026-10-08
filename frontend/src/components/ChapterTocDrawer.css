@@ -1,0 +1,156 @@
+.chapter-toc-drawer {
+  display: inline-block;
+}
+
+/* Затемнение нужно, только когда панель легла на текст, а не на поле:
+   атрибут выставляет useDrawerOverlap. */
+.ctoc-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--color-scrim);
+  z-index: 1000;
+  display: none;
+}
+
+[data-reading-panel='covering'] .ctoc-scrim {
+  display: block;
+}
+
+.ctoc-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 100vw;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-secondary);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -8px 0 28px var(--color-shadow);
+  animation: ctoc-slide-in 0.22s ease;
+}
+
+@keyframes ctoc-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.ctoc-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.1rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ctoc-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--color-text-primary);
+}
+
+.ctoc-close {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.ctoc-close:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.ctoc-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.5rem 0.6rem 1rem;
+  list-style: none;
+}
+
+.ctoc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.ctoc-jump {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Строка списка — ссылка с якорем подглавы, а не кнопка, поэтому её достают
+   глобальные правила для `a` из index.css. `a:visited` и `a:hover` весят
+   0,1,1 против 0,1,0 у одноклассового `.ctoc-jump`, то есть перебивают его:
+   без этих двух правил прочитанная подглава красилась бы цветом посещённой
+   ссылки, а наведение подчёркивало бы строку вместе с номерами страниц. */
+.ctoc-jump:visited {
+  color: var(--color-text-primary);
+}
+
+.ctoc-jump:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+/* Текущее место читателя. Полоска нарисована внутренней тенью, а не рамкой:
+   рамка сдвинула бы текст строки на свою ширину. */
+.ctoc-row.is-active .ctoc-jump {
+  background-color: var(--color-bg-tertiary);
+  box-shadow: inset 2px 0 0 var(--color-button-primary);
+  font-weight: 600;
+}
+
+.ctoc-row-title {
+  overflow-wrap: anywhere;
+}
+
+.ctoc-row-pages {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.ctoc-open {
+  flex: none;
+  padding: 0.4rem 0.35rem;
+  border-radius: 5px;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.ctoc-open:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ctoc-panel {
+    animation: none;
+  }
+}

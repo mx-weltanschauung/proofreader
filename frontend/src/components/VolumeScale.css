@@ -1,0 +1,186 @@
+.vol-scale {
+  margin: 2rem 0;
+}
+
+.vol-scale-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+/* Обрез: клетки делят ширину поровну и на томе в 840 страниц становятся
+   волосяными. Высота даёт полосе вес книжного обреза. */
+.vol-scale-strip {
+  display: flex;
+  align-items: stretch;
+  height: 44px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background-color: var(--color-card-bg);
+  overflow: hidden;
+}
+
+.vol-scale-tick {
+  flex: 1 1 0;
+  min-width: 1px;
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Начало работы — волосяная линия слева, как рубец на обрезе. */
+.vol-scale-tick.is-work-start {
+  box-shadow: inset 1px 0 0 var(--color-text-tertiary);
+}
+
+.vol-scale-tick.is-read {
+  background-color: var(--color-success);
+}
+.vol-scale-tick.is-machine {
+  background-image: var(--pattern-machine);
+}
+.vol-scale-tick.is-doing {
+  background-color: var(--color-info-tint);
+}
+.vol-scale-tick.is-attention {
+  background-color: var(--color-warning);
+}
+.vol-scale-tick.is-problem {
+  background-color: var(--color-error);
+}
+.vol-scale-tick.is-blank {
+  background-color: transparent;
+}
+.vol-scale-tick.is-raw {
+  background-color: var(--color-bg-tertiary);
+}
+
+.vol-scale-tick.is-dimmed {
+  opacity: 0.18;
+}
+
+.vol-scale-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.vol-scale-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vol-scale-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.vol-scale-key:hover {
+  border-color: var(--color-border-light);
+  color: var(--color-text-primary);
+}
+
+.vol-scale-key.is-on {
+  border-color: var(--color-border-strong);
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.vol-scale-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 2px;
+  background-color: var(--color-bg-tertiary);
+}
+
+.vol-scale-swatch.is-read {
+  background-color: var(--color-success);
+  border-color: var(--color-success);
+}
+.vol-scale-swatch.is-machine {
+  background-image: var(--pattern-machine);
+  border-color: var(--color-success);
+}
+.vol-scale-swatch.is-doing {
+  background-color: var(--color-info-tint);
+  border-color: var(--color-info);
+}
+/* Насыщенная заливка, как у клетки полосы (.vol-scale-tick.is-attention) —
+   легенда объясняет обрез, а не карточки работ, у тех своя плашка с -tint
+   (см. PageCells.css). */
+.vol-scale-swatch.is-attention {
+  background-color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+.vol-scale-swatch.is-problem {
+  background-color: var(--color-error);
+  border-color: var(--color-error);
+}
+.vol-scale-swatch.is-blank {
+  background-color: transparent;
+  border-style: dotted;
+}
+.vol-scale-swatch.is-raw {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border-light);
+}
+
+.vol-scale-jump {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.vol-scale-jump input {
+  width: 6.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+}
+
+.vol-scale-jump button {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.vol-scale-jump button:hover {
+  background-color: var(--color-button-secondary-hover);
+}
+
+.vol-scale-error {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-error-ink);
+}
+
+@media (max-width: 768px) {
+  .vol-scale-strip {
+    height: 32px;
+  }
+
+  .vol-scale-controls {
+    flex-direction: column;
+  }
+}

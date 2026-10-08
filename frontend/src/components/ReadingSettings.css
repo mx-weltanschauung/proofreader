@@ -1,0 +1,349 @@
+.reading-settings {
+  display: inline-block;
+}
+
+.reading-settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--reading-font-literata);
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.reading-settings-toggle:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.reading-settings-toggle:focus-visible {
+  outline: 2px solid var(--color-input-focus);
+  outline-offset: 2px;
+}
+
+/* Shown only when the drawer covers the text rather than the margin. */
+.rs-scrim {
+  position: fixed;
+  inset: 0;
+  background: var(--color-scrim);
+  z-index: 1000;
+  display: none;
+}
+
+[data-reading-panel='covering'] .rs-scrim {
+  display: block;
+}
+
+.rs-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 100vw;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-secondary);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -8px 0 28px var(--color-shadow);
+  animation: rs-slide-in 0.22s ease;
+}
+
+@keyframes rs-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.rs-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.1rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rs-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--color-text-primary);
+}
+
+.rs-close {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.rs-close:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.rs-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.1rem;
+}
+
+.rs-group {
+  margin-bottom: 1.15rem;
+}
+
+.rs-label {
+  margin-bottom: 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.rs-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.rs-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.rs-choice:hover {
+  border-color: var(--color-border);
+  background-color: var(--color-bg-tertiary);
+}
+
+.rs-choice.is-active {
+  border-color: var(--color-button-primary);
+  background-color: var(--color-button-primary);
+  /* --color-button-primary is an alias for --color-info (see index.css),
+     so its text pairs with --color-info-on, not a hardcoded white. */
+  color: var(--color-info-on);
+}
+
+.rs-choice:focus-visible {
+  outline: 2px solid var(--color-input-focus);
+  outline-offset: 2px;
+}
+
+.rs-choice-note {
+  font-size: 0.68rem;
+  opacity: 0.7;
+}
+
+/* Themes read as colour, not as a word: "Контрастная" tells you nothing. */
+.rs-choices--swatch {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+}
+
+.rs-choices--swatch .rs-choice {
+  align-items: stretch;
+  height: 44px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 7px;
+}
+
+.rs-choices--swatch .rs-choice-label {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  padding: 0 0.3rem 0.2rem;
+  font-size: 0.6rem;
+  line-height: 1.1;
+}
+
+.rs-choices--swatch .rs-choice.is-active {
+  background-color: transparent;
+  color: var(--color-text-primary);
+  outline: 2px solid var(--color-button-primary);
+  outline-offset: -1px;
+}
+
+/* color-literal-allowed:start — a swatch shows a theme that is NOT the
+   currently active one, so its colours cannot be read from var() (that
+   would just repaint the swatch in the active theme's palette). This is
+   the only literal-colour exemption in the file: cssHygiene.test.ts strips
+   exactly this marked block before scanning for literal colours, so
+   nothing else here is exempt. */
+.rs-choices--swatch .rs-choice[data-value='light'] {
+  background: #f8f9fa;
+  color: #202122;
+}
+.rs-choices--swatch .rs-choice[data-value='sepia'] {
+  background: #f4ecd8;
+  color: #3e2f21;
+}
+.rs-choices--swatch .rs-choice[data-value='gray-dim'] {
+  background: #2b2f33;
+  color: #d7dade;
+}
+.rs-choices--swatch .rs-choice[data-value='dark'] {
+  background: #1a1a1a;
+  color: #e8e6e3;
+}
+.rs-choices--swatch .rs-choice[data-value='oled'] {
+  background: #000;
+  color: #e8e6e3;
+}
+.rs-choices--swatch .rs-choice[data-value='high-contrast'] {
+  background: #fff;
+  color: #000;
+  border-color: #000;
+}
+.rs-choices--swatch .rs-choice[data-value='auto'] {
+  background: linear-gradient(135deg, #f8f9fa 0 50%, #1a1a1a 50% 100%);
+  color: var(--color-text-primary);
+  grid-column: span 2;
+}
+/* color-literal-allowed:end */
+
+.rs-choices--font .rs-choice {
+  flex: 1 1 100%;
+}
+.rs-choices--font .rs-choice[data-value='literata'] .rs-choice-label {
+  font-family: var(--reading-font-literata);
+}
+.rs-choices--font .rs-choice[data-value='fira'] .rs-choice-label {
+  font-family: var(--reading-font-fira);
+}
+.rs-choices--font .rs-choice[data-value='andika'] .rs-choice-label {
+  font-family: var(--reading-font-andika);
+}
+.rs-choices--font .rs-choice-label {
+  font-size: 1rem;
+}
+
+.rs-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rs-step {
+  width: 34px;
+  height: 32px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.rs-step:hover:not(:disabled) {
+  border-color: var(--color-border);
+  background-color: var(--color-bg-tertiary);
+}
+
+.rs-step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.rs-step:focus-visible {
+  outline: 2px solid var(--color-input-focus);
+  outline-offset: 2px;
+}
+
+.rs-step-value {
+  min-width: 3.4rem;
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.rs-foot {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1.1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.rs-help-link {
+  margin-right: auto;
+  font-size: 0.85rem;
+}
+
+.rs-reset {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.rs-reset:hover {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+  .rs-panel {
+    top: auto;
+    left: 0;
+    width: auto;
+    max-height: 82vh;
+    border-left: none;
+    border-top: 1px solid var(--color-border);
+    border-radius: 12px 12px 0 0;
+    animation-name: rs-slide-up;
+  }
+
+  @keyframes rs-slide-up {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  .rs-scrim {
+    display: block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rs-panel {
+    animation: none;
+  }
+}

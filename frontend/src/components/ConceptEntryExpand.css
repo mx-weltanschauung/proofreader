@@ -1,0 +1,60 @@
+.concept-cut-expanded {
+  border-left: 2px solid var(--color-border);
+  margin: 0.75rem 0 0.75rem 0.5rem;
+  padding-left: 0.75rem;
+}
+
+/* Внутри вырезки — полным тоном; вокруг — приглушённо: развёрнутая страница
+   служит контекстом, а не заменяет вырезку. */
+.concept-cut-chunk {
+  opacity: 0.55;
+}
+
+.concept-cut-chunk-inside {
+  opacity: 1;
+  background: var(--color-bg-tertiary);
+}
+
+.concept-cut-source {
+  white-space: pre-wrap;
+  /* Тот же моноширинный стек, что у .page-html-content pre/code — своего
+     токена шрифта в проекте нет. */
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  background: var(--color-bg-tertiary);
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+/* Что уйдёт на сервер при сохранении — набор заменяющий, это должно быть
+   видно до нажатия кнопки, а не после пропажи чужой вырезки. */
+.concept-cut-save-summary {
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+  padding: 0.25rem 0;
+}
+
+.concept-cut-editor-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.concept-cut-list {
+  list-style: none;
+  padding: 0;
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+}
+
+.concept-cut-expand-note {
+  color: var(--color-text-tertiary);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+.concept-cut-expand-error {
+  color: var(--color-error-ink);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}

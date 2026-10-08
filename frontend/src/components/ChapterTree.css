@@ -1,0 +1,260 @@
+.chapter-tree-container {
+  width: 100%;
+}
+
+.chapter-tree-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.toolbar-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.toolbar-btn:hover {
+  background-color: var(--color-button-secondary-hover);
+}
+
+.toolbar-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+
+.chapter-tree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chapter-tree-node {
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.chapter-tree-node.dragging {
+  z-index: 1;
+}
+
+.chapter-tree-node.overlay {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  background-color: var(--color-card-bg);
+}
+
+.chapter-tree-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background-color: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.chapter-tree-card:hover {
+  border-color: var(--color-link);
+  box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  cursor: grab;
+  color: var(--color-text-tertiary);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.drag-handle:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.drag-icon {
+  font-size: 14px;
+  letter-spacing: 2px;
+  user-select: none;
+}
+
+.chapter-tree-expand {
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.expand-button {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.expand-button:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.expand-placeholder {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.chapter-tree-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chapter-tree-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chapter-tree-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.chapter-type-badge {
+  background-color: var(--color-bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chapter-pages-info {
+  color: var(--color-text-tertiary);
+}
+
+.chapter-children-count {
+  color: var(--color-link);
+  font-weight: 500;
+}
+
+.chapter-tree-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.chapter-tree-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chapter-tree-btn.view {
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.chapter-tree-btn.view:hover {
+  background-color: var(--color-button-secondary-hover);
+}
+
+.chapter-tree-btn.edit {
+  background-color: var(--color-button-primary);
+  color: var(--color-info-on);
+}
+
+.chapter-tree-btn.edit:hover {
+  background-color: var(--color-button-primary-hover);
+}
+
+.chapter-tree-btn.delete {
+  background-color: var(--color-error);
+  color: var(--color-error-on);
+}
+
+.chapter-tree-btn.delete:hover {
+  background-color: var(--color-error-hover);
+}
+
+.chapter-tree-empty {
+  padding: 50px 30px;
+  text-align: center;
+  background-color: var(--color-bg-tertiary);
+  border-radius: 8px;
+  border: 1px dashed var(--color-border);
+}
+
+.chapter-tree-empty p {
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .chapter-tree-card {
+    flex-wrap: wrap;
+    padding: 12px;
+  }
+
+  .chapter-tree-info {
+    flex-basis: calc(100% - 80px);
+    order: 1;
+  }
+
+  .chapter-tree-actions {
+    width: 100%;
+    order: 2;
+    margin-top: 12px;
+    justify-content: flex-end;
+  }
+
+  .chapter-tree-btn {
+    flex: 1;
+    text-align: center;
+  }
+
+  .toolbar-hint {
+    display: none;
+  }
+}

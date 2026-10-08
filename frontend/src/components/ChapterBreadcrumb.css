@@ -1,0 +1,36 @@
+/* Цепочка живёт внутри чужих контейнеров (хлебные крошки редактора, строка
+   меты в просмотре), поэтому остаётся строчной: так её содержимое переносится
+   по строкам вместе с окружающим текстом. */
+.chapter-breadcrumb {
+  display: inline;
+}
+
+/* Цвет, подчёркивание при наведении и переход даёт глобальное правило `a` в
+   index.css: там объявлены --color-link/--color-link-hover для всех шести
+   тем. Своего color здесь быть не должно — он бы это правило перекрыл. */
+.chapter-breadcrumb-link {
+  font-weight: 500;
+}
+
+.chapter-breadcrumb-separator {
+  color: var(--color-text-secondary);
+  font-weight: 300;
+}
+
+/* Кнопка, а не ссылка: она управляет показом, а не ведёт куда-то. Поэтому
+   сбрасываем кнопочную внешность вручную — глобальное правило button в
+   index.css рассчитано на настоящие кнопки. */
+.chapter-breadcrumb-expand {
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.chapter-breadcrumb-expand:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}

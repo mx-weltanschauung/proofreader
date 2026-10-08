@@ -1,0 +1,257 @@
+/* Строка оглавления тома. Вложенность — настоящие <ul>, отступ считает
+   компонент: накопительный padding вложенных списков не даёт сжать глубокие
+   уровни (в томе 3 МиЭ их одиннадцать). */
+.vol-toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vol-toc-item {
+  margin: 0;
+}
+
+.vol-toc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.vol-toc-row:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.vol-toc-tri {
+  flex: none;
+  width: 1rem;
+}
+
+/* Знак крупнее (10px не читался), а цель нажатия — 24×24 по WCAG 2.5.8.
+   Отрицательные поля держат ВНЕШНИЙ размер кнопки прежним: без них она выше
+   строки текста и растит каждую из полутора сотен строк тома. По горизонтали
+   цель свисает по 4px за свою колонку и до заглавия не достаёт — между ними
+   gap: 0.6rem. */
+.vol-toc-tri-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-tertiary);
+  line-height: 1;
+}
+
+.vol-toc-tri-btn:hover {
+  color: var(--color-text-primary);
+}
+
+/* Заглавия работ — книжной засечной гарнитурой, как в карточке до переделки.
+   С третьего уровня — интерфейсной помельче: глубина читается гарнитурой, а не
+   только отступом, которого на одиннадцати уровнях не хватает. */
+.vol-toc-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--reading-font-literata);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.vol-toc-title.is-deep {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.vol-toc-title a {
+  color: var(--color-text-primary);
+}
+
+.vol-toc-title a:hover {
+  color: var(--color-link-hover);
+}
+
+.vol-toc-title.is-deep a {
+  color: var(--color-text-secondary);
+}
+
+/* На широком экране обёртки для раскладки не существует: её четыре элемента
+   остаются прямыми колонками .vol-toc-row, как до её появления. Обёртка нужна
+   только затем, чтобы на узком экране их можно было увести на вторую строку
+   одним движением. */
+.vol-toc-meta {
+  display: contents;
+}
+
+.vol-toc-author {
+  flex: none;
+  width: 5.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+
+/* 9rem вместо 5.5rem: в колонке теперь два действия. При 1280px заглавию
+   достаётся около 840px, и эти 56 берутся оттуда. */
+.vol-toc-act {
+  flex: none;
+  width: 9rem;
+  text-align: right;
+}
+
+.vol-toc-act-sep {
+  margin: 0 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-border-strong);
+}
+
+/* Действия приглушены, но всегда в порядке обхода: наведения нет ни с
+   клавиатуры, ни на телефоне, и прятать их под :hover значило бы отнять. */
+.vol-toc-read-link,
+.vol-toc-cells-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+
+.vol-toc-row:hover .vol-toc-read-link,
+.vol-toc-row:hover .vol-toc-cells-btn,
+.vol-toc-read-link:focus-visible,
+.vol-toc-cells-btn:focus-visible,
+.vol-toc-cells-btn[aria-expanded='true'] {
+  color: var(--color-link);
+}
+
+.vol-toc-read-link:hover {
+  color: var(--color-link-hover);
+}
+
+.vol-toc-pages {
+  flex: none;
+  width: 4.5rem;
+  text-align: right;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.vol-toc-ready {
+  flex: none;
+  width: 3rem;
+}
+
+.vol-toc-ready-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background-color: var(--color-bg-tertiary);
+}
+
+.vol-toc-ready-part {
+  display: block;
+  height: 100%;
+}
+
+.vol-toc-ready-part.is-read {
+  background-color: var(--color-success);
+}
+
+.vol-toc-ready-part.is-machine {
+  background-image: var(--pattern-machine);
+}
+
+.vol-toc-ready-part.is-doing {
+  background-color: var(--color-info-tint);
+}
+
+.vol-toc-ready-part.is-attention {
+  background-color: var(--color-warning);
+}
+
+.vol-toc-ready-part.is-problem {
+  background-color: var(--color-error);
+}
+
+.vol-toc-cells {
+  padding-bottom: 0.4rem;
+}
+
+/* Узкий экран: колонок нет, есть две строки. Прежнее решение — ужимать
+   колонки — упиралось в арифметику: при 375px фиксированные колонки с
+   зазорами съедали 300px из 345, и заглавию оставалось 45; на 320px строка
+   переполнялась. Теперь заглавие занимает свою строку целиком (329px при
+   375px), мета уходит под него. */
+@media (max-width: 768px) {
+  .vol-toc-row {
+    flex-wrap: wrap;
+    row-gap: 0.15rem;
+  }
+
+  /* 1.6rem — колонка треугольника (1rem) и зазор за ней (0.6rem): заглавие
+     остаётся рядом с треугольником и выталкивает мету переносом. */
+  .vol-toc-title {
+    flex-basis: calc(100% - 1.6rem);
+  }
+
+  .vol-toc-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-basis: calc(100% - 1.6rem);
+    /* Тем же отступом мета встаёт под заглавие, а не под треугольник. */
+    margin-left: 1.6rem;
+  }
+
+  /* Ширины колонок на второй строке не нужны — там элементы идут подряд по
+     содержимому, разделённые точкой. */
+  .vol-toc-author,
+  .vol-toc-act,
+  .vol-toc-pages {
+    width: auto;
+    text-align: left;
+  }
+
+  /* Точка ставится перед каждым соседом, кроме полоски: она не текст.
+     Селектор через :not() выдерживает пропавшую колонку автора — при
+     showAuthors=false первым идёт блок действий и точки перед собой не
+     получает. */
+  .vol-toc-meta > * + *:not(.vol-toc-ready)::before {
+    content: '·';
+    margin-right: 0.4rem;
+    color: var(--color-border-strong);
+  }
+
+  /* Полоска — к дальнему краю: мета читается слева направо как текст, а
+     готовность остаётся тем же правым столбиком, что и на широком экране. */
+  .vol-toc-ready {
+    margin-left: auto;
+  }
+
+  /* Цель нажатия 24px по WCAG 2.5.8. Отрицательные поля держат ВНЕШНИЙ размер
+     прежним — иначе каждая из полутора сотен строк тома подрастёт. Приём тот
+     же, что у треугольника. */
+  .vol-toc-read-link,
+  .vol-toc-cells-btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    margin-top: -4px;
+    margin-bottom: -4px;
+  }
+}

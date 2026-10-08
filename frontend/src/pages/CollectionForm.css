@@ -1,0 +1,331 @@
+.collection-form-container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--color-link);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.back-link:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+.collection-form-card {
+  background-color: var(--color-card-bg);
+  padding: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--color-card-border);
+  box-shadow: 0 2px 4px var(--color-shadow);
+  margin-bottom: 1.5rem;
+}
+
+.collection-form-card h1 {
+  margin: 0 0 24px 0;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.collection-form-card h2 {
+  margin: 0 0 1rem 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.collection-form-card h3 {
+  margin: 0 0 0.75rem 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.collection-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.required {
+  color: var(--color-error-ink);
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 15px;
+  border: 1px solid var(--color-input-border);
+  border-radius: 6px;
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  border-color: var(--color-input-focus);
+}
+
+.form-group input:focus:not(:focus-visible),
+.form-group textarea:focus:not(:focus-visible),
+.form-group select:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.form-group textarea {
+  min-height: 100px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.form-help-text {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin: 4px 0 0 0;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.submit-button,
+.cancel-button {
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.submit-button {
+  background-color: var(--color-button-primary);
+  color: var(--color-info-on);
+}
+
+.submit-button:hover:not(:disabled) {
+  background-color: var(--color-button-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px var(--color-shadow);
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-button {
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.cancel-button:hover:not(:disabled) {
+  background-color: var(--color-button-secondary-hover);
+}
+
+.cancel-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-message {
+  padding: 12px 16px;
+  margin-bottom: 1rem;
+  background-color: var(--color-error-tint);
+  border: 1px solid var(--color-error);
+  border-radius: 6px;
+  color: var(--color-error-ink);
+  font-size: 14px;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+}
+
+/* Состав подборки — строка на элемент: стрелки перестановки слева, поле
+   автора и заголовок посередине, «Убрать» справа. */
+.composition-list {
+  list-style: none;
+  margin: 0 0 1.5rem 0;
+  padding: 0;
+}
+
+.composition-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.composition-arrows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.arrow-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.arrow-button:hover:not(:disabled) {
+  background-color: var(--color-button-secondary-hover);
+}
+
+.arrow-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.composition-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.composition-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.composition-title {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.composition-source {
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+}
+
+.composition-author-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.composition-author-field label {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.composition-author-field input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+}
+
+.composition-add-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.composition-add-row .form-group {
+  flex: 1;
+  min-width: 220px;
+}
+
+.composition-add-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Приглашение записаться — тот же приём, что и в MySuggestions.css
+   (.my-suggestions-join-invite): пара фон+текст уже проверена гардом
+   контраста, отдельного разбора не нужно. */
+.collection-form-join-invite {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.collection-form-join-invite p {
+  margin: 0 0 16px 0;
+}
+
+.collection-publish-status {
+  font-size: 15px;
+  color: var(--color-text-primary);
+  margin: 0 0 0.5rem 0;
+}
+
+/* Только текст, без своего фона — не пара для гарда контраста. */
+.collection-publish-note {
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin: 0 0 1rem 0;
+}
+
+@media (max-width: 768px) {
+  .collection-form-card {
+    padding: 24px;
+  }
+
+  .collection-form-card h1 {
+    font-size: 24px;
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+  }
+
+  .submit-button,
+  .cancel-button {
+    width: 100%;
+  }
+
+  .composition-add-actions {
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,108 @@
+# Боевой оверрайд:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Базовый файл держит секреты литералами и публикует пять портов на хост —
+# на публичной машине это Postgres, открытый интернету. Здесь значения
+# приходят из .env рядом с compose-файлами, а публикация снимается через
+# `!reset` (Compose 2.24+): слияние compose списки портов складывает, а не
+# заменяет, поэтому «переопределить на пустой список» иначе нельзя.
+# Наружу смотрит только Caddy.
+name: proofreader
+
+x-prod-backend-env: &prod_backend_env
+  DB_PASSWORD: ${DB_PASSWORD:?}
+  JWT_SECRET: ${JWT_SECRET:?}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:?}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?}
+  # Хранилище целиком — из серверного .env: местный SeaweedFS
+  # (http://seaweedfs:8333, браузеру — поддомен s3.<домен>) или внешний S3
+  # (один адрес на обоих местах). Подпись SigV4 включает Host и путь, поэтому
+  # S3_PUBLIC_ENDPOINT — всегда отдельный хост, а не префикс пути.
+  # Спека 2026-10-02-external-s3-storage.
+  S3_ENDPOINT: ${S3_ENDPOINT:?}
+  S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:?}
+  S3_REGION: ${S3_REGION:?}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+  # Origin, которым бэкенд открывает CORS бакета звука. Пусто — не трогает.
+  S3_CORS_ORIGINS: ${S3_CORS_ORIGINS:-}
+  # Адрес читальни для титульного листа выгрузок (internal/config/config.go).
+  # Без него бэкенд берёт дефолт http://localhost:3100.
+  PUBLIC_BASE_URL: https://${DOMAIN:?}
+  # Публичный адрес бакета статической читальни (scripts/static-publish.sh
+  # печатает его после --init). Пусто — раздел /help#offline говорит, что
+  # архива нет.
+  STATIC_ARCHIVE_URL: ${STATIC_ARCHIVE_URL:-}
+  # Экземпляр: имя, описание, ссылки подвала, занятые ники —
+  # из .env рядом с compose (docs/SELF_HOSTING.md). Пусто — умолчания.
+  SITE_NAME: ${SITE_NAME:-}
+  SITE_DESCRIPTION: ${SITE_DESCRIPTION:-}
+  SITE_SUPPORT_URL: ${SITE_SUPPORT_URL:-}
+  SITE_CHANNEL_URL: ${SITE_CHANNEL_URL:-}
+  SITE_AGE_RATING: ${SITE_AGE_RATING:-}
+  SITE_TAGLINE: ${SITE_TAGLINE:-}
+  RESERVED_NICKNAMES: ${RESERVED_NICKNAMES:-}
+
+services:
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?}
+
+  seaweedfs:
+    # Только при местном хранилище: серверный .env несёт
+    # COMPOSE_PROFILES=local-storage. При внешнем S3 сервис не поднимается.
+    profiles: [local-storage]
+    restart: unless-stopped
+    ports: !reset []
+    volumes:
+      # Ключи в этом файле обязаны совпадать с S3_ACCESS_KEY/S3_SECRET_KEY.
+      # Слияние volumes идёт по пути внутри контейнера, поэтому эта строка
+      # заменяет отслеживаемый в репозитории файл с dev-ключами.
+      - ${CONFIG_DIR:?}/s3_config.json:/etc/seaweedfs/s3_config.json:ro
+
+  migrate:
+    environment: *prod_backend_env
+
+  backend:
+    restart: unless-stopped
+    ports: !reset []
+    environment: *prod_backend_env
+    volumes:
+      - page_cache:/var/cache/proofreader
+    # !override, а не слияние: базовый файл ждёт здоровый seaweedfs, а при
+    # внешнем хранилище его в стеке нет, и compose отказался бы поднимать
+    # бэкенд. Зависимости, кроме seaweedfs, — те же, что в базовом файле.
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    restart: unless-stopped
+    ports: !reset []
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: proofreader-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${CONFIG_DIR:?}/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Каталогом, а не файлами: на сервере без своего сертификата его нет,
+      # и монтирование отсутствующего файла создало бы на его месте каталог,
+      # от которого Caddy падает. Пустой каталог безвреден.
+      - ${CONFIG_DIR:?}/caddy-certs:/etc/caddy/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:
+  page_cache:

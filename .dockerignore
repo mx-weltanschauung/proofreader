@@ -1,0 +1,28 @@
+.git
+.idea
+.vscode
+bin/
+server
+coverage.out
+coverage.html
+*.log
+uploads/
+storage/
+data/
+.env
+.env.local
+frontend/node_modules
+frontend/dist
+node_modules
+.superpowers
+_tasks
+docs/superpowers
+
+# Снапшоты backup.sh: десятки гигабайт зеркала S3 и дампов рядом с исходниками.
+# Контекст сборки backend — корень репозитория (COPY . .), поэтому без этой
+# строки каждый `docker compose up --build` гонит демону весь backups/.
+backups/
+# Python-конвейер распознавания: в Go-образ не входит, но весит сотни мегабайт.
+tools/
+.pytest_cache/
+export/

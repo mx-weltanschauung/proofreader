@@ -1,0 +1,29 @@
+/* Фасет глав тома над списком найденных полос. flex-wrap переносит длинные
+   заголовки на 360px вместо горизонтальной прокрутки — тот же приём, что и
+   у .scope-bar (Search.css), которая решает ту же задачу с чипами области. */
+.chapter-facet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0.75rem 0;
+}
+
+/* Заголовок главы бывает длиннее строки — у писем и конспектов не редкость.
+   white-space: normal переопределяет однострочный расчёт .btn, иначе кнопка
+   растягивала бы контейнер вместо переноса текста внутри себя. */
+.chapter-facet-button {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+
+.chapter-facet-hits {
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.chapter-facet-remainder {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}

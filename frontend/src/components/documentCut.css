@@ -1,0 +1,105 @@
+/* Вид вклейки в разборе («полоса набора» — решение владельца). Корпус
+   набирается тем же шрифтом и кеглем, что текст автора: шрифт здесь
+   намеренно не переопределяется, .document-cut наследует его у
+   .document-html-content (см. DocumentView.css). Границу проводит аппарат —
+   линейка слева и колонка печатных колонцифр в поле, — а не рамка вокруг
+   чужого текста: читатель отличает корпус от автора так же, как в бумажной
+   книге. Классы уникальны в проекте (сверено grep'ом по
+   frontend/src --include=*.css перед правкой), пересечений с .footnotes/
+   .notes-group из ReadingSurface.css нет. */
+
+.document-cut {
+  border-left: 3px solid var(--color-border-strong);
+  margin: 1.75rem 0;
+  padding: 0.25rem 0 0.25rem 1.5rem;
+}
+
+.document-cut-source {
+  margin: 0 0 0.75rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.document-cut-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Колонка колонцифр стоит в поле — слева от текста, внутри отступа, который
+   задаёт .document-cut своим padding-left. */
+.document-cut-page {
+  position: relative;
+}
+
+.document-cut-folio {
+  position: absolute;
+  left: -1.5rem;
+  top: 0.2em;
+  width: 1.25rem;
+  transform: translateX(-100%);
+  color: var(--color-text-tertiary);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.document-cut-folio:hover {
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+}
+
+.document-cut--stale,
+.document-cut--broken {
+  margin: 1.75rem 0 1.75rem 1.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  font-style: italic;
+}
+
+/* Снимок подписи без ссылки: идти некуда, курсор об этом не должен молчать
+   курсивом одним. */
+.document-cut--broken {
+  cursor: default;
+}
+
+.document-cut-actions {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.document-cut-expand {
+  margin-left: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.document-cut-expand:hover {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+/* Затухание над кнопкой «Развернуть здесь» — намёк, что вклейка обрезана.
+   Фон — цвет страницы (--color-bg-primary): .document-view-container своего
+   фона не задаёт, документ стоит прямо на body. */
+.document-cut-fade {
+  height: 3rem;
+  margin-top: -3rem;
+  background: linear-gradient(to bottom, transparent, var(--color-bg-primary));
+  pointer-events: none;
+}
+
+/* Подпись блока сносок вклейки — абзац, не заголовок (RenderNotesWith,
+   NotesOptions.Inline): визуально тоже подпись, а не узел структуры. */
+.document-cut .notes-group-caption {
+  margin: 0 0 0.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}

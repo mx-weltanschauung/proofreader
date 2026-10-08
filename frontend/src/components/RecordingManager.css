@@ -1,0 +1,51 @@
+.audio-recordings-manage {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.audio-recordings-manage-list {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.audio-recordings-manage-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.audio-recordings-manage-item + .audio-recordings-manage-item {
+  margin-top: 0.5rem;
+}
+
+.audio-recordings-attach {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.audio-recordings-attach label {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* Поле файла прячется визуально, но остаётся доступным: его подпись —
+   кнопка «Прикрепить запись». */
+.audio-recordings-file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.audio-recordings-status {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}

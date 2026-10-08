@@ -1,0 +1,89 @@
+.vol-manage {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.vol-manage > summary {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.vol-manage > summary:hover {
+  color: var(--color-text-primary);
+}
+
+.vol-manage-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.vol-manage-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  background-color: var(--color-card-bg);
+}
+
+/* Дерево глав шире своей колонки: в режиме перестановки блок занимает всю
+   ширину сетки. */
+.vol-manage-block:has(.chapter-tree-container) {
+  grid-column: 1 / -1;
+}
+
+.vol-manage-block h3 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.vol-manage-block label {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.vol-manage-block input[type='text'] {
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+}
+
+.vol-manage-status {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.vol-manage-block button,
+.vol-manage-link {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.vol-manage-block button:hover:not(:disabled),
+.vol-manage-link:hover {
+  background-color: var(--color-button-secondary-hover);
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.vol-manage-danger {
+  border-color: var(--color-error-ink);
+  color: var(--color-error-ink);
+}

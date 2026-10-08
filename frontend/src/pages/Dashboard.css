@@ -1,0 +1,176 @@
+/* Главная — шкаф: по штабелю на собрание, штабели один под другим.
+
+   Ширина ограничена 1320px не ради «читабельной колонки», а ради штабеля: он
+   идёт в два столбца, и ширина подобрана под подпись. Замер корпуса: медиана
+   заглавия одной работы — 43 знака, три четверти короче 62. При 1320px столбец
+   держит около 62 знаков, то есть обрывается четверть строк вместо половины,
+   как было при 1200px. Дальше расширять нечего — заглавия кончились, а книга
+   шириной в полэкрана перестаёт читаться книгой. */
+.shelf-page {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+/* Первая фраза для того, кто здесь впервые. Набрана Literata и по левому краю,
+   как всё на странице: шкаф — предмет левого края, и центрованный текст над
+   ним висел бы отдельно от него.
+
+   Кегль выше кегля любой строки на полке: это единственный на главной текст,
+   который читают, а не просматривают, и первый экран должен начинаться с
+   него, а не со стены книг. Мера в 54 знака, а не во всю ширину: фраза длиной
+   в штабель читалась бы строкой таблицы. */
+.shelf-intro {
+  max-width: 54ch;
+  margin: 0 0 3rem;
+  font-family: var(--reading-font-literata);
+  font-size: 1.3rem;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+}
+
+/* Собрания отбиваются друг от друга воздухом, а не линейкой: линейку рисует
+   сама задняя стенка штабеля, и вторая рядом с ней читалась бы вторым
+   шкафом. Воздуха вдвое против прежнего — книга стала втрое выше, и прежние
+   2.75rem между полками читались просто следующей книгой. */
+.shelf-section + .shelf-section {
+  margin-top: 4.5rem;
+}
+
+/* Блок возвращения — то же место, что и фраза выше, для того, кто уже
+   читает. Полоса слева акцентом: не украшение, а метка «это ваше», отличающая
+   блок от карточек тома. Строк в нём столько, сколько начато глав (не больше
+   пяти), и отбиваются они волосяной линией, а не рамкой каждая: пять рамок
+   подряд читались бы пятью карточками. */
+.continue-reading {
+  max-width: 58ch;
+  margin-bottom: 2.25rem;
+  padding: 0.25rem 0.9rem;
+  border: 1px solid var(--color-card-border);
+  border-inline-start: 3px solid var(--color-accent);
+  border-radius: 4px;
+  background-color: var(--color-card-bg);
+}
+
+.continue-reading-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.continue-reading-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.continue-reading-item + .continue-reading-item {
+  border-top: 1px solid var(--color-card-border);
+}
+
+/* Крестик тише кнопки: снять строку — действие редкое, продолжить — главное.
+   Размер под палец, а не под значок. */
+.continue-reading-forget {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.continue-reading-forget:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-tertiary);
+}
+
+.continue-reading-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.continue-reading-text strong {
+  font-family: var(--reading-font-literata);
+  font-size: 0.95rem;
+  color: var(--color-link);
+}
+
+.continue-reading-text span {
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+}
+
+/* Работа, не приписанная ни к одному собранию, книгой в штабеле быть не может:
+   агрегатов у неё нет, и книга вышла бы без заглавия и без толщины. */
+.shelf-loose-heading {
+  margin: 0 0 0.75rem;
+  font-family: var(--reading-font-literata);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.loose-works {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loose-works li + li {
+  margin-top: 0.4rem;
+}
+
+.loose-works a {
+  font-family: var(--reading-font-literata);
+  font-size: 0.95rem;
+}
+
+/* Ссылка на витрину разборов — тонкая, не карточкой: она не часть шкафа, а
+   сноска к нему. Один пункт, не строка — flex/gap здесь были нужны только
+   под ряд из трёх ссылок. */
+.shelf-quicklinks {
+  margin-bottom: 2.5rem;
+  font-family: var(--reading-font-literata);
+  font-size: 0.95rem;
+}
+
+.shelf-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 2.5rem;
+}
+
+.error-message {
+  margin-bottom: 1.25rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-error-ink);
+  border-radius: 6px;
+  background-color: var(--color-error-tint);
+  color: var(--color-error-ink);
+}
+
+/* Селектор прижат к странице шкафа: `.empty-state` объявлен ещё в четырёх
+   местах, и `display: flex` отсюда перестроил бы их вёрстку — ровно то, что
+   уже случилось на этой ветке с `.status-badge`. */
+.shelf-page .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 3.75rem 1.25rem;
+  color: var(--color-text-secondary);
+}
+
+.loading-state {
+  padding: 2.5rem 1.25rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}

@@ -1,0 +1,150 @@
+.concept-view-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.concept-view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.concept-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Панель — навигация, поток — чтение: колонка текста должна быть шире.
+   Липкость и складывание на узком экране остаются как были. */
+.concept-view-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+  margin-top: 1.5rem;
+}
+
+.concept-panel {
+  position: sticky;
+  top: calc(var(--site-header-height) + 1rem);
+  max-height: calc(100vh - var(--site-header-height) - 2rem);
+  overflow-y: auto;
+}
+
+.concept-view-coverage {
+  color: var(--color-text-tertiary);
+  font-size: 0.9rem;
+  margin: 0.25rem 0 0;
+}
+
+.concept-rubric h3 {
+  font-size: 0.95rem;
+  margin: 1rem 0 0.25rem;
+}
+
+/* Вложенная подрубрика (задача 9/10: съезд → аспект) — сдвинута внутрь
+   своего родителя, а не наравне с ним. Отступом, а не рамкой: рамка на этом
+   уровне вложенности задета не была бы, но отступ — единственный сигнал
+   вложенности, который не спорит с .concept-rubric h3 выше. */
+.concept-subrubric {
+  margin-left: 1rem;
+}
+
+.concept-subrubric h4 {
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.25rem;
+  color: var(--color-text-secondary);
+}
+
+.concept-ref-list,
+.concept-link-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.concept-panel-note,
+.concept-panel-empty {
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+.concept-ref-uncertain {
+  cursor: help;
+}
+
+/* Колонки складываются там же, где у страницы тома: панель уезжает под
+   статью и перестаёт липнуть. */
+@media (max-width: 1024px) {
+  .concept-view-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .concept-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+/* Классы ниже рисует ConceptView.tsx, но правил для них тут не было —
+   работало только потому, что Vite склеивает весь CSS проекта в один
+   бандл. Тот же случай уже чинили в EditionDetail.css (бывший
+   EditionList.css, f204222). */
+
+/* Скопировано из EditionForm.css/WorkDetail.css. */
+.back-link {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--color-link);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.back-link:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+/* Скопировано из WorkDetail.css (там же .error-state объявлен дважды —
+   итоговый цвет текста берётся из второго правила, --color-error-ink). */
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+}
+
+.error-state {
+  color: var(--color-error-ink);
+}
+
+.concept-source-link {
+  color: var(--color-link);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.concept-source-link:hover {
+  color: var(--color-link-hover);
+}
+
+.concept-panel-section {
+  margin-bottom: 1.5rem;
+}
+
+.concept-panel-section h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.5rem;
+}
+
+.concept-link-kind {
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+}

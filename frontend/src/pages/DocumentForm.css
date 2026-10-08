@@ -1,0 +1,169 @@
+.document-form-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.document-form-header {
+  margin-bottom: 2rem;
+}
+
+.document-form-header h1 {
+  font-size: 2rem;
+  margin: 0;
+}
+
+.document-form {
+  background-color: var(--color-card-bg);
+  padding: 2rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.form-group {
+  margin-bottom: 2rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.title-input {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+}
+
+.markdown-editor-wrapper {
+  min-height: 500px;
+}
+
+.document-form .w-md-editor-text-input textarea,
+.document-form .w-md-editor-text-pre textarea {
+  color: var(--color-text-primary) !important;
+  -webkit-text-fill-color: var(--color-text-primary) !important;
+  background-color: var(--color-input-bg) !important;
+}
+
+.help-text {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 2rem;
+}
+
+.cancel-button,
+.submit-button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cancel-button {
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+}
+
+.cancel-button:hover:not(:disabled) {
+  background-color: var(--color-button-secondary-hover);
+}
+
+.submit-button {
+  background-color: var(--color-button-primary);
+  color: var(--color-info-on);
+}
+
+.submit-button:hover:not(:disabled) {
+  background-color: var(--color-button-primary-hover);
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error-message {
+  padding: 1rem;
+  background-color: var(--color-error-tint);
+  color: var(--color-error-ink);
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 3rem;
+}
+
+.back-link {
+  display: inline-block;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  transition: color 0.2s;
+}
+
+.back-link:hover {
+  color: var(--color-button-primary);
+}
+
+.document-form-join-invite {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.document-form-join-invite p {
+  margin: 0 0 16px 0;
+}
+
+.document-state {
+  padding: 1rem;
+  border-radius: 4px;
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  margin-bottom: 1rem;
+}
+
+.document-state-label {
+  margin: 0;
+}
+
+.document-state-reject-reason {
+  margin: 0.5rem 0 0 0;
+  color: var(--color-error-ink);
+}
+
+.document-form-notice {
+  padding: 1rem;
+  background-color: var(--color-info-tint);
+  color: var(--color-info-ink);
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.document-form-review-actions {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}

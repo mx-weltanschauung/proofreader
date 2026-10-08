@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+# Хуки включены не пакетом husky, а вручную: core.hooksPath выставляется
+# скриптом prepare в frontend/package.json. Причина — package.json лежит в
+# подкаталоге, а husky ищет .git строго в текущем каталоге и в такой раскладке
+# не работает. Не запускайте `npx husky init`: он молча перепишет и prepare,
+# и этот файл, заменив проверку линтера на `npm test`.
+# --no-install: без него npx на удалённом node_modules полезет ставить
+# lint-staged из сети посреди git commit, с интерактивным запросом — в том
+# числе на коммите, вообще не касающемся фронтенда.
+cd frontend && npx --no-install lint-staged

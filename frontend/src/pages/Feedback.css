@@ -1,0 +1,68 @@
+.feedback-page {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.feedback-intro {
+  color: var(--color-text-secondary);
+}
+
+.error-message {
+  color: var(--color-error-ink);
+  font-size: 14px;
+  padding: 10px;
+  background-color: var(--color-error-tint);
+  border-radius: 4px;
+  border: 1px solid var(--color-error);
+  margin-bottom: 8px;
+}
+
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 24px 0;
+}
+
+.feedback-form label {
+  font-weight: 600;
+}
+
+.feedback-form textarea,
+.feedback-form input {
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.feedback-form button {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+/* Ловушка. Уводится с экрана, а не прячется display:none — часть ботов
+   пропускает поля, которых «нет» в раскладке. */
+.feedback-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.feedback-privacy {
+  color: var(--color-text-tertiary);
+  font-size: 13px;
+}
+
+/* Строка согласия: служебная, поэтому мельче и тише основного текста. */
+.feedback-consent {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}

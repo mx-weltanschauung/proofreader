@@ -1,0 +1,71 @@
+/* Блочный подборщик (BlockPicker.tsx). Классы не пересекаются ни с чем в
+   проекте (сверено grep'ом по `block-picker`). Правило проекта в силе и
+   здесь: фон и текст не смешиваются в одном правиле без доказанной пары —
+   тинт/чернила success и info ниже уже проверены на 4.5:1 во всех шести
+   темах (src/test/contrast.test.ts, PAIRS). Левая полоса и box-shadow несут
+   border-color, а не text color, и в проверку сочетаний не попадают. */
+
+.block-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.block-picker-item {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid transparent;
+  border-radius: 4px;
+  padding: 10px 14px;
+  background: var(--color-bg-secondary);
+}
+
+/* Начало вклейки — та же пара, что у машинной вычитки (success). */
+.block-picker-item--start {
+  border-left-color: var(--color-success);
+  background: var(--color-success-tint);
+}
+
+/* Конец вклейки — info, чтобы не путать с началом даже в градациях серого. */
+.block-picker-item--end {
+  border-left-color: var(--color-info);
+  background: var(--color-info-tint);
+}
+
+/* Один блок может быть и началом, и концом сразу (вклейка длиной в один
+   блок): левая полоса остаётся success, правый край получает info через
+   box-shadow, фон — переход между обоими тинтами. */
+.block-picker-item--start.block-picker-item--end {
+  border-left-color: var(--color-success);
+  box-shadow: inset -4px 0 0 0 var(--color-info);
+  background: linear-gradient(90deg, var(--color-success-tint), var(--color-info-tint));
+}
+
+.block-picker-body {
+  margin-bottom: 8px;
+}
+
+.block-picker-body > :first-child {
+  margin-top: 0;
+}
+
+.block-picker-body > :last-child {
+  margin-bottom: 0;
+}
+
+.block-picker-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.block-picker-loading,
+.block-picker-empty {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.block-picker-error {
+  color: var(--color-error-ink);
+}

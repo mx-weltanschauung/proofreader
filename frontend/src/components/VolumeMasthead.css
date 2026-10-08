@@ -1,0 +1,114 @@
+.vol-masthead {
+  padding-bottom: 1.5rem;
+  border-bottom: 2px solid var(--color-text-primary);
+}
+
+.vol-masthead-eyebrow {
+  margin: 0 0 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vol-masthead-eyebrow a {
+  color: var(--color-text-tertiary);
+}
+
+.vol-masthead-eyebrow a:hover {
+  color: var(--color-link-hover);
+}
+
+/* Заглавие тома — книжной засечной гарнитурой. */
+.vol-masthead-title {
+  margin: 0;
+  font-family: var(--reading-font-literata);
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.75rem);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--color-text-primary);
+}
+
+/* Свободный текст редактора, не координата тома — поэтому не в ряд с
+   заглавием, а собственным абзацем, приглушённым и не шире колонки чтения:
+   шапка тома бывает во всю ширину страницы, а два-три абзаца прозы во всю
+   эту ширину читать неудобно. */
+.vol-masthead-description {
+  margin: 0.6rem 0 0;
+  max-width: 60ch;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre-line;
+}
+
+.vol-masthead-figures {
+  margin: 0.75rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.vol-masthead-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+.vol-masthead-start,
+.vol-masthead-resume,
+.vol-masthead-share {
+  padding: 0.5rem 1.1rem;
+  border-radius: 4px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* DownloadMenu.css несёт свои размеры (общие для тома, главы и подборки) —
+   здесь только подгоняем toggle под соседние кнопки строки, не трогая
+   разметку кнопки по умолчанию. */
+.vol-masthead-actions .download-menu__toggle {
+  padding: 0.5rem 1.1rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.vol-masthead-start {
+  background-color: var(--color-accent);
+  color: var(--color-accent-on);
+}
+
+.vol-masthead-start:hover {
+  background-color: var(--color-accent-hover);
+  color: var(--color-accent-on);
+  text-decoration: none;
+}
+
+.vol-masthead-resume,
+.vol-masthead-share {
+  border: 1px solid var(--color-border);
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+}
+
+/* «Поделиться» — кнопка, а не ссылка, как соседи: шрифт и курсор кнопке
+   браузер своих не наследует. */
+.vol-masthead-share {
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.vol-masthead-resume:hover,
+.vol-masthead-share:hover {
+  background-color: var(--color-button-secondary-hover);
+  color: var(--color-text-primary);
+  text-decoration: none;
+}
+
+.vol-masthead-front {
+  margin: 1rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}

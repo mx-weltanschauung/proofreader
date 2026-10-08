@@ -1,0 +1,151 @@
+version: '3.8'
+name: proofreader
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: proofreader-postgres
+    environment:
+      POSTGRES_USER: proofreader
+      POSTGRES_PASSWORD: proofreader_password
+      POSTGRES_DB: proofreader
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proofreader"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    container_name: proofreader-seaweedfs
+    command: "server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3_config.json -master.volumeSizeLimitMB=1024"
+    ports:
+      - "8333:8333"
+      - "9333:9333"
+      - "8888:8888"
+    volumes:
+      - seaweedfs_data:/data
+      - ./docker/seaweedfs/s3_config.json:/etc/seaweedfs/s3_config.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  migrate:
+    # Имя образа: без переменных — то, что Compose дал бы сам; IMAGE_PREFIX и
+    # IMAGE_TAG берут готовый образ реестра (ghcr.io/…/proofreader-migrate:v1.2.0).
+    image: ${IMAGE_PREFIX:-proofreader}-migrate${IMAGE_TAG:+:$IMAGE_TAG}
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      args:
+        # Самому migrate коммит не нужен (он не отдаёт /api/version), но
+        # Dockerfile общий с backend, и build.args — часть ключа кэша слоя:
+        # без совпадающего значения COMMIT цель migrate расходится с целью
+        # backend побайтно, общий слой не переиспользуется, и `compose build`
+        # компилирует один и тот же Go-бинарник дважды. На бою (2 ядра, 3.8 ГБ,
+        # без swap) две параллельные компиляции плюс сборка фронтенда уложили
+        # машину. Значение должно совпадать с backend — тогда вторая цель
+        # берётся из кэша мгновенно.
+        COMMIT: ${COMMIT:-unknown}
+    container_name: proofreader-migrate
+    command: ["/app/migrate", "up"]
+    environment: &backend_env
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "8080"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: proofreader
+      DB_PASSWORD: proofreader_password
+      DB_NAME: proofreader
+      DB_SSLMODE: disable
+      JWT_SECRET: dev-secret-change-me
+      ADMIN_EMAIL: admin@proofreader.local
+      ADMIN_PASSWORD: admin
+      TRUST_PROXY_HEADERS: "true"
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_PUBLIC_ENDPOINT: http://localhost:8333
+      S3_REGION: us-east-1
+      S3_BUCKET: proofreader
+      S3_ACCESS_KEY: proofreader_dev
+      S3_SECRET_KEY: proofreader_dev_secret
+      S3_USE_PATH_STYLE: "true"
+      S3_PRESIGN_TTL: 30m
+      # Подстраховка чтения сканов боевым бакетом (pkg/storage.Fallback):
+      # локально лежит только рабочий набор томов. Значения — из .env рядом
+      # с compose; пусто — подстраховки нет.
+      S3_FALLBACK_ENDPOINT: ${S3_FALLBACK_ENDPOINT:-}
+      S3_FALLBACK_REGION: ${S3_FALLBACK_REGION:-}
+      S3_FALLBACK_BUCKET: ${S3_FALLBACK_BUCKET:-}
+      S3_FALLBACK_ACCESS_KEY: ${S3_FALLBACK_ACCESS_KEY:-}
+      S3_FALLBACK_SECRET_KEY: ${S3_FALLBACK_SECRET_KEY:-}
+      PAGE_CACHE_DIR: /var/cache/proofreader
+      # Экземпляр: имя, описание, ссылки подвала, занятые ники —
+      # из .env рядом с compose (docs/SELF_HOSTING.md). Пусто — умолчания.
+      SITE_NAME: ${SITE_NAME:-}
+      SITE_DESCRIPTION: ${SITE_DESCRIPTION:-}
+      SITE_SUPPORT_URL: ${SITE_SUPPORT_URL:-}
+      SITE_CHANNEL_URL: ${SITE_CHANNEL_URL:-}
+      SITE_AGE_RATING: ${SITE_AGE_RATING:-}
+      SITE_TAGLINE: ${SITE_TAGLINE:-}
+      RESERVED_NICKNAMES: ${RESERVED_NICKNAMES:-}
+      # Отдельный слушатель /metrics для Prometheus. Порт НЕ публикуется —
+      # доступ только изнутри docker-сети.
+      METRICS_ADDR: ":9091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    # Имя образа: без переменных — то, что Compose дал бы сам; IMAGE_PREFIX и
+    # IMAGE_TAG берут готовый образ реестра (ghcr.io/…/proofreader-backend:v1.2.0).
+    image: ${IMAGE_PREFIX:-proofreader}-backend${IMAGE_TAG:+:$IMAGE_TAG}
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+      args:
+        # Коммит попадает в бинарник (-ldflags) и отдаётся в GET /api/version.
+        # scripts/release.sh по нему убеждается, что выкатка доехала, поэтому
+        # значение передаёт он: COMMIT=<sha> docker compose build backend
+        COMMIT: ${COMMIT:-unknown}
+    container_name: proofreader-backend
+    environment: *backend_env
+    ports:
+      - "8080:8080"
+    volumes:
+      - page_cache:/var/cache/proofreader
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    # Имя образа: без переменных — то, что Compose дал бы сам; IMAGE_PREFIX и
+    # IMAGE_TAG берут готовый образ реестра (ghcr.io/…/proofreader-frontend:v1.2.0).
+    image: ${IMAGE_PREFIX:-proofreader}-frontend${IMAGE_TAG:+:$IMAGE_TAG}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: proofreader-frontend
+    ports:
+      - "3100:80"
+    # Каталог экземпляра: иконки, manifest, legal.html, ключи поисковиков.
+    # nginx берёт файл отсюда раньше файла сборки; каталога нет — сборка.
+    volumes:
+      - ./instance:/usr/share/nginx/html/instance:ro
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  seaweedfs_data:
+  page_cache:
+

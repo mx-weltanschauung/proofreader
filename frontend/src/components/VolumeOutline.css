@@ -1,0 +1,144 @@
+.vol-toc {
+  margin-top: 2.5rem;
+}
+
+/* Полоса поиска липкая: содержание тома длиннее экрана в разы, и искать
+   приходится, уже уехав вниз. Встаёт под шапку сайта — тот же приём, что у
+   панели главы в ChapterView.css. */
+.vol-toc-bar {
+  position: sticky;
+  top: var(--site-header-height);
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  /* 0.35rem, а не 0.6rem: при 1280px полоса выходила 48px против бюджета в
+     44px (спека, раздел «Замер вёрстки»), и четыре пиксела берутся отсюда —
+     высоты самих элементов не меняются. Замерщик: npm run measure:toc-bar. */
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-primary);
+}
+
+.vol-toc-heading {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.vol-toc-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vol-toc-search-label {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.vol-toc-search input {
+  width: 14rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+}
+
+/* Фасеты вынесены из липкой полосы: на узком экране пять её элементов не
+   умещаются в бюджет высоты, а фильтр по автору нужен реже поиска и глубины. */
+.vol-toc-facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.5rem 0 0;
+}
+
+.vol-toc-facet {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 999px;
+  background: none;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.vol-toc-facet:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+
+.vol-toc-facet.is-on {
+  border-color: var(--color-border-strong);
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.vol-toc-empty {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem 0;
+  color: var(--color-text-secondary);
+}
+
+.vol-toc-empty button {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  font-size: 0.8125rem;
+}
+
+.vol-outside {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.vol-outside-hint {
+  margin: 0.4rem 0 0.9rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.vol-outside-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 768px) {
+  .vol-toc-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .vol-toc-search input {
+    width: 100%;
+  }
+}
+
+.vol-toc-hit {
+  margin-bottom: 0.35rem;
+}
+
+/* Путь до работы в выдаче поиска: видно, из какого раздела тома она пришла. */
+.vol-toc-path {
+  margin: 0 0 0 1.6rem;
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+
+.vol-toc-range {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}

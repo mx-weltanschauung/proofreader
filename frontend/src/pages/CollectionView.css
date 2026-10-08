@@ -1,0 +1,123 @@
+.collection-view {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.collection-masthead {
+  margin: 1rem 0 1.5rem;
+}
+
+.collection-masthead h1 {
+  margin: 0 0 0.5rem;
+}
+
+.collection-description {
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.collection-view-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.collection-toc-title {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.collection-toc {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.collection-entry {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.collection-entry-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.collection-entry-author {
+  color: var(--color-text-secondary);
+}
+
+.collection-entry-title {
+  font-weight: 600;
+  color: var(--color-link);
+  text-decoration: none;
+}
+
+.collection-entry-title:hover {
+  text-decoration: underline;
+}
+
+.collection-entry-source {
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+  margin-left: auto;
+}
+
+/* Битая строка — снимок заголовка вычеркнутой главы: источник удалён,
+   вести её некуда. Приглушаем целиком, а не только заголовок, чтобы строка
+   читалась как отдельная от остального оглавления, а не как обычный пункт. */
+.collection-entry.is-broken {
+  opacity: 0.55;
+}
+
+.collection-entry.is-broken .collection-entry-title {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.collection-entry-note {
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  margin-top: 0.2rem;
+}
+
+.collection-subtree {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.collection-subtree-item {
+  padding: 0.15rem 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.collection-subtree-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.collection-subtree-title {
+  flex: 1;
+}
+
+/* Подглава — ссылка, но не синяя: в оглавлении тома (.vol-toc-title a) принято
+   то же — дерево целиком в ссылочном цвете кричит громче заголовка строки, за
+   которым оно стоит. Цвет ссылки проступает на наведении. */
+a.collection-subtree-title {
+  color: var(--color-text-primary);
+}
+
+a.collection-subtree-title:hover {
+  color: var(--color-link-hover);
+}
+
+.collection-subtree-page {
+  color: var(--color-text-tertiary);
+}

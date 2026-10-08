@@ -1,0 +1,154 @@
+.my-suggestions-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.my-suggestions-container h1 {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0 0 20px 0;
+}
+
+.my-suggestions-section-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 32px 0 16px 0;
+}
+
+.my-suggestions-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 24px 0;
+  padding: 0;
+}
+
+.my-suggestions-row {
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  padding: 12px 16px;
+  background-color: var(--color-card-bg);
+}
+
+.my-suggestions-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.my-suggestions-work {
+  font-weight: 600;
+}
+
+.my-suggestions-page,
+.my-suggestions-date {
+  color: var(--color-text-secondary);
+}
+
+.my-suggestions-status {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+.my-suggestions-status-новое {
+  background-color: var(--color-info-tint);
+  color: var(--color-info-ink);
+}
+
+.my-suggestions-status-принято {
+  background-color: var(--color-success-tint);
+  color: var(--color-success-ink);
+}
+
+.my-suggestions-status-отклонено {
+  background-color: var(--color-error-tint);
+  color: var(--color-error-ink);
+}
+
+.my-suggestions-reject-reason {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.my-suggestions-empty {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+}
+
+.error-state {
+  color: var(--color-error-ink);
+}
+
+/* Приглашение записаться — тот же приём, что у пустого списка ниже
+   (my-suggestions-empty): нейтральный фон третьего уровня, вторичный текст. */
+.my-suggestions-join-invite {
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.my-suggestions-join-invite p {
+  margin: 0 0 16px 0;
+}
+
+/* Раздел ухода — отделён рамкой цвета отказа: это единственное необратимое
+   действие на экране, и цену ошибки видно раньше, чем текст объяснения. */
+.mine-leave {
+  margin-top: 40px;
+  padding: 20px;
+  border: 1px solid var(--color-error-tint);
+  border-radius: 8px;
+}
+
+.mine-leave p {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.mine-leave-confirm-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 320px;
+  margin: 16px 0;
+  font-size: 14px;
+  color: var(--color-text-primary);
+}
+
+.mine-leave-confirm-input {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.mine-leave-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

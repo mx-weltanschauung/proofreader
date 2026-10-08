@@ -1,0 +1,26 @@
+.quote-notice {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+/* Промах — текст полосы разошёлся с тем, что обещала ссылка: тон
+   предупреждения, тот же, что у статуса «требует внимания». */
+.quote-notice-miss {
+  background-color: var(--color-warning-tint);
+  border-color: var(--color-warning-ink);
+  color: var(--color-warning-ink);
+}
+
+/* Несколько вхождений — цитата нашлась, просто неоднозначно: это не
+   проблема с текстом, а справочная пометка. Тем же тоном идёт укороченный
+   пролёт (конец цитаты не нашёлся): место найдено верно, сказать надо только
+   про длину подсветки, и третий цвет ради этого не добавляет смысла. */
+.quote-notice-multiple,
+.quote-notice-partial {
+  background-color: var(--color-info-tint);
+  border-color: var(--color-info-ink);
+  color: var(--color-info-ink);
+}

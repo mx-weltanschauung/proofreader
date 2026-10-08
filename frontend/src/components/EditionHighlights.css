@@ -1,0 +1,23 @@
+/* Строка ссылок через точку: читается фразой, а не списком. Точка — знак
+   вёрстки, а не текста: альтернативный текст у неё пустой, и чтение с экрана
+   её не произносит. */
+.edition-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--reading-font-literata);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.edition-highlights li + li::before {
+  /* Safari до 17.4 не знает альтернативного текста: объявление ниже там
+     недействительно, ::before пропадает вместе с отступом, и работы слипаются.
+     Первая строка — запасная, вторая её перекрывает там, где синтаксис понятен. */
+  content: '·';
+  content: '·' / '';
+  margin: 0 0.45em;
+  color: var(--color-text-tertiary);
+}

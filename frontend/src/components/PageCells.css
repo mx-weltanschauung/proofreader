@@ -1,0 +1,61 @@
+.vol-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+/* Клетка — страница. Ссылка без текста: имя ей даёт aria-label. */
+.vol-cell {
+  width: 10px;
+  height: 14px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 1px;
+  background-color: var(--color-bg-tertiary);
+  transition:
+    transform 0.12s ease,
+    opacity 0.12s ease;
+}
+
+.vol-cell:hover,
+.vol-cell:focus-visible {
+  transform: scaleY(1.25);
+  border-color: var(--color-link);
+}
+
+.vol-cell.is-read {
+  background-color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.vol-cell.is-machine {
+  background-color: var(--color-success-tint);
+  border-color: var(--color-success);
+}
+
+.vol-cell.is-doing {
+  background-color: var(--color-info-tint);
+  border-color: var(--color-info);
+}
+
+.vol-cell.is-attention {
+  background-color: var(--color-warning-tint);
+  border-color: var(--color-warning-ink);
+}
+
+.vol-cell.is-problem {
+  background-color: var(--color-error-tint);
+  border-color: var(--color-error-ink);
+}
+
+.vol-cell.is-blank {
+  background-color: transparent;
+  border-style: dotted;
+}
+
+.vol-cell.is-raw {
+  background-color: var(--color-bg-tertiary);
+}
+
+.vol-cell.is-dimmed {
+  opacity: 0.22;
+}

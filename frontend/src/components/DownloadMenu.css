@@ -1,0 +1,112 @@
+/* Классы стилей в проекте глобальные — префикс download-menu__ обязателен,
+   иначе задеваются чужие страницы. */
+.download-menu {
+  position: relative;
+  display: inline-block;
+  /* Базовая линия у inline-block считается по последней строке текста, поэтому
+     нижний паддинг кнопки свисал под строку и налезал на следующий блок
+     (в шапке главы — на строку «Страницы N—M»). */
+  vertical-align: top;
+}
+
+/* Метрики совпадают с глобальным .btn: кнопка стоит с ним в одном ряду
+   (шапка главы, подборка), и разнобой в кегле и радиусе там сразу виден. */
+.download-menu__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background-color: var(--color-button-secondary);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.download-menu__toggle:hover {
+  background-color: var(--color-button-secondary-hover);
+}
+
+.download-menu__toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.download-menu__caret {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+
+.download-menu__toggle[aria-expanded='true'] .download-menu__caret {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download-menu__caret {
+    transition: none;
+  }
+}
+
+/* Кнопка везде прижата к левому краю строки, поэтому список висит под её
+   левым краем: с right: 0 меню шириной 16rem уезжало за левый край экрана. */
+.download-menu__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  min-width: min(16rem, calc(100vw - 2rem));
+  max-width: min(20rem, calc(100vw - 2rem));
+  margin: 0.35rem 0 0;
+  padding: 0.3rem;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-card-bg);
+  box-shadow: 0 8px 24px var(--color-shadow);
+}
+
+/* Не хватило места справа — держимся правого края кнопки. */
+.download-menu__list--flipped {
+  left: auto;
+  right: 0;
+}
+
+.download-menu__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.download-menu__item:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+.download-menu__item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+/* Формат, скачанный в прошлый раз, — едва заметная метка слева, а не смена
+   цвета: подсказка для тех, кто помнит свой выбор, а не рекламный акцент. */
+.download-menu__item--last-used {
+  box-shadow: inset 2px 0 0 var(--color-border-strong, var(--color-border));
+}
+
+.download-menu__name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.download-menu__hint {
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+}

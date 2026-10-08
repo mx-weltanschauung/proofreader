@@ -1,0 +1,87 @@
+/* Позицию считает cardPosition() и кладёт в inline-стиль: корешок стоит в
+   потоке страницы, а карточке нужны координаты окна и прижим к его краям.
+   Ширина обязана совпадать с CARD_WIDTH, предел высоты — с CARD_MAX_HEIGHT:
+   по ним расчёт выбирает сторону. */
+.volume-card {
+  position: fixed;
+  z-index: 20;
+  width: 280px;
+  max-height: 232px;
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 3px;
+  background-color: var(--color-card-bg);
+  color: var(--color-text-secondary);
+  box-shadow: 0 4px 16px var(--color-shadow);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.volume-card-number {
+  font-family: var(--reading-font-literata);
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary);
+}
+
+.volume-card-label {
+  margin-top: 2px;
+  font-family: var(--reading-font-literata);
+  font-size: 0.95rem;
+  line-height: 1.2;
+  color: var(--color-text-primary);
+}
+
+.volume-card-works {
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--color-card-border);
+  list-style: none;
+}
+
+.volume-card-work {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* Двухстрочные заглавия иначе сливаются в сплошной столбец капса. */
+.volume-card-work + .volume-card-work {
+  margin-top: 4px;
+}
+
+/* Заглавия приезжают капсом и бывают длинными: до двух строк на работу, хвост
+   срезается многоточием. Одной строки здесь стояло ради места под подпись
+   тома, но подпись отсюда ушла — она повторяла эти же заглавия, — и
+   освободившиеся ~90px отданы им. Четыре работы по две строки вместе со
+   сводкой укладываются в предел высоты карточки.
+
+   min-width: 0 обязателен: без него флекс-элемент не сжимается ýже своего
+   содержимого (автоминимум), строка не переносится и выталкивает объём за
+   правый край. У однострочного варианта эту роль исполнял overflow: hidden,
+   но с display: -webkit-box автоминимум возвращается. */
+.volume-card-work-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.72rem;
+  letter-spacing: 0.01em;
+}
+
+.volume-card-work-pages {
+  flex: 0 0 auto;
+  color: var(--color-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-card-stats {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-card-border);
+  color: var(--color-text-tertiary);
+  font-size: 0.72rem;
+}

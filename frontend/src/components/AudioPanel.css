@@ -1,0 +1,39 @@
+.audio-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.audio-panel-block + .audio-panel-block {
+  margin-top: 1.25rem;
+}
+
+.audio-panel-title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+/* Общий для панели главы и раздела «Аудио» тома: строки — AudioRow. */
+.audio-panel-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audio-panel-note {
+  margin: 0.25rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.audio-panel-stale {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+  color: var(--color-warning-ink);
+}
+
+.audio-panel-unsupported {
+  margin: 0.25rem 0;
+  color: var(--color-text-secondary);
+}

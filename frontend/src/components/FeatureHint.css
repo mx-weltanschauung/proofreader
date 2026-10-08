@@ -1,0 +1,83 @@
+/* Пузырёк с хвостиком у органа. Положение и смещение хвостика ставит
+   FeatureHint инлайном; здесь только вид. */
+.feature-hint {
+  position: absolute;
+  z-index: 1000;
+  width: min(280px, calc(100vw - 24px));
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  /* Инверсия основной пары: она проверена на 4.5:1 во всех темах
+     (src/test/contrast.test.ts, список PAIRS). */
+  background-color: var(--color-text-primary);
+  color: var(--color-bg-primary);
+  box-shadow: 0 6px 18px var(--color-shadow);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.feature-hint-arrow {
+  position: absolute;
+  /* Вариант по умолчанию (и placement="below"): пузырёк под якорем, хвостик
+     смотрит вверх, на верхней кромке. */
+  top: -5px;
+  left: var(--hint-arrow-x, 24px);
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background-color: var(--color-text-primary);
+  transform: rotate(45deg);
+}
+
+/* Якорю не хватило места снизу (например, кнопка ScrollDock у нижнего края
+   экрана) — пузырёк встал НАД ним, и хвостик обязан развернуться на нижнюю
+   кромку, иначе он торчал бы вверх мимо кнопки. */
+.feature-hint[data-placement='above'] .feature-hint-arrow {
+  top: auto;
+  bottom: -5px;
+}
+
+.feature-hint-text {
+  margin: 0 0 0.4rem;
+}
+
+.feature-hint-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.feature-hint-more {
+  color: var(--color-bg-primary);
+  font-size: 0.8rem;
+  text-decoration: underline;
+}
+
+.feature-hint-close {
+  /* Минимум 24×24 — та же цель, что у треугольника раскрытия содержания
+     (fe2f0071): у ~20×18px, которые давали padding + шрифт без явного
+     размера, площадь попадания на сенсорном экране была ниже принятого в
+     проекте порога. */
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0.1rem 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--color-bg-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* Движение — только тем, кто его не запрещал. */
+@media (prefers-reduced-motion: no-preference) {
+  .feature-hint {
+    animation: feature-hint-in 160ms ease-out;
+  }
+}
+
+@keyframes feature-hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}

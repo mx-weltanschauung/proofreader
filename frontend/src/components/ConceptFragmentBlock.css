@@ -1,0 +1,115 @@
+.concept-fragment {
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 2rem;
+  /* Прыжок из оглавления адресов не должен загонять шапку под липкий
+     заголовок сайта. */
+  scroll-margin-top: calc(var(--site-header-height) + 1rem);
+}
+
+.concept-fragment-header {
+  margin-bottom: 1rem;
+}
+
+/* Якорь стоит не только на блоке, но и на каждой его внутренней странице
+   (вторая и далее страницы склеенного блока) — прыжок с панели адресов не
+   должен загонять её под липкую шапку сайта так же, как и для первой. */
+.concept-fragment-page {
+  scroll-margin-top: calc(var(--site-header-height) + 1rem);
+}
+
+.concept-fragment-address {
+  font-weight: 600;
+}
+
+.concept-fragment-source,
+.concept-fragment-rubrics {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.concept-fragment-chapter {
+  color: var(--color-text-tertiary);
+}
+
+.concept-fragment-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.concept-fragment-status {
+  color: var(--color-text-tertiary);
+}
+
+.concept-fragment-link,
+.concept-fragment-chapter-link {
+  color: var(--color-link);
+}
+
+.concept-fragment-link:hover,
+.concept-fragment-chapter-link:hover {
+  color: var(--color-link-hover);
+}
+
+.concept-fragment-folio {
+  text-align: center;
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+  margin: 1.25rem 0;
+}
+
+/* Между вырезками одного адреса — пропуск: это разные места страницы. */
+.concept-cut-gap {
+  text-align: center;
+  color: var(--color-text-tertiary);
+  padding: 0.75rem 0;
+  user-select: none;
+}
+
+.concept-cut-note,
+.concept-cut-status {
+  color: var(--color-text-tertiary);
+  font-size: 0.85rem;
+}
+
+.concept-cut-expand {
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  color: var(--color-link);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.concept-cut-expand:hover {
+  text-decoration: underline;
+}
+
+/* Страница адреса, которой не коснулась ни одна вырезка. Текста здесь нет, но
+   указатель эту страницу называет — молчать о ней значит соврать читателю о
+   том, где смотреть. */
+.concept-cut-uncut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.75rem 0;
+  border-top: 1px dashed var(--color-border);
+}
+
+/* Колонцифра внутри заглушки идёт вплотную к пометке: собственные отступы
+   .concept-fragment-folio рассчитаны на разрыв внутри текста вырезки. */
+.concept-cut-uncut .concept-fragment-folio {
+  margin: 0;
+}
+
+/* Первая колонцифра в блоке вырезки (как первой в записи, так и после
+   пропуска) стоит в начале и не нуждается в верхнем отступе — отступ
+   рассчитан на место между абзацами текста. */
+.concept-cut > .concept-cut-part:first-child .concept-fragment-folio,
+.concept-cut-gap + .concept-cut-part .concept-fragment-folio {
+  margin-top: 0;
+}

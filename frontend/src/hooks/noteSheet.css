@@ -1,0 +1,102 @@
+/* Нижний лист примечания — то, что палец получает вместо панели у крошечной
+   надстрочной цифры. Слой тот же, что у шторок: затемнение 1000, панель 1001. */
+.note-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--color-scrim);
+}
+
+.note-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  /* Лист выше половины экрана прячет ровно тот текст, который объясняет. */
+  max-height: 70vh;
+  max-width: 640px;
+  margin-inline: auto;
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -8px 28px var(--color-shadow);
+  /* Домашняя полоса iPhone иначе перечёркивает переход к примечанию. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  animation: note-sheet-rise 0.2s ease;
+}
+
+@keyframes note-sheet-rise {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.note-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.35rem 0.35rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.note-sheet-title {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.note-sheet-close {
+  margin-left: auto;
+  /* Палец промахивается по всему, что меньше 44px. */
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.note-sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  /* Дочитав примечание до конца, не утащить за собой страницу под листом. */
+  overscroll-behavior: contain;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.note-sheet-body p {
+  margin: 0 0 0.5em;
+}
+
+.note-sheet-body p:last-child {
+  margin-bottom: 0;
+}
+
+.note-sheet-body img {
+  max-width: 100%;
+}
+
+.note-sheet-foot {
+  padding: 0 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.note-sheet-goto {
+  display: block;
+  min-height: 44px;
+  line-height: 44px;
+  color: var(--color-link);
+  font-size: 0.92rem;
+  text-decoration: none;
+}

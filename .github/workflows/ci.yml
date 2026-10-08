@@ -1,0 +1,118 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: proofreader
+          POSTGRES_PASSWORD: proofreader
+          POSTGRES_DB: proofreader_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U proofreader" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_USER: proofreader
+      DB_PASSWORD: proofreader
+      DB_NAME: proofreader_test
+      DB_SSLMODE: disable
+      PROOFREADER_TEST_DB_URL: postgres://proofreader:proofreader@localhost:5432/proofreader_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Утилиты PDF/DJVU
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils djvulibre-bin
+      # Тесты internal/repository без базы молча пропускаются, поэтому база
+      # своя, одноразовая: миграции и пользователь с id 1 (на него ссылаются
+      # фикстуры томов), последовательность — следом за ним.
+      - name: Одноразовая база тестов
+        run: |
+          go run cmd/migrate/main.go up
+          PGPASSWORD=proofreader psql -h localhost -U proofreader -d proofreader_test -v ON_ERROR_STOP=1 -c \
+            "INSERT INTO users (id,email,password_hash,role) VALUES (1,'t@t','x','administrator');
+             SELECT setval(pg_get_serial_sequence('users','id'), (SELECT max(id) FROM users));"
+      - run: go test ./... -count=1
+
+  # Линтер стережёт только новый код: в дереве около сотни старых находок
+  # errcheck, они — отдельная работа, а не повод пропускать новые.
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # Сборка из исходников тем же Go, что в go.mod: готовый бинарник
+      # v1.64.8 собран Go 1.24 и на go.mod с 1.25 падает на typecheck.
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          install-mode: goinstall
+          only-new-issues: true
+
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      # Полная история: bootstrap_config_test клонирует настоящий бандл
+      # репозитория (как bootstrap.sh из снапшота), а бандл мелкого клона
+      # ссылается на отсутствующие коммиты и не клонируется.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Утилиты тестов
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends jq zip
+      # Без образа nginx_instance_test.sh пропускается — а это единственная
+      # проверка nginx на живых запросах.
+      - run: docker pull nginx:alpine
+      - run: make test-scripts
+
+  leaks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # Список слов экземпляра — секрет репозитория; без него сторож
+      # проверяет только общие шаблоны (ключи, токены, адреса, почту).
+      - name: Сторож утечек
+        env:
+          LEAK_DENYLIST_TEXT: ${{ secrets.LEAK_DENYLIST }}
+        run: |
+          if [ -n "$LEAK_DENYLIST_TEXT" ]; then
+            printf '%s\n' "$LEAK_DENYLIST_TEXT" > "$RUNNER_TEMP/denylist"
+            export LEAK_DENYLIST="$RUNNER_TEMP/denylist"
+          fi
+          scripts/leak-guard.sh

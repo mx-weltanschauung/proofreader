@@ -1,0 +1,107 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# Python
+__pycache__/
+*.py[cod]
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.local
+
+# Data directories (root-level runtime dirs only; scoped so pkg/storage/ is tracked)
+/data/
+/uploads/
+/storage/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/build/
+frontend/.cache/
+
+tools/ocr_ingest/fix_emphasis.report.md
+
+# Backup snapshots
+backups/
+
+# OAuth token written by scripts/yadisk-sync.sh auth (mode 0600, secret)
+.yadisk-token.json
+
+# scripts/export.sh staging dirs left behind by an interrupted swap. export/
+# itself is intentionally tracked (that's the whole point of the export) —
+# only its .new/.old siblings are transient.
+/export.new/
+/export.old/
+
+# Brainstorming visual companion (local mockups)
+.superpowers/
+tools/tts/.venv/
+tools/tts/v4_ru.pt
+tools/tts/v5_cis_base.pt
+tools/tts/out/
+tools/ocr_ingest/_pages.*.json
+tools/ocr_ingest/lenin_index.payload.json
+
+# Журнал склейки переносов: 3.2 МБ на том, регенерируется прогоном. Нужен
+# только пока прогон не завершён — им добивается пара, оборванная посередине.
+tools/ocr_ingest/runs/*/fix_page_break_hyphen.journal.jsonl
+# Скачанные превью полос аппарата: 200 КБ на полосу, восстанавливаются
+# из S3 одним запросом к /api/works/{id}/pages
+tools/ocr_ingest/runs/*/apparatus_png/
+# Текстовый слой скана: мегабайты, пересобирается из ingest/ (у тома 9 —
+# runs/144/build_scan_txt.py, там же записано правило вставки пустых полос)
+tools/ocr_ingest/runs/*/scan.txt
+
+# Каталоги прогона reflow_ingest (born-digital корпуса: Плеханов, Макаренко) —
+# десятки-сотни МБ страничных PNG и XML на том, результат прогона живёт в БД
+# после --push, а разведка воспроизводится повторным запуском.
+tools/reflow_ingest/runs_*/
+
+# Временный каталог backup-prod.sh (I4/I6 задачи 5 бэкапа на Диск): заводится
+# рядом с $REPO_ROOT, а не в $TMPDIR — на боевом 3.8 ГБ ОЗУ без свопа, и tmpfs
+# в /tmp однажды чуть не уложил машину. Существует только на время прогона.
+.backup-tmp/
+
+# Рабочие каталоги restore-from-disk.sh (задача 6): .restore-tmp/ — то же
+# основание, что у .backup-tmp/ (существует только на время прогона);
+# .restore-state/ переживает отдельные прогоны нарочно — в нём метки уже
+# влитых кусков, на них держится возобновляемость.
+.restore-tmp/
+.restore-state/
+/static/
+
+# Бинарник `go build ./cmd/server` в корне и отчёты покрытия — не исходники.
+/server
+coverage.out
+coverage.html

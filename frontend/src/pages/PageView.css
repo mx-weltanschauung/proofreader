@@ -1,0 +1,358 @@
+.page-view-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.page-view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.page-view-header .back-link {
+  color: var(--color-text-primary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  transition: color 0.2s;
+}
+
+.page-view-header .back-link:hover {
+  color: var(--color-button-primary);
+}
+
+.page-view-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.page-info-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.page-view-two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.page-view-left {
+  min-width: 0;
+}
+
+.page-view-right {
+  min-width: 0;
+  position: sticky;
+  top: 2rem;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+
+.page-info-card h1 {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0 0 1rem 0;
+  color: var(--color-text-primary);
+}
+
+/* Привязано к предку, а не голый .page-folio: стили страниц в проекте не
+   изолированы по компонентам (PageView и WorkDetail оба попадают в один
+   бандл), и одноимённый класс в WorkDetail.css задаёт свой размер под
+   карточку — глобальным селектором они бы друг друга перебивали. */
+.page-info-card .page-folio {
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.page-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  /* Цепочка из пяти глав не влезает в строку, а без переноса flex-контейнер
+     выпускает её за карточку. */
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.meta-label {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.meta-value {
+  color: var(--color-text-primary);
+}
+
+.meta-link {
+  color: var(--color-button-primary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.meta-link:hover {
+  text-decoration: underline;
+}
+
+.page-status {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.page-status.status-не_вычитана {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.page-status.status-вычитывается {
+  background-color: var(--color-info-tint);
+  border-color: var(--color-info-ink);
+  color: var(--color-info-ink);
+}
+
+.page-status.status-вычитана {
+  background-color: var(--color-success-tint);
+  border-color: var(--color-success-ink);
+  color: var(--color-success-ink);
+}
+
+.page-status.status-есть_проблемы {
+  background-color: var(--color-error-tint);
+  border-color: var(--color-error-ink);
+  color: var(--color-error-ink);
+}
+
+/* Тот же фон, что у «не вычитана»; отличает курсив, а не цвет. Третичный
+   тон здесь давал 3.82:1 в светлой теме — приглушённость статуса стоит
+   отдавать начертанием, а не нечитаемым серым. */
+.page-status.status-пустая_страница {
+  background-color: var(--color-bg-tertiary);
+  border-color: var(--color-border);
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Тот же цвет, что у «вычитана», и пунктир вместо сплошной: машинная
+   вычитка ещё не подтверждена человеком. Единственная пара статусов,
+   которую иначе пришлось бы различать одним оттенком. */
+.page-status.status-вычитано_машиной {
+  background-color: var(--color-success-tint);
+  border-color: var(--color-success-ink);
+  border-style: dashed;
+  color: var(--color-success-ink);
+}
+
+.page-status.status-требует_внимания {
+  background-color: var(--color-warning-tint);
+  border-color: var(--color-warning-ink);
+  color: var(--color-warning-ink);
+}
+
+.preview-section {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.preview-section h2 {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  color: var(--color-text-primary);
+}
+
+.content-section {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.content-section h2 {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  color: var(--color-text-primary);
+}
+
+/* Scoped to this page's own wrapper (.page-view-container is the outermost
+   element rendered by PageView.tsx) deliberately. `.page-html-content` is
+   also the class ChapterView.tsx gives each page inside the shared reading
+   column, and container-level rules here (font size, line height, max-width)
+   would otherwise leak into that column and fight
+   .chapter-pages-content's reading-preference values. */
+.page-view-container .page-html-content {
+  font-family: var(--reading-font);
+  font-size: var(--reading-size);
+  line-height: 1.65;
+  color: var(--color-text-primary);
+  max-width: 70ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.page-html-content h1,
+.page-html-content h2,
+.page-html-content h3,
+.page-html-content h4,
+.page-html-content h5,
+.page-html-content h6 {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  color: var(--color-text-primary);
+}
+
+.page-html-content h1 {
+  font-size: 2rem;
+}
+
+.page-html-content h2 {
+  font-size: 1.75rem;
+}
+
+.page-html-content h3 {
+  font-size: 1.5rem;
+}
+
+.page-html-content p {
+  margin-bottom: 1.5rem;
+}
+
+.page-html-content ul,
+.page-html-content ol {
+  margin-bottom: 1.5rem;
+  padding-left: 2rem;
+}
+
+.page-html-content li {
+  margin-bottom: 0.5rem;
+}
+
+/* No italic: blockquotes hold verse and quoted prose, where <em> carries the
+   book's own emphasis — italicising the whole block would hide it. */
+.page-html-content blockquote {
+  border-left: 4px solid var(--color-border);
+  padding-left: 1.5rem;
+  margin: 1.5rem 0;
+  color: var(--color-text-secondary);
+}
+
+.page-html-content code {
+  background-color: var(--color-bg-tertiary);
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.9em;
+  font-family: 'Courier New', monospace;
+}
+
+.page-html-content pre {
+  background-color: var(--color-bg-tertiary);
+  padding: 1rem;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+
+.page-html-content pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.page-html-content a {
+  color: var(--color-button-primary);
+  text-decoration: underline;
+}
+
+.page-html-content a:hover {
+  color: var(--color-button-primary-hover);
+}
+
+.loading-state,
+.error-state {
+  text-align: center;
+  padding: 3rem;
+}
+
+.error-state {
+  color: var(--color-error-ink);
+}
+
+@media (max-width: 1024px) {
+  .page-view-two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .page-view-right {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-view-container {
+    padding: 1rem;
+  }
+
+  .page-info-card h1 {
+    font-size: 1.5rem;
+  }
+
+  .page-view-container .page-html-content {
+    font-size: calc(var(--reading-size) * 0.9);
+    line-height: 1.6;
+    max-width: 100%;
+  }
+}
+
+/* Footnote markers in body text */
+.page-html-content sup.footnote-ref a {
+  text-decoration: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+/* Та же пальцевая зона нажатия, что и в читалке (см. ReadingSurface.css). */
+@media (pointer: coarse) {
+  .page-html-content sup.footnote-ref a {
+    padding: 0.5em 0.85em;
+    margin: -0.5em -0.85em;
+    touch-action: manipulation;
+  }
+}
+
+.page-html-content .footnote-ref--endnote a {
+  color: var(--color-info-ink);
+}
+.page-html-content .footnote-ref--subscript a {
+  color: var(--color-warning-ink);
+}

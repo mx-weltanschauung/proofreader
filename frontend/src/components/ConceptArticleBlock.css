@@ -1,0 +1,83 @@
+.concept-article-block + .concept-article-block {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.concept-article-edition {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.concept-rubric-toc {
+  margin: 0.5rem 0 1rem;
+}
+
+.concept-rubric-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* Пункт оглавления — кнопка фильтра, но выглядит прежней ссылкой. */
+.concept-rubric-toc button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--color-link);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.concept-rubric-toc button:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+.concept-rubric-toc button[aria-pressed='true'] {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.concept-panel-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.concept-panel-filters label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.concept-panel-filters select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+}
+
+.concept-panel-article {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.concept-ref-unresolved {
+  color: var(--color-text-tertiary);
+}
+
+.concept-ref-note {
+  color: var(--color-text-tertiary);
+  font-size: 0.8rem;
+}

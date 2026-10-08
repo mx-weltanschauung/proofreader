@@ -1,0 +1,18 @@
+/* Причина упавшей заявки у главы: раскрывается под строкой кнопок. */
+.audio-queue-why {
+  display: inline-block;
+  font-size: 0.875rem;
+}
+
+.audio-queue-why summary {
+  cursor: pointer;
+}
+
+.audio-queue-error {
+  margin: 0.4rem 0 0;
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-error-ink);
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+<!-- Знак платформы по умолчанию: страница со строками текста. Своя читальня
+     кладёт свой знак в instance/favicon.svg — nginx отдаёт его раньше этого. -->
+<rect x="4" y="4" width="56" height="56" rx="8" fill="#fdfdfb" stroke="#2b2b2b" stroke-width="4"/>
+<rect x="16" y="18" width="32" height="4" rx="2" fill="#2b2b2b"/>
+<rect x="16" y="28" width="32" height="4" rx="2" fill="#2b2b2b"/>
+<rect x="16" y="38" width="32" height="4" rx="2" fill="#2b2b2b"/>
+<rect x="16" y="48" width="20" height="4" rx="2" fill="#6b6b6b"/>
+</svg>
