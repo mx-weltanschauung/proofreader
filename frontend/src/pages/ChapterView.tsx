@@ -36,9 +36,12 @@ import { useCanonicalPath } from '../hooks/useCanonicalPath';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useAnchorAboveFold } from '../hooks/useAnchorAboveFold';
 import { chapterLevelsForPage } from '../hooks/useChaptersForPage';
+import { citationPlace } from '../utils/citationPlace';
 import { useSearchTerms } from '../hooks/useSearchTerms';
 import { apiErrorMessage } from '../utils/apiError';
 import { useScrollDockAction } from '../contexts/scrollDockContext';
+import { CreditLinks } from '../components/CreditLinks';
+import { articleKindLabel, authorsOf } from '../utils/credits';
 import { chapterTypeLabel } from '../utils/chapterTypeLabel';
 import { pageAnchorId } from '../utils/pageAnchor';
 import { jumpToAnchor, markAddress } from '../utils/anchorNav';
@@ -111,7 +114,11 @@ export const ChapterView: React.FC = () => {
   // (Chapter): название вперёд, автор следом, и без лишнего тире, если автора
   // нет вовсе.
   useDocumentTitle(
-    chapter ? (work?.author ? `${chapter.title} — ${work.author}` : chapter.title) : null,
+    chapter
+      ? authorsOf(chapter.credits) || work?.author
+        ? `${chapter.title} — ${authorsOf(chapter.credits) || work?.author}`
+        : chapter.title
+      : null,
   );
 
   // Заход по старой числовой ссылке тихо подменяется каноном, как только
@@ -508,13 +515,13 @@ export const ChapterView: React.FC = () => {
           // перестройка глав меняет id, и присланная ссылка ответит 410, —
           // номер полосы в якоре остаётся единственным, что от неё уцелеет.
           quoteHref: (n, search) => `${chapterAddress(work, chapter)}${search}#${pageAnchorId(n)}`,
-          // Произведение подписи — неаппаратная глава ВЕРХНЕГО уровня,
-          // накрывающая полосу: том содержит десятки работ, и без неё не
-          // видно, что цитируется. На стыке двух работ берётся первая по
-          // order_number — тем же порядком, каким их отдаёт
-          // chapterLevelsForPage.
-          workTitleFor: (n) =>
-            chapterLevelsForPage(allChapters, n)[0]?.find((c) => !c.is_apparatus)?.title ?? '',
+          // Произведение и автор подписи — один помощник на все поверхности
+          // (citationPlace): у тома неаппаратная глава верхнего уровня,
+          // накрывающая полосу; у номера журнала — самая глубокая статья,
+          // сперва внутри читаемой главы (рубрика ведёт к своей статье, на
+          // стыке двух статей побеждает читаемая).
+          workTitleFor: (n) => citationPlace(work, allChapters, n, chapterNode).workTitle,
+          authorFor: (n) => citationPlace(work, allChapters, n, chapterNode).author,
         }}
         toolbarExtra={
           <ChapterTocDrawer
@@ -527,7 +534,21 @@ export const ChapterView: React.FC = () => {
         }
         header={
           <header className="chapter-header">
-            <div className="chapter-type-badge">{chapterTypeLabel(chapter.type)}</div>
+            {chapter.credits && chapter.credits.length > 0 && (
+              <p className="chapter-credits">
+                <CreditLinks credits={chapter.credits} />
+              </p>
+            )}
+            {(() => {
+              // У номера журнала глава без вида статьи — рубрика
+              // («Критика и библиография»), а не «глава» тома.
+              const badge = chapter.article_kind
+                ? articleKindLabel(chapter.article_kind)
+                : work.journal_issue
+                  ? 'рубрика'
+                  : chapterTypeLabel(chapter.type);
+              return badge ? <div className="chapter-type-badge">{badge}</div> : null;
+            })()}
             <h1>{chapter.title}</h1>
             <div className="chapter-meta">
               <span>

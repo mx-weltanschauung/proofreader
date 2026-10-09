@@ -4,6 +4,8 @@ import type { PageMapEntry, PageStatus, Work } from '../types';
 import type { OutlineNode } from '../utils/volumeOutline';
 import { readinessLabel, readinessSegments } from '../utils/pageReadiness';
 import { splitAuthor } from '../utils/chapterAuthor';
+import { articleKindLabel } from '../utils/credits';
+import { CreditLinks } from './CreditLinks';
 import { PageCells } from './PageCells';
 import { chapterPath, readPath } from '../utils/paths';
 import './VolumeOutlineRow.css';
@@ -41,6 +43,10 @@ export const VolumeOutlineRow: React.FC<Props> = ({
 
   const { chapter } = node;
   const { author, title } = splitAuthor(chapter.title);
+  // Метка вида, повторяющая заглавие («Выступление выступление» — речи на
+  // сессии в ПЗМ 1933 № 3), ничего не добавляет: её нет.
+  const kind = articleKindLabel(chapter.article_kind);
+  const kindLabel = kind && kind.toLowerCase() !== title.trim().toLowerCase() ? kind : '';
   const pages = pagesInRange(chapter.start_page, chapter.end_page);
   const segments = readinessSegments(pages);
 
@@ -75,6 +81,7 @@ export const VolumeOutlineRow: React.FC<Props> = ({
 
         <Title className={`vol-toc-title${node.level >= 3 ? ' is-deep' : ''}`}>
           <Link to={chapterPath(work, chapter)}>{title}</Link>
+          {kindLabel && <span className="vol-toc-kind">{kindLabel}</span>}
         </Title>
 
         {/* Обёртка держит перенос на узком экране: на широком у неё
@@ -82,7 +89,11 @@ export const VolumeOutlineRow: React.FC<Props> = ({
             строки; на телефоне она становится своей flex-строкой под
             заглавием. Без неё заглавию при 375px достаётся 45px из 345. */}
         <span className="vol-toc-meta">
-          {showAuthors && <span className="vol-toc-author">{author ?? ''}</span>}
+          {showAuthors && (
+            <span className="vol-toc-author">
+              {chapter.credits?.length ? <CreditLinks credits={chapter.credits} /> : (author ?? '')}
+            </span>
+          )}
 
           <span className="vol-toc-act">
             <Link

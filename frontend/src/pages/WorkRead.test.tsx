@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
@@ -652,6 +652,89 @@ describe('WorkRead: цитата в потоке', () => {
     });
 
     expect(await screen.findByRole('button', { name: 'Цитировать' })).toBeInTheDocument();
+  });
+
+  // Финальная рецензия: поток номера журнала подписывал цитату главой
+  // верхнего уровня (рубрикой) и пустым автором тома.
+  it('«Ссылка» в потоке номера журнала подписана статьёй внутри рубрики', async () => {
+    vi.mocked(worksApi.get).mockResolvedValue({
+      data: {
+        id: 47,
+        title: 'Под знаменем марксизма, 1928, № 12',
+        author: '',
+        page_offset: 0,
+        numbering_style: 'arabic',
+        journal_issue: {
+          issue_id: 1,
+          journal_id: 1,
+          journal_slug: 'pzm',
+          journal_title: 'Под знаменем марксизма',
+          year: 1928,
+          label: '12',
+          months: '',
+        },
+      },
+    } as never);
+    vi.mocked(chaptersApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 20,
+          work_id: 47,
+          title: 'Критика и библиография',
+          type: 'chapter',
+          order_number: 1,
+          start_page: 40,
+          end_page: 50,
+          is_apparatus: false,
+          children: [
+            {
+              id: 21,
+              work_id: 47,
+              title: 'Рецензия',
+              type: 'chapter',
+              order_number: 1,
+              start_page: 42,
+              end_page: 45,
+              is_apparatus: false,
+              article_kind: 'рецензия',
+              credits: [{ position: 1, role: 'author', printed: 'А. Деборин' }],
+            },
+          ],
+        },
+      ],
+    } as never);
+    vi.mocked(readingApi.window).mockResolvedValue({ data: windowOf(43, 5, 48) } as never);
+    const written: Record<string, string> = {};
+    class ItemStub {
+      constructor(public parts: Record<string, Blob>) {}
+    }
+    vi.stubGlobal('ClipboardItem', ItemStub);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        write: vi.fn(async (items: ItemStub[]) => {
+          for (const [type, blob] of Object.entries(items[0].parts)) {
+            written[type] = await blob.text();
+          }
+        }),
+      },
+    });
+
+    renderAt('/works/47/read/43');
+    await screen.findByText('Текст страницы 43');
+    await waitFor(() => expect(chaptersApi.list).toHaveBeenCalled());
+    // Видимой считается одна из первых полос окна — какая именно, решает
+    // подставной наблюдатель; все они внутри статьи (42—45).
+    act(() => seeSections());
+
+    // fireEvent, а не userEvent.setup(): тот подменяет navigator.clipboard
+    // своим и подделку выше не увидеть.
+    fireEvent.click(await screen.findByRole('button', { name: 'Ссылка' }));
+    await waitFor(() => expect(written['text/plain']).toBeDefined());
+    expect(written['text/plain']).toMatch(
+      /^А\. Деборин\. Рецензия \/\/ Под знаменем марксизма\. 1928\. № 12\. С\. 4[3-5]\.\n/,
+    );
+    vi.unstubAllGlobals();
   });
 });
 

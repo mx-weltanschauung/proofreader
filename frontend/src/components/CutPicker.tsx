@@ -8,8 +8,8 @@ import {
   documentsApi,
   type DocumentKey,
 } from '../services/api';
-import { chapterLevelsForPage } from '../hooks/useChaptersForPage';
 import { citationSignature } from '../utils/citation';
+import { citationPlace, issueOf } from '../utils/citationPlace';
 import { printedFolio } from '../utils/folio';
 import { apiErrorMessage } from '../utils/apiError';
 import { BlockPicker, type BlockMark } from './BlockPicker';
@@ -20,16 +20,6 @@ export interface CutPickerProps {
   documentKey: DocumentKey;
   onInsert: (cutId: number) => void;
   onClose: () => void;
-}
-
-/** Заголовок неаппаратной главы верхнего уровня, накрывающей полосу — тот
- *  же смысл, что и workTitleFor в CiteButton.tsx, только здесь подборщик
- *  сам держит дерево глав (оно уже загружено вместе с томом). */
-function topLevelWorkTitle(chapters: Chapter[], pageNumber: number): string {
-  const levels = chapterLevelsForPage(chapters, pageNumber);
-  if (levels.length === 0) return '';
-  const outer = levels[0].find((c) => !c.is_apparatus);
-  return outer?.title ?? '';
 }
 
 /**
@@ -192,15 +182,19 @@ export const CutPicker: React.FC<CutPickerProps> = ({ documentKey, onInsert, onC
     const pageNumbers: number[] = [];
     for (let n = startMark.pageNumber; n <= endMark.pageNumber; n++) pageNumbers.push(n);
 
+    const place = citationPlace(work, chapters, startMark.pageNumber);
     const sourceTitle = citationSignature({
-      author: work.author ?? '',
-      workTitle: topLevelWorkTitle(chapters, startMark.pageNumber),
+      // Тот же помощник, что у кнопки «Цитировать»: вклейка из номера
+      // журнала подписывается статьёй и номером, а не «томом».
+      author: place.author,
+      workTitle: place.workTitle,
       editionTitle: work.edition_title ?? '',
       volumeTitle: work.title,
       volumeNumber: work.volume_number,
       volumePart: work.volume_part,
       folios: pageNumbers.map((n) => printedFolio(n, work)),
       pageNumbers,
+      issue: issueOf(work),
     });
 
     try {

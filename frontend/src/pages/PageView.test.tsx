@@ -334,4 +334,77 @@ describe('PageView', () => {
     await userEvent.keyboard('{ArrowRight}');
     expect(await screen.findByText(HTML_246)).toBeInTheDocument();
   });
+
+  // Финальная рецензия: полоса номера журнала подписывалась главой верхнего
+  // уровня (рубрикой) и пустым автором тома. Подпись — статья полосы и её
+  // авторы, координаты номера.
+  it('«Ссылка» с полосы номера журнала подписана статьёй внутри рубрики', async () => {
+    const issueWork = {
+      ...WORK,
+      author: '',
+      journal_issue: {
+        issue_id: 1,
+        journal_id: 1,
+        journal_slug: 'pzm',
+        journal_title: 'Под знаменем марксизма',
+        year: 1928,
+        label: '12',
+        months: '',
+      },
+    } as unknown as Work;
+    const review = {
+      id: 21,
+      work_id: 3,
+      title: 'Рецензия первая',
+      type: 'chapter',
+      order_number: 1,
+      start_page: 245,
+      end_page: 246,
+      is_apparatus: false,
+      article_kind: 'рецензия',
+      credits: [{ position: 1, role: 'author', printed: 'А. Деборин' }],
+    } as unknown as Chapter;
+    const rubric = {
+      id: 20,
+      work_id: 3,
+      title: 'Критика и библиография',
+      type: 'chapter',
+      order_number: 1,
+      start_page: 244,
+      end_page: 246,
+      is_apparatus: false,
+      children: [review],
+    } as unknown as Chapter;
+    vi.spyOn(worksApi, 'get').mockImplementation(() => ok(issueWork));
+    vi.spyOn(chaptersApi, 'list').mockImplementation(() => ok([rubric]));
+    vi.spyOn(pagesApi, 'render').mockImplementation(() => ok({ html: `<p>${HTML_245}</p>` }));
+    const written: Record<string, string> = {};
+    class ItemStub {
+      constructor(public parts: Record<string, Blob>) {}
+    }
+    vi.stubGlobal('ClipboardItem', ItemStub);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        write: vi.fn(async (items: ItemStub[]) => {
+          for (const [type, blob] of Object.entries(items[0].parts)) {
+            written[type] = await blob.text();
+          }
+        }),
+      },
+    });
+
+    renderAt('/works/3/pages/245');
+    await screen.findByText(HTML_245);
+    // Цепочка глав приходит своим запросом — ждём её на экране.
+    await screen.findAllByText('Рецензия первая');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ссылка' }));
+    await waitFor(() => expect(written['text/plain']).toBeDefined());
+
+    expect(written['text/plain']).toMatch(
+      /^А\. Деборин\. Рецензия первая \/\/ Под знаменем марксизма\. 1928\. № 12\. С\. 245\.\n/,
+    );
+    vi.unstubAllGlobals();
+  });
 });

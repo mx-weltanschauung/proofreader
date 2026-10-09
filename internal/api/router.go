@@ -40,6 +40,8 @@ type Router struct {
 	// nil — маршруты зарегистрированы, вызов паникует (тесты роутера ловят это
 	// serveWithRecover), как у озвучки.
 	highlightHandler      *HighlightHandler
+	journalHandler        *JournalHandler
+	personHandler         *PersonHandler
 	indexHandler          *IndexHandler
 	collectionHandler     *CollectionHandler
 	downloadHandler       *DownloadHandler
@@ -162,6 +164,13 @@ func (rt *Router) WithSite(h *SiteHandler) *Router {
 // всегда, чтобы их видел сторож ролей.
 func (rt *Router) WithStaticArchive(h *StaticArchiveHandler) *Router {
 	rt.staticArchiveHandler = h
+	return rt
+}
+
+// WithJournals подключает журналы, номера и людей. nil допустим, как у
+// WithAudio: маршруты регистрируются всегда, чтобы их видел сторож ролей.
+func (rt *Router) WithJournals(j *JournalHandler, p *PersonHandler) *Router {
+	rt.journalHandler, rt.personHandler = j, p
 	return rt
 }
 
@@ -321,6 +330,18 @@ func (rt *Router) Setup() *mux.Router {
 	// работы вне собраний. Полки эти же данные собирали шестью запросами в
 	// две волны — см. ShelfHandler.
 	public.HandleFunc("/shelf", rt.shelfHandler.Get).Methods("GET")
+	public.HandleFunc("/journals", rt.journalHandler.List).Methods("GET")
+	public.HandleFunc("/journals/{slug}", rt.journalHandler.Get).Methods("GET")
+	staff.HandleFunc("/journals", rt.journalHandler.Create).Methods("POST")
+	staff.HandleFunc("/journals/{id}", rt.journalHandler.Update).Methods("PUT")
+	staff.HandleFunc("/journals/{id}/issues", rt.journalHandler.CreateIssue).Methods("POST")
+	staff.HandleFunc("/journal-issues/{id}", rt.journalHandler.UpdateIssue).Methods("PUT")
+	public.HandleFunc("/persons", rt.personHandler.Search).Methods("GET")
+	public.HandleFunc("/persons/{slug}", rt.personHandler.Get).Methods("GET")
+	staff.HandleFunc("/persons", rt.personHandler.Create).Methods("POST")
+	staff.HandleFunc("/persons/{id}", rt.personHandler.Update).Methods("PUT")
+	staff.HandleFunc("/persons/{id}/merge", rt.personHandler.Merge).Methods("POST")
+	staff.HandleFunc("/works/{workId}/chapters/{id}/credits", rt.personHandler.ReplaceCredits).Methods("PUT")
 
 	// Вся читальня одним архивом (scripts/static-publish.sh): сведения для
 	// справки и переход на файл в бакете. Публичны, как всё чтение.

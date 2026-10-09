@@ -16,6 +16,8 @@ func (s stubRow) Scan(dest ...any) error {
 			*p = s[i].(int64)
 		case *string:
 			*p = s[i].(string)
+		case **string:
+			*p = nil
 		case **int64:
 			*p = nil
 		case *int:
@@ -33,7 +35,7 @@ func TestScanChapterFillsSlug(t *testing.T) {
 	now := time.Now()
 	row := stubRow{int64(10125), int64(49), nil,
 		"ЧТО ДЕЛАТЬ? Наболевшие вопросы нашего движения",
-		"chapter", 1, 5, 200, false, now, now}
+		"chapter", 1, 5, 200, false, nil, now, now}
 
 	ch, err := scanChapter(row)
 	if err != nil {
@@ -46,7 +48,7 @@ func TestScanChapterFillsSlug(t *testing.T) {
 
 func TestScanChapterLeavesEnumeratorWithoutSlug(t *testing.T) {
 	now := time.Now()
-	row := stubRow{int64(10240), int64(49), nil, "II", "chapter", 2, 6, 7, false, now, now}
+	row := stubRow{int64(10240), int64(49), nil, "II", "chapter", 2, 6, 7, false, nil, now, now}
 
 	ch, err := scanChapter(row)
 	if err != nil {

@@ -100,13 +100,23 @@ func (r *WorkRepository) Create(ctx context.Context, work *models.Work) error {
 	// на works_role_check/works_numbering_style_check. Вызывающие, ещё не
 	// знающие о ролях (текущий POST /api/works), оставляют оба поля пустыми
 	// и должны получать том, как до этой миграции.
+	cols, args := prepareWorkInsert(work)
+	if err := insertRow(ctx, r.pool, "works", work.ID, cols, args,
+		&work.ID, &work.CreatedAt, &work.UpdatedAt); err != nil {
+		return fmt.Errorf("failed to create work: %w", err)
+	}
+	return nil
+}
+
+// prepareWorkInsert подставляет умолчания (роль, нумерацию) и собирает
+// колонки вставки работы. Общий для Create и JournalRepository.CreateIssue.
+func prepareWorkInsert(work *models.Work) ([]string, []any) {
 	if work.Role == "" {
 		work.Role = models.WorkRoleVolume
 	}
 	if work.NumberingStyle == "" {
 		work.NumberingStyle = models.NumberingArabic
 	}
-
 	cols := []string{"title", "author", "publication_date", "language", "country", "file_path",
 		"status", "edition_id", "volume_number", "volume_part", "page_offset", "parent_work_id",
 		"role", "numbering_style", "precedes_volume", "shelf_label", "description", "owner_id"}
@@ -118,11 +128,7 @@ func (r *WorkRepository) Create(ctx context.Context, work *models.Work) error {
 		work.ShelfLabel, work.Description,
 		work.OwnerID,
 	}
-	if err := insertRow(ctx, r.pool, "works", work.ID, cols, args,
-		&work.ID, &work.CreatedAt, &work.UpdatedAt); err != nil {
-		return fmt.Errorf("failed to create work: %w", err)
-	}
-	return nil
+	return cols, args
 }
 
 // GetByID retrieves a work by ID

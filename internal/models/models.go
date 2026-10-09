@@ -43,6 +43,9 @@ const (
 	WorkRoleVolume             = "volume"
 	WorkRoleFrontMatter        = "front_matter"
 	WorkRoleEditionFrontMatter = "edition_front_matter"
+	// WorkRoleJournalIssue — работа номера журнала: без родителя и без
+	// издания; координаты номера — в journal_issues.
+	WorkRoleJournalIssue = "journal_issue"
 )
 
 // Стиль печатной колонцифры. Печатный номер считается как
@@ -164,6 +167,8 @@ type ShelfEdition struct {
 type Shelf struct {
 	Editions   []ShelfEdition `json:"editions"`
 	LooseWorks []ShelfWork    `json:"loose_works"`
+	// Journals — журналы, у которых есть хоть один номер; всегда массив.
+	Journals []JournalSummary `json:"journals"`
 }
 
 // Category represents a work category
@@ -241,10 +246,14 @@ type Chapter struct {
 	// IsApparatus — глава принадлежит аппарату тома (примечания, указатели,
 	// списки, приложения), а не является произведением. При создании ставится
 	// классификатором по заголовку, дальше правится руками: границы тонкие.
-	IsApparatus bool       `json:"is_apparatus" db:"is_apparatus"`
-	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at" db:"updated_at"`
-	Children    []*Chapter `json:"children,omitempty" db:"-"`
+	IsApparatus bool `json:"is_apparatus" db:"is_apparatus"`
+	// ArticleKind — вид статьи журнала (models.ArticleKinds); nil — не статья.
+	ArticleKind *string `json:"article_kind,omitempty" db:"article_kind"`
+	// Credits — подпись статьи; заполняется обработчиком, в базе — article_credits.
+	Credits   []ArticleCredit `json:"credits,omitempty" db:"-"`
+	CreatedAt time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at" db:"updated_at"`
+	Children  []*Chapter      `json:"children,omitempty" db:"-"`
 }
 
 // Footnote represents a footnote in a page

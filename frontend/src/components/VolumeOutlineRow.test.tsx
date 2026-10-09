@@ -200,4 +200,42 @@ describe('VolumeOutlineRow', () => {
     // вести в главу.
     expect(screen.getByRole('link', { name: 'Фейербах' })).toBeInTheDocument();
   });
+
+  it('статья с подписью и видом «рецензия»: автор ссылкой и метка вида', () => {
+    const c = {
+      ...chapter(5, 'О книге', 1, 2),
+      article_kind: 'рецензия',
+      credits: [
+        { position: 1, role: 'author', printed: 'И. Рубин', person_id: 1, person_slug: 'i-rubin' },
+      ],
+    } as Chapter;
+    setup(node(c), RAW, true);
+    expect(screen.getByRole('link', { name: 'И. Рубин' })).toHaveAttribute(
+      'href',
+      '/authors/i-rubin',
+    );
+    expect(screen.getByText('рецензия')).toBeInTheDocument();
+  });
+
+  it('метка вида, совпавшая с заглавием («Выступление»), не повторяется', () => {
+    const c = {
+      ...chapter(7, 'Выступление', 1, 2),
+      article_kind: 'выступление',
+      credits: [{ position: 1, role: 'author', printed: 'А. Деборин' }],
+    } as Chapter;
+    const { container } = setup(node(c), RAW, true);
+    expect(container.querySelector('.vol-toc-kind')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Выступление' })).toBeInTheDocument();
+  });
+
+  it('статья вида «статья»: метки нет', () => {
+    const c = {
+      ...chapter(6, 'Статья', 1, 2),
+      article_kind: 'статья',
+      credits: [{ position: 1, role: 'author', printed: 'И. Рубин' }],
+    } as Chapter;
+    const { container } = setup(node(c), RAW, true);
+    expect(container.querySelector('.vol-toc-kind')).toBeNull();
+    expect(screen.getByText('И. Рубин')).toBeInTheDocument();
+  });
 });

@@ -1,0 +1,30 @@
+.journal-shelf-heading {
+  margin: 0 0 0.75rem;
+  font-family: var(--reading-font-literata);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.journal-shelf-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journal-shelf-list li + li {
+  margin-top: 0.4rem;
+}
+
+.journal-spine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  font-family: var(--reading-font-literata);
+  font-size: 0.95rem;
+}
+
+.journal-spine-meta {
+  color: var(--color-text-secondary);
+}

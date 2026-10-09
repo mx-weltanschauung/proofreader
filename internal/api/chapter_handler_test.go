@@ -350,3 +350,113 @@ func TestChapterHandler_Update_TooLongTitleIsClientError(t *testing.T) {
 		t.Fatalf("Status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 }
+
+// chapterOneStore — ChapterStore на одну главу: GetByID отдаёт её, Update
+// запоминает записанное.
+type chapterOneStore struct {
+	ChapterStore
+	ch      *models.Chapter
+	tree    []*models.Chapter
+	updated *models.Chapter
+}
+
+func (s *chapterOneStore) GetByID(_ context.Context, _ int64) (*models.Chapter, error) {
+	c := *s.ch
+	return &c, nil
+}
+
+func (s *chapterOneStore) Update(_ context.Context, c *models.Chapter) error {
+	s.updated = c
+	return nil
+}
+
+func (s *chapterOneStore) ListByWorkHierarchical(context.Context, int64) ([]*models.Chapter, error) {
+	return s.tree, nil
+}
+
+func putChapter(h *ChapterHandler, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPut, "/", strings.NewReader(body))
+	req = mux.SetURLVars(req, map[string]string{"workId": "1", "id": "7"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+	return rec
+}
+
+func TestChapterUpdateKeepsArticleKindWhenAbsent(t *testing.T) {
+	kind := "рецензия"
+	store := &chapterOneStore{ch: &models.Chapter{ID: 7, WorkID: 1, ArticleKind: &kind}}
+	h := &ChapterHandler{chapterRepo: store}
+
+	if rec := putChapter(h, `{"title": "Т", "type": "chapter"}`); rec.Code != http.StatusOK {
+		t.Fatalf("без article_kind: %d %s", rec.Code, rec.Body.String())
+	}
+	if store.updated.ArticleKind == nil || *store.updated.ArticleKind != "рецензия" {
+		t.Fatalf("вид стёрт при отсутствии поля: %v", store.updated.ArticleKind)
+	}
+
+	if rec := putChapter(h, `{"title": "Т", "type": "chapter", "article_kind": ""}`); rec.Code != http.StatusOK {
+		t.Fatalf("с пустым article_kind: %d", rec.Code)
+	}
+	if store.updated.ArticleKind != nil {
+		t.Fatalf("пустая строка не сняла вид: %v", *store.updated.ArticleKind)
+	}
+
+	if rec := putChapter(h, `{"title": "Т", "type": "chapter", "article_kind": "article"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("неизвестный вид: %d", rec.Code)
+	}
+
+	if rec := putChapter(h, `{"title": "Т", "type": "chapter", "article_kind": "документ"}`); rec.Code != http.StatusOK ||
+		store.updated.ArticleKind == nil || *store.updated.ArticleKind != "документ" {
+		t.Fatalf("валидный вид не записан: %d", rec.Code)
+	}
+}
+
+type countingCredits struct {
+	calls   int
+	credits map[int64][]models.ArticleCredit
+}
+
+func (c *countingCredits) ListCreditsByWork(context.Context, int64) (map[int64][]models.ArticleCredit, error) {
+	c.calls++
+	return c.credits, nil
+}
+
+func listChapters(t *testing.T, tree []*models.Chapter, cl *countingCredits) []map[string]any {
+	t.Helper()
+	h := (&ChapterHandler{chapterRepo: &chapterOneStore{tree: tree}}).WithCredits(cl)
+	req := mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/", nil), map[string]string{"workId": "1"})
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
+	var out []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("тело не JSON: %v", err)
+	}
+	return out
+}
+
+func TestChapterListAttachesCredits(t *testing.T) {
+	kind := "статья"
+	cl := &countingCredits{credits: map[int64][]models.ArticleCredit{
+		2: {{Role: models.CreditRoleAuthor, Printed: "И. Рубин"}},
+	}}
+	out := listChapters(t, []*models.Chapter{
+		{ID: 1, WorkID: 1, Title: "Раздел", Children: []*models.Chapter{{ID: 2, WorkID: 1, Title: "С", ArticleKind: &kind}}},
+		{ID: 3, WorkID: 1, Title: "Просто глава"},
+	}, cl)
+	if cl.calls != 1 {
+		t.Fatalf("вызовов %d, ждали 1", cl.calls)
+	}
+	child := out[0]["children"].([]any)[0].(map[string]any)
+	if _, ok := child["credits"]; !ok {
+		t.Fatalf("у статьи нет credits: %v", child)
+	}
+	if _, ok := out[1]["credits"]; ok {
+		t.Fatalf("у главы без вида есть credits: %v", out[1])
+	}
+
+	cl2 := &countingCredits{}
+	listChapters(t, []*models.Chapter{{ID: 1, WorkID: 1, Title: "Глава"}}, cl2)
+	if cl2.calls != 0 {
+		t.Fatalf("дерево без статей: %d вызовов, ждали 0", cl2.calls)
+	}
+}

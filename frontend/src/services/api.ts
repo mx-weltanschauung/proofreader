@@ -2,6 +2,12 @@ import axios from 'axios';
 import { loginPathFor, joinPathFor } from '../utils/returnUrl';
 import { EMPTY_SCOPE, type SearchScope } from '../utils/searchScope';
 import type {
+  ArticleCredit,
+  CreditInput,
+  JournalDetail,
+  JournalSummary,
+  Person,
+  PersonDetail,
   AudioQueue,
   AudioQueueItem,
   AudioRecording,
@@ -265,6 +271,9 @@ export const pagesApi = {
 export const chaptersApi = {
   list: (workId: number) => api.get<Chapter[]>(`/works/${workId}/chapters`),
 
+  putCredits: (workId: number, chapterId: number, credits: CreditInput[]) =>
+    api.put<ArticleCredit[]>(`/works/${workId}/chapters/${chapterId}/credits`, credits),
+
   get: (workId: number, chapterId: number) =>
     api.get<Chapter>(`/works/${workId}/chapters/${chapterId}`),
 
@@ -443,6 +452,19 @@ export const editionsApi = {
 
 // Главная целиком — собрания со своими томами и работы вне собраний.
 // Списки внутри ответа хендлер выправляет сам, поэтому null тут не бывает.
+export const journalsApi = {
+  list: () => api.get<JournalSummary[]>('/journals'),
+  get: (slug: string) => api.get<JournalDetail>(`/journals/${encodeURIComponent(slug)}`),
+};
+
+export const personsApi = {
+  get: (slug: string) => api.get<PersonDetail>(`/persons/${encodeURIComponent(slug)}`),
+  search: (q: string) => api.get<Person[]>('/persons', { params: { q } }),
+  update: (id: number, data: { name: string; sort_key?: string }) =>
+    api.put<Person>(`/persons/${id}`, data),
+  merge: (id: number, from: number) => api.post<Person>(`/persons/${id}/merge`, { from }),
+};
+
 export const shelfApi = {
   get: () => api.get<Shelf>('/shelf'),
 };

@@ -82,7 +82,8 @@ export const VolumeOutline: React.FC<Props> = ({ work, chapters, pages, editable
     return [...found];
   }, [shownChapters]);
 
-  const showAuthors = authors.length > 0;
+  const hasCredits = useMemo(() => shownChapters.some((c) => c.credits?.length), [shownChapters]);
+  const showAuthors = authors.length > 0 || hasCredits;
   const showFacets = authors.length >= 2;
 
   const matchesAuthor = useCallback(

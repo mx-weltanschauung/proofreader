@@ -36,6 +36,8 @@ export interface SignatureInput {
   folios: (string | null)[];
   /** Номера тех же полос. */
   pageNumbers: number[];
+  /** Журнальные координаты: подпись идёт по-журнальному, без «т. N». */
+  issue?: { journal: string; year: number; label: string };
 }
 
 /**
@@ -77,8 +79,21 @@ export function citationSignature(i: SignatureInput): string {
   const head: string[] = [];
   const author = i.author.trim();
   const work = i.workTitle.trim();
-  if (author) head.push(`${author}.`);
+  // Подпись бывает уже с точкой на конце — инициал после фамилии у
+  // «Большевика» («Троицкий, А.»): вторая точка была бы опечаткой.
+  if (author) head.push(author.endsWith('.') ? author : `${author}.`);
   if (work) head.push(`${work} //`);
+
+  if (i.issue) {
+    const folio = folioLabel(i.folios, i.pageNumbers);
+    const tail = [
+      i.issue.journal.trim(),
+      String(i.issue.year),
+      `№ ${i.issue.label}`,
+      folio ? folio[0].toUpperCase() + folio.slice(1) : '',
+    ].filter(Boolean);
+    return [...head, `${tail.join('. ')}.`].join(' ');
+  }
 
   const source: string[] = [i.editionTitle.trim() || i.volumeTitle.trim()];
   if (i.volumeNumber !== undefined && i.volumeNumber !== null) {

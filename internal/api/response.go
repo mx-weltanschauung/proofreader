@@ -21,6 +21,8 @@ type workResponse struct {
 	*models.Work
 	FileURL  string         `json:"file_url,omitempty"`
 	Children []workResponse `json:"children,omitempty"`
+	// JournalIssue — только у работы номера журнала.
+	JournalIssue *models.WorkJournalIssue `json:"journal_issue,omitempty"`
 }
 
 // presign returns a presigned GET URL for key, or "" if key is empty or

@@ -20,6 +20,13 @@ import (
 type ShelfHandler struct {
 	editions ShelfEditions
 	works    ShelfWorks
+	journals ShelfJournals
+}
+
+// WithJournals подключает журналы; без них полка отдаёт пустой массив.
+func (h *ShelfHandler) WithJournals(j ShelfJournals) *ShelfHandler {
+	h.journals = j
+	return h
 }
 
 // NewShelfHandler creates a new shelf handler.
@@ -58,6 +65,19 @@ func (h *ShelfHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// клиент зовёт по этим спискам .map сразу.
 	if shelf.LooseWorks == nil {
 		shelf.LooseWorks = []models.ShelfWork{}
+	}
+	shelf.Journals = []models.JournalSummary{}
+	if h.journals != nil {
+		list, err := h.journals.List(ctx)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать журналы")
+			return
+		}
+		for _, j := range list {
+			if j.IssuesTotal > 0 {
+				shelf.Journals = append(shelf.Journals, j)
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

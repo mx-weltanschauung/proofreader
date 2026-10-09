@@ -6,7 +6,8 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { forgetRead, readRecent, type LastRead } from '../hooks/useReadingProgress';
 import { EditionSummary } from '../components/EditionSummary';
 import { VolumeShelf } from '../components/VolumeShelf';
-import type { ShelfEdition, ShelfWork, VolumeSummary } from '../types';
+import { JournalShelf } from '../components/JournalShelf';
+import type { JournalSummary, ShelfEdition, ShelfWork, VolumeSummary } from '../types';
 import { apiErrorMessage } from '../utils/apiError';
 import { splitEditionVolumes } from '../utils/editionStats';
 import { corpusSentence } from '../utils/corpusSentence';
@@ -36,6 +37,7 @@ function byHoldings(a: Shelf, b: Shelf): number {
 export const Dashboard: React.FC = () => {
   const [shelves, setShelves] = useState<ShelfEdition[]>([]);
   const [looseWorks, setLooseWorks] = useState<ShelfWork[]>([]);
+  const [journals, setJournals] = useState<JournalSummary[]>([]);
   const [recent, setRecent] = useState<LastRead[]>(() => readRecent());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -62,6 +64,7 @@ export const Dashboard: React.FC = () => {
         const { data } = await shelfApi.get();
         setShelves(data.editions);
         setLooseWorks(data.loose_works);
+        setJournals(data.journals ?? []);
       } catch (err: unknown) {
         setError(apiErrorMessage(err, 'Не удалось загрузить собрание'));
       } finally {
@@ -203,6 +206,8 @@ export const Dashboard: React.FC = () => {
         </section>
       ))}
 
+      <JournalShelf journals={journals} />
+
       {/* Корешок требует агрегатов, которых /works не отдаёт: подписи,
           состава и объёма тома. Нарисовать их нулями значило бы соврать про
           содержимое работы. Поэтому просто список. */}
@@ -224,7 +229,7 @@ export const Dashboard: React.FC = () => {
           Ссылки здесь нет: строка действий ниже не зависит от числа собраний
           и её «Добавить том» ведёт туда же — вести на /works/new дважды
           незачем. */}
-      {shelves.length === 0 && !error && (
+      {shelves.length === 0 && journals.length === 0 && !error && (
         <div className="empty-state">
           <p>Пока ни одного собрания.</p>
         </div>
