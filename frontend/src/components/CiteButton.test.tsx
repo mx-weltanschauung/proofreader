@@ -447,4 +447,33 @@ describe('CiteButton', () => {
       expect(written['text/plain']).toMatch(/^> Текст пятой полосы\.\n\nКапитал \/\/ /);
     });
   });
+
+  it('журнальный номер: подпись статьи «Автор. Название // Журнал. Год. № N. С.»', async () => {
+    const issueWork = {
+      ...work,
+      journal_issue: {
+        issue_id: 1,
+        journal_id: 1,
+        journal_slug: 'pzm',
+        journal_title: 'Под знаменем марксизма',
+        year: 1925,
+        label: '5—6',
+        months: '',
+      },
+    } as unknown as Work;
+    const root = surface();
+    renderButton(
+      { work: issueWork, workTitleFor: () => 'Название', authorFor: () => 'И. Рубин' },
+      { current: root },
+    );
+    selectWithin(root, 5);
+    await screen.findByRole('button', { name: 'Цитировать' });
+
+    fireEvent.click(screen.getByRole('button'));
+    await vi.waitFor(() => expect(Object.keys(written)).not.toHaveLength(0));
+
+    expect(written['text/plain']).toContain(
+      'И. Рубин. Название // Под знаменем марксизма. 1925. № 5—6. С.',
+    );
+  });
 });

@@ -66,6 +66,12 @@ const EditionHighlightsEdit = lazy(() =>
 const EditionDetail = lazy(() =>
   import('./pages/EditionDetail').then((m) => ({ default: m.EditionDetail })),
 );
+const AuthorDetail = lazy(() =>
+  import('./pages/AuthorDetail').then((m) => ({ default: m.AuthorDetail })),
+);
+const JournalDetail = lazy(() =>
+  import('./pages/JournalDetail').then((m) => ({ default: m.JournalDetail })),
+);
 const Search = lazy(() => import('./pages/Search').then((m) => ({ default: m.Search })));
 const ConceptList = lazy(() =>
   import('./pages/ConceptList').then((m) => ({ default: m.ConceptList })),
@@ -303,6 +309,8 @@ function App() {
                   }
                 />
                 <Route path="/editions/:id" element={<EditionDetail />} />
+                <Route path="/journals/:slug" element={<JournalDetail />} />
+                <Route path="/authors/:slug" element={<AuthorDetail />} />
                 <Route path="/concepts" element={<ConceptList />} />
                 <Route path="/concepts/:slug" element={<ConceptView />} />
                 <Route path="/collections" element={<CollectionList />} />

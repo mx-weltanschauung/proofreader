@@ -8,7 +8,7 @@ import { shelfApi } from '../services/api';
 // есть setState: роль в тестах подменяется прямо на нём, без vi.mock.
 import { useAuth } from '../hooks/useAuth';
 import { LEGACY_LAST_READ_KEY, RECENT_KEY, readRecent } from '../hooks/useReadingProgress';
-import type { Edition, ShelfEdition, ShelfWork, VolumeSummary } from '../types';
+import type { Edition, JournalSummary, ShelfEdition, ShelfWork, VolumeSummary } from '../types';
 
 vi.mock('../services/api', () => ({
   shelfApi: { get: vi.fn() },
@@ -73,9 +73,13 @@ function shelfOf(edition: Edition, volumes: VolumeSummary[]): ShelfEdition {
  * работы вне собраний. Один мок на всю страницу — столько же, сколько запросов
  * она делает.
  */
-function mockShelf(editions: ShelfEdition[], loose: ShelfWork[] = []) {
+function mockShelf(
+  editions: ShelfEdition[],
+  loose: ShelfWork[] = [],
+  journals: JournalSummary[] = [],
+) {
   vi.mocked(shelfApi.get).mockResolvedValue({
-    data: { editions, loose_works: loose },
+    data: { editions, loose_works: loose, journals },
   } as never);
 }
 
@@ -98,6 +102,32 @@ function renderDashboard() {
 }
 
 describe('Dashboard', () => {
+  it('показывает полку журналов со ссылкой на журнал', async () => {
+    mockShelf(
+      [],
+      [],
+      [
+        {
+          id: 1,
+          slug: 'pzm',
+          title: 'Под знаменем марксизма',
+          subtitle: '',
+          description: '',
+          created_at: '',
+          updated_at: '',
+          issues_total: 104,
+          year_from: 1922,
+          year_to: 1935,
+        },
+      ],
+    );
+    renderDashboard();
+    const link = await screen.findByRole('link', { name: /Под знаменем марксизма/ });
+    expect(link).toHaveAttribute('href', '/journals/pzm');
+    expect(screen.getByText(/1922—1935 · 104 номера/)).toBeInTheDocument();
+    expect(screen.queryByText(/Пока ни одного собрания/)).toBeNull();
+  });
+
   beforeEach(() => {
     localStorage.clear();
     mockShelf([shelfOf(EDITION, [volume(1, 1), volume(3, 3), volume(9, 9)])]);

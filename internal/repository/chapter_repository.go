@@ -24,7 +24,7 @@ func NewChapterRepository(pool *pgxpool.Pool) *ChapterRepository {
 
 // chapterColumns — колонки главы в порядке, который читает scanChapter.
 const chapterColumns = `id, work_id, parent_id, title, type, order_number,
-	start_page, end_page, is_apparatus, created_at, updated_at`
+	start_page, end_page, is_apparatus, article_kind, created_at, updated_at`
 
 // scanChapter — единственный разбор строки главы. Заведён вместо пяти копий
 // подряд: слаг считается здесь, и любая забытая копия оставила бы главу без
@@ -33,7 +33,7 @@ func scanChapter(row rowScanner) (*models.Chapter, error) {
 	var c models.Chapter
 	err := row.Scan(
 		&c.ID, &c.WorkID, &c.ParentID, &c.Title, &c.Type, &c.OrderNumber,
-		&c.StartPage, &c.EndPage, &c.IsApparatus, &c.CreatedAt, &c.UpdatedAt,
+		&c.StartPage, &c.EndPage, &c.IsApparatus, &c.ArticleKind, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -67,14 +67,14 @@ func (r *ChapterRepository) Create(ctx context.Context, chapter *models.Chapter)
 	}
 
 	query := `
-		INSERT INTO chapters (work_id, parent_id, title, type, order_number, start_page, end_page, is_apparatus)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO chapters (work_id, parent_id, title, type, order_number, start_page, end_page, is_apparatus, article_kind)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, created_at, updated_at
 	`
 
 	err := r.pool.QueryRow(
 		ctx, query,
-		chapter.WorkID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus,
+		chapter.WorkID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus, chapter.ArticleKind,
 	).Scan(&chapter.ID, &chapter.CreatedAt, &chapter.UpdatedAt)
 
 	if err != nil {
@@ -232,14 +232,14 @@ func (r *ChapterRepository) GetChildren(ctx context.Context, parentID int64) ([]
 func (r *ChapterRepository) Update(ctx context.Context, chapter *models.Chapter) error {
 	query := `
 		UPDATE chapters
-		SET parent_id = $2, title = $3, type = $4, order_number = $5, start_page = $6, end_page = $7, is_apparatus = $8
+		SET parent_id = $2, title = $3, type = $4, order_number = $5, start_page = $6, end_page = $7, is_apparatus = $8, article_kind = $9
 		WHERE id = $1
 		RETURNING updated_at
 	`
 
 	err := r.pool.QueryRow(
 		ctx, query,
-		chapter.ID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus,
+		chapter.ID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus, chapter.ArticleKind,
 	).Scan(&chapter.UpdatedAt)
 
 	if err != nil {

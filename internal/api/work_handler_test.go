@@ -328,6 +328,7 @@ type fakeWorkRepo struct {
 	deleted     []int64
 	created     *models.Work
 	createErr   error
+	role        string
 }
 
 func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int64) ([]*models.Work, error) {
@@ -335,7 +336,7 @@ func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int6
 }
 
 func (f *fakeWorkRepo) GetByID(_ context.Context, id int64) (*models.Work, error) {
-	return &models.Work{ID: id}, nil
+	return &models.Work{ID: id, Role: f.role}, nil
 }
 func (f *fakeWorkRepo) Create(_ context.Context, w *models.Work) error {
 	f.created = w
@@ -740,5 +741,44 @@ func TestWorkHandler_Create_NegativeIDIsBadRequest(t *testing.T) {
 	rec := createWorkAsEditor(t, repo, `{"id":-5,"title":"Том","status":"draft"}`)
 	if rec.Code != http.StatusBadRequest || repo.created != nil {
 		t.Fatalf("код %d, вставка %+v; ждали 400 без вставки", rec.Code, repo.created)
+	}
+}
+
+type fakeIssueLookup struct {
+	v     *models.WorkJournalIssue
+	calls int
+}
+
+func (f *fakeIssueLookup) IssueForWork(context.Context, int64) (*models.WorkJournalIssue, error) {
+	f.calls++
+	return f.v, nil
+}
+
+func getWork(t *testing.T, role string, lookup *fakeIssueLookup) string {
+	t.Helper()
+	handler := (&WorkHandler{workRepo: &fakeWorkRepo{role: role}, renderer: markdown.NewRenderer(),
+		store: storage.NewMemoryStorage(), presignTTL: time.Minute,
+		fileProcessor: fileprocessor.NewProcessor()}).WithJournalIssues(lookup)
+	req := httptest.NewRequest(http.MethodGet, "/api/works/7", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": "7"})
+	rec := httptest.NewRecorder()
+	handler.Get(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Status = %d", rec.Code)
+	}
+	return rec.Body.String()
+}
+
+func TestWorkGetCarriesJournalIssue(t *testing.T) {
+	lookup := &fakeIssueLookup{v: &models.WorkJournalIssue{IssueID: 3, JournalSlug: "pzm",
+		JournalTitle: "Под знаменем марксизма", Year: 1925, Label: "5—6"}}
+	body := getWork(t, models.WorkRoleJournalIssue, lookup)
+	if !strings.Contains(body, `"journal_issue":{"issue_id":3`) || !strings.Contains(body, `"journal_slug":"pzm"`) {
+		t.Fatalf("нет журнальных координат: %s", body)
+	}
+	vol := &fakeIssueLookup{v: lookup.v}
+	body = getWork(t, models.WorkRoleVolume, vol)
+	if vol.calls != 0 || strings.Contains(body, "journal_issue") {
+		t.Fatalf("у тома: вызовов %d, тело %s", vol.calls, body)
 	}
 }

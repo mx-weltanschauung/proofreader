@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"proofreader/internal/models"
@@ -152,7 +153,7 @@ func TestShelfHandlerEmptyListsAreArrays(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("код %d, ожидался 200", rec.Code)
 	}
-	if body := rec.Body.String(); body != `{"editions":[],"loose_works":[]}`+"\n" {
+	if body := rec.Body.String(); body != `{"editions":[],"loose_works":[],"journals":[]}`+"\n" {
 		t.Errorf("тело = %q, ожидались пустые списки", body)
 	}
 }
@@ -190,5 +191,30 @@ func TestShelfHandlerDropsVolumeOfUnknownEdition(t *testing.T) {
 	}
 	if len(got.Editions) != 1 || len(got.Editions[0].Volumes) != 0 {
 		t.Errorf("полки = %+v, ожидалась одна пустая", got.Editions)
+	}
+}
+
+type fakeShelfJournals struct{ list []models.JournalSummary }
+
+func (f fakeShelfJournals) List(context.Context) ([]models.JournalSummary, error) { return f.list, nil }
+
+func TestShelfSkipsJournalsWithoutIssues(t *testing.T) {
+	h := NewShelfHandler(&fakeShelfEditions{}, &fakeShelfWorks{}).WithJournals(fakeShelfJournals{list: []models.JournalSummary{
+		{Journal: models.Journal{ID: 1, Slug: "pzm", Title: "Под знаменем марксизма"}, IssuesTotal: 104},
+		{Journal: models.Journal{ID: 2, Slug: "empty", Title: "Пустой"}, IssuesTotal: 0},
+	}})
+	var shelf models.Shelf
+	if err := json.Unmarshal(getShelf(t, h).Body.Bytes(), &shelf); err != nil {
+		t.Fatal(err)
+	}
+	if len(shelf.Journals) != 1 || shelf.Journals[0].Slug != "pzm" {
+		t.Fatalf("журналы полки: %+v", shelf.Journals)
+	}
+}
+
+func TestShelfJournalsIsEmptyArrayWithoutStore(t *testing.T) {
+	rec := getShelf(t, NewShelfHandler(&fakeShelfEditions{}, &fakeShelfWorks{}))
+	if !strings.Contains(rec.Body.String(), `"journals":[]`) {
+		t.Fatalf("journals не пустой массив: %s", rec.Body.String())
 	}
 }

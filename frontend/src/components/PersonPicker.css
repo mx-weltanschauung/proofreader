@@ -1,0 +1,24 @@
+.person-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.person-picker-current a {
+  color: var(--color-link);
+}
+
+.person-picker-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.person-picker-empty {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}

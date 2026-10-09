@@ -188,4 +188,34 @@ describe('VolumeMasthead', () => {
       expect((await shareFrom(share)).title).toBe('К. Маркс и Ф. Энгельс. Сочинения. Том 16');
     });
   });
+
+  it('номер журнала: eyebrow ведёт в журнал, «т.» и собрания нет', () => {
+    setup({
+      work: {
+        id: 90,
+        edition_id: 7,
+        title: 'Под знаменем марксизма, 1925, № 5—6',
+        page_offset: 0,
+        journal_issue: {
+          issue_id: 1,
+          journal_id: 2,
+          journal_slug: 'pzm',
+          journal_title: 'Под знаменем марксизма',
+          year: 1925,
+          label: '5—6',
+          months: '',
+        },
+      } as Work,
+      edition: null,
+    });
+    expect(screen.getByRole('link', { name: 'Под знаменем марксизма' })).toHaveAttribute(
+      'href',
+      '/journals/pzm',
+    );
+    expect(screen.getByText(/Журналы/)).toHaveTextContent(
+      'Журналы · Под знаменем марксизма · 1925',
+    );
+    expect(screen.queryByText(/т\./)).toBeNull();
+    expect(document.querySelector('a[href^="/editions"]')).toBeNull();
+  });
 });

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ type ChapterHandler struct {
 	renderer    *markdown.Renderer
 	cache       *RangeCache
 	recordings  RecordingCounter
+	credits     CreditLister
 }
 
 // RecordingCounter — сколько записей человека у главы и её подглав.
@@ -34,6 +36,42 @@ type RecordingCounter interface {
 func (h *ChapterHandler) WithRecordings(c RecordingCounter) *ChapterHandler {
 	h.recordings = c
 	return h
+}
+
+// WithCredits подключает подписи статей журнала к ответам глав.
+func (h *ChapterHandler) WithCredits(c CreditLister) *ChapterHandler {
+	h.credits = c
+	return h
+}
+
+// attachCredits раскладывает подписи по статьям дерева. Запрос в базу —
+// только если в дереве есть статья: у томов собраний его нет вовсе.
+func (h *ChapterHandler) attachCredits(ctx context.Context, workID int64, tree []*models.Chapter) {
+	if h.credits == nil || !hasArticle(tree) {
+		return
+	}
+	m, err := h.credits.ListCreditsByWork(ctx, workID)
+	if err != nil {
+		log.Printf("credits for work %d: %v", workID, err)
+		return
+	}
+	var walk func([]*models.Chapter)
+	walk = func(cs []*models.Chapter) {
+		for _, c := range cs {
+			c.Credits = m[c.ID]
+			walk(c.Children)
+		}
+	}
+	walk(tree)
+}
+
+func hasArticle(cs []*models.Chapter) bool {
+	for _, c := range cs {
+		if c.ArticleKind != nil || hasArticle(c.Children) {
+			return true
+		}
+	}
+	return false
 }
 
 // NewChapterHandler creates a new chapter handler
@@ -63,6 +101,8 @@ type CreateChapterRequest struct {
 	// (по заголовку и родителю), непустое значение побеждает. Через него и
 	// правится спорный случай вроде «Указаний читателю».
 	IsApparatus *bool `json:"is_apparatus,omitempty"`
+	// ArticleKind — вид статьи журнала: nil — не трогать, "" — снять.
+	ArticleKind *string `json:"article_kind,omitempty"`
 }
 
 // MoveChapterRequest represents a request to move/reorder a chapter
@@ -86,6 +126,8 @@ func (h *ChapterHandler) List(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to retrieve chapters", http.StatusInternalServerError)
 		return
 	}
+
+	h.attachCredits(ctx, workID, chapters)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chapters)
@@ -146,6 +188,17 @@ func (h *ChapterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if req.IsApparatus != nil {
 		chapter.IsApparatus = *req.IsApparatus
 	}
+	if req.ArticleKind != nil {
+		if *req.ArticleKind == "" {
+			chapter.ArticleKind = nil
+		} else if !models.ValidArticleKind(*req.ArticleKind) {
+			writeError(w, http.StatusBadRequest, "Неизвестный вид статьи")
+			return
+		} else {
+			k := *req.ArticleKind
+			chapter.ArticleKind = &k
+		}
+	}
 
 	ctx := context.Background()
 	if err := h.chapterRepo.Create(ctx, chapter); err != nil {
@@ -173,6 +226,7 @@ func (h *ChapterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
 		return
 	}
+	h.attachCredits(ctx, chapter.WorkID, []*models.Chapter{chapter})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chapter)
@@ -216,6 +270,17 @@ func (h *ChapterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	// сделанную человеком.
 	if req.IsApparatus != nil {
 		chapter.IsApparatus = *req.IsApparatus
+	}
+	if req.ArticleKind != nil {
+		if *req.ArticleKind == "" {
+			chapter.ArticleKind = nil
+		} else if !models.ValidArticleKind(*req.ArticleKind) {
+			writeError(w, http.StatusBadRequest, "Неизвестный вид статьи")
+			return
+		} else {
+			k := *req.ArticleKind
+			chapter.ArticleKind = &k
+		}
 	}
 
 	if err := h.chapterRepo.Update(ctx, chapter); err != nil {

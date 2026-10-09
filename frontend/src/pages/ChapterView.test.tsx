@@ -97,6 +97,96 @@ describe('ChapterView page markers', () => {
   // и берётся она из контекстного меню браузера («копировать адрес ссылки»).
   // В атрибуте стоит голый фрагмент: до полного адреса главы его разворачивает
   // сам браузер — и в строке состояния, и в скопированном адресе.
+  // Финальная рецензия: рубрика номера журнала (глава без вида статьи)
+  // носила значок «глава» — словарь тома, а не журнала.
+  it('рубрика номера журнала подписана «рубрика», а не «глава»', async () => {
+    vi.spyOn(worksApi, 'get').mockImplementation(() =>
+      ok({
+        ...WORK,
+        journal_issue: {
+          issue_id: 1,
+          journal_id: 1,
+          journal_slug: 'pzm',
+          journal_title: 'Под знаменем марксизма',
+          year: 1928,
+          label: '12',
+          months: '',
+        },
+      } as Work),
+    );
+    renderChapter();
+    await screen.findByRole('link', { name: 'Страница 245' });
+    expect(document.querySelector('.chapter-type-badge')?.textContent).toBe('рубрика');
+  });
+
+  it('«Ссылка» из рубрики номера подписана статьёй полосы, а не пустотой', async () => {
+    const issueWork = {
+      ...WORK,
+      journal_issue: {
+        issue_id: 1,
+        journal_id: 1,
+        journal_slug: 'pzm',
+        journal_title: 'Под знаменем марксизма',
+        year: 1928,
+        label: '12',
+        months: '',
+      },
+    } as Work;
+    const review = {
+      id: 128,
+      work_id: 3,
+      parent_id: 127,
+      title: 'Рецензия',
+      type: 'chapter',
+      order_number: 1,
+      start_page: 245,
+      end_page: 246,
+      is_apparatus: false,
+      article_kind: 'рецензия',
+      credits: [{ position: 1, role: 'author', printed: 'А. Деборин' }],
+    } as Chapter;
+    vi.spyOn(worksApi, 'get').mockImplementation(() => ok(issueWork));
+    vi.spyOn(chaptersApi, 'list').mockImplementation(() =>
+      ok([{ ...CHAPTER, order_number: 1, is_apparatus: false, children: [review] } as Chapter]),
+    );
+    visiblePageMock.mockReturnValue(245);
+    const written: Record<string, string> = {};
+    class ItemStub {
+      constructor(public parts: Record<string, Blob>) {}
+    }
+    vi.stubGlobal('ClipboardItem', ItemStub);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        write: vi.fn(async (items: ItemStub[]) => {
+          for (const [type, blob] of Object.entries(items[0].parts)) {
+            written[type] = await blob.text();
+          }
+        }),
+      },
+    });
+
+    renderChapter();
+    await screen.findByRole('link', { name: 'Страница 245' });
+    // Дерево глав приходит своим запросом: ждём подглаву в шторке.
+    await waitFor(() => expect(chaptersApi.list).toHaveBeenCalled());
+    await screen.findByRole('button', { name: /оглавление/i });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ссылка' }));
+    await waitFor(() => expect(written['text/plain']).toBeDefined());
+    expect(written['text/plain']).toMatch(
+      /^А\. Деборин\. Рецензия \/\/ Под знаменем марксизма\. 1928\. № 12\. С\. 245\.\n/,
+    );
+    visiblePageMock.mockReturnValue(null);
+    vi.unstubAllGlobals();
+  });
+
+  it('глава тома подписана «глава»', async () => {
+    renderChapter();
+    await screen.findByRole('link', { name: 'Страница 245' });
+    expect(document.querySelector('.chapter-type-badge')?.textContent).toBe('глава');
+  });
+
   it('renders one marker per page, anchoring to that page', async () => {
     renderChapter();
     const marker = await screen.findByRole('link', { name: 'Страница 245' });
@@ -1651,5 +1741,40 @@ describe('ChapterView page jump', () => {
     await jump('999');
     expect(await screen.findByRole('alert')).toHaveTextContent('В томе нет страницы 999');
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/works\/4\/chapters\/229$/);
+  });
+});
+
+describe('ChapterView: статья журнала', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() =>
+      ok({
+        ...CHAPTER,
+        article_kind: 'рецензия',
+        credits: [
+          {
+            position: 1,
+            role: 'author',
+            printed: 'И. Рубин',
+            person_id: 1,
+            person_slug: 'i-rubin',
+          },
+        ],
+      } as Chapter),
+    );
+    vi.spyOn(worksApi, 'get').mockImplementation(() => ok(WORK));
+    vi.spyOn(chaptersApi, 'listPages').mockImplementation(() =>
+      ok({ pages: PAGES, footnotes_html: '' }),
+    );
+    vi.spyOn(chaptersApi, 'list').mockImplementation(() => ok([] as Chapter[]));
+  });
+
+  it('над заголовком — автор ссылкой, в бейдже — вид статьи', async () => {
+    renderChapter();
+    expect(await screen.findByRole('link', { name: 'И. Рубин' })).toHaveAttribute(
+      'href',
+      '/authors/i-rubin',
+    );
+    expect(screen.getByText('рецензия')).toHaveClass('chapter-type-badge');
   });
 });

@@ -26,6 +26,7 @@ import { CiteButton } from '../components/CiteButton';
 import { QuoteNotice } from '../components/QuoteNotice';
 import { apiErrorMessage } from '../utils/apiError';
 import { printedFolio } from '../utils/folio';
+import { citationPlaceFromLevels } from '../utils/citationPlace';
 import { pageNeighbours } from '../utils/pageNeighbours';
 import { pageStatusLabel } from '../utils/pageStatusLabel';
 import { russianDate } from '../utils/russianDate';
@@ -202,12 +203,14 @@ export const PageView: React.FC = () => {
         </Link>
         <div className="page-view-header-actions">
           <PagePager work={work} neighbours={neighbours} variant="top" />
-          {/* Неаппаратная глава верхнего уровня, накрывающая полосу, — тот же
-              выбор подписи, что и в потоковом чтении (ChapterView/WorkRead). */}
+          {/* Произведение и автор подписи — тот же помощник, что и в
+              потоковом чтении (ChapterView/WorkRead): у тома неаппаратная
+              глава верхнего уровня, у номера журнала — статья полосы. */}
           <CiteButton
             contentRef={contentRef}
             work={work}
-            workTitleFor={() => chapterLevels[0]?.find((c) => !c.is_apparatus)?.title ?? ''}
+            workTitleFor={() => citationPlaceFromLevels(work, chapterLevels).workTitle}
+            authorFor={() => citationPlaceFromLevels(work, chapterLevels).author}
             // Со страницы со сканом цитата ведёт на полосу: сюда цитирующий
             // и приходит сверить текст со снимком печатной страницы, а скан
             // лежит только здесь (решение 15 спеки).

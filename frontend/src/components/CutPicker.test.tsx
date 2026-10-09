@@ -303,6 +303,67 @@ describe('CutPicker', () => {
     expect(title).not.toContain('.. ');
   });
 
+  // Финальная рецензия: подборщик не передавал координаты номера, и вклейка
+  // из журнала подписывалась «томом» без автора статьи.
+  it('вклейка из номера журнала подписана статьёй и номером', async () => {
+    mockedWorkGet.mockImplementation((() =>
+      ok({
+        ...WORK,
+        edition_title: '',
+        volume_number: undefined,
+        journal_issue: {
+          issue_id: 1,
+          journal_id: 1,
+          journal_slug: 'pzm',
+          journal_title: 'Под знаменем марксизма',
+          year: 1928,
+          label: '12',
+          months: '',
+        },
+      })) as never);
+    mockedChaptersList.mockResolvedValue(
+      ok([
+        {
+          id: 20,
+          work_id: 5,
+          title: 'Критика и библиография',
+          type: 'chapter',
+          order_number: 1,
+          start_page: 10,
+          end_page: 14,
+          is_apparatus: false,
+          created_at: '',
+          updated_at: '',
+          children: [
+            {
+              id: 21,
+              work_id: 5,
+              title: 'Рецензия',
+              type: 'chapter',
+              order_number: 1,
+              start_page: 11,
+              end_page: 13,
+              is_apparatus: false,
+              article_kind: 'рецензия',
+              credits: [{ position: 1, role: 'author', printed: 'И. Рубин' }],
+              created_at: '',
+              updated_at: '',
+            },
+          ],
+        },
+      ]) as never,
+    );
+    const createCut = vi.fn().mockResolvedValue({ data: { id: 45, status: 'ok' } });
+    await renderPicker({ createCut });
+    await userEvent.click(screen.getAllByRole('button', { name: /начало вклейки/i })[0]);
+    await userEvent.click(screen.getAllByRole('button', { name: /конец вклейки/i })[0]);
+    await userEvent.click(screen.getByRole('button', { name: 'Вклеить' }));
+    await waitFor(() => expect(createCut).toHaveBeenCalled());
+    expect(createCut.mock.calls[0][1].source_title).toBe(
+      'И. Рубин. Рецензия // Под знаменем марксизма. 1928. № 12. С. 12.',
+    );
+  });
+
   it('без отмеченных краёв показывает подсказку и не шлёт запрос', async () => {
     await renderPicker();
 

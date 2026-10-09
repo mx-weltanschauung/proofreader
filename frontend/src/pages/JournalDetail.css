@@ -1,0 +1,119 @@
+.journal-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+/* Классы состояний объявлены здесь: страница грузится лениво, а стиль
+   глобальный — полагаться на чужой файл нельзя. */
+.back-link {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--color-link);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.back-link:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+  font-size: 16px;
+}
+
+.error-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-error-ink);
+}
+
+.journal-header {
+  margin-bottom: 1.5rem;
+}
+
+.journal-title {
+  margin: 0 0 0.25rem;
+}
+
+.journal-subtitle,
+.journal-description {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-secondary);
+}
+
+.journal-years,
+.journal-issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.journal-year {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 0.5rem 1rem;
+  align-items: start;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.journal-year-label {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 44px;
+}
+
+.journal-issues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+
+.journal-issue {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.journal-issue-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-link);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.journal-issue-link:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+.journal-issue-months {
+  margin-top: -0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 600px) {
+  .journal-year {
+    grid-template-columns: 1fr;
+  }
+
+  .journal-year-label {
+    line-height: 1.4;
+  }
+}

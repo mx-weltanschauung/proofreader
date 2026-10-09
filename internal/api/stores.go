@@ -146,6 +146,16 @@ type ShelfEditions interface {
 	ListAllWorkSummaries(ctx context.Context) ([]*models.VolumeSummary, error)
 }
 
+// ShelfJournals — журналы для полки главной.
+type ShelfJournals interface {
+	List(ctx context.Context) ([]models.JournalSummary, error)
+}
+
+// JournalIssueLookup — журнальные координаты работы-номера.
+type JournalIssueLookup interface {
+	IssueForWork(ctx context.Context, workID int64) (*models.WorkJournalIssue, error)
+}
+
 // ShelfWorks — работы, не приписанные ни к одному собранию.
 type ShelfWorks interface {
 	ListWithoutEdition(ctx context.Context) ([]models.ShelfWork, error)
@@ -245,4 +255,37 @@ type SearchStore interface {
 	Terms(ctx context.Context, q models.SearchQuery) ([]string, error)
 	Search(ctx context.Context, q models.SearchQuery) (*models.SearchResult, error)
 	SearchPages(ctx context.Context, q models.SearchQuery, workID int64, chapterIDs []int64, limit, offset int) (*models.SearchPagesResult, error)
+}
+
+// JournalStore — журналы и номера (repository.JournalRepository).
+type JournalStore interface {
+	List(ctx context.Context) ([]models.JournalSummary, error)
+	GetByID(ctx context.Context, id int64) (*models.Journal, error)
+	Detail(ctx context.Context, slug string) (*models.JournalDetail, error)
+	Create(ctx context.Context, j *models.Journal) error
+	Update(ctx context.Context, j *models.Journal) error
+	CreateIssue(ctx context.Context, issue *models.JournalIssue, work *models.Work) error
+	GetIssue(ctx context.Context, id int64) (*models.JournalIssue, error)
+	UpdateIssue(ctx context.Context, issue *models.JournalIssue, title string) error
+}
+
+// PersonStore — люди (repository.PersonRepository).
+type PersonStore interface {
+	Create(ctx context.Context, p *models.Person) error
+	Update(ctx context.Context, p *models.Person) error
+	GetByID(ctx context.Context, id int64) (*models.Person, error)
+	Detail(ctx context.Context, slug string) (*models.PersonDetail, error)
+	Search(ctx context.Context, q string, limit int) ([]models.Person, error)
+	Merge(ctx context.Context, intoID, fromID int64) error
+}
+
+// CreditLister — подписи статей работы.
+type CreditLister interface {
+	ListCreditsByWork(ctx context.Context, workID int64) (map[int64][]models.ArticleCredit, error)
+}
+
+// CreditStore — подписи статей: чтение и замена.
+type CreditStore interface {
+	CreditLister
+	ReplaceCredits(ctx context.Context, chapterID int64, credits []models.CreditInput) error
 }

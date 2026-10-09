@@ -8,7 +8,7 @@ import { worksLevel } from '../utils/volumeOutline';
 import { DownloadMenu } from './DownloadMenu';
 import { ShareButton } from './ShareButton';
 import { FeatureHint } from './FeatureHint';
-import { chapterPath, editionPath, pagePath, workPath } from '../utils/paths';
+import { chapterPath, editionPath, journalPath, pagePath, workPath } from '../utils/paths';
 import './VolumeMasthead.css';
 
 interface Props {
@@ -54,7 +54,17 @@ export const VolumeMasthead: React.FC<Props> = ({
 
   return (
     <header className="vol-masthead">
-      {work.edition_id !== undefined && work.edition_id !== null && (
+      {work.journal_issue && (
+        <p className="vol-masthead-eyebrow">
+          Журналы ·{' '}
+          <Link to={journalPath({ slug: work.journal_issue.journal_slug })}>
+            {work.journal_issue.journal_title}
+          </Link>{' '}
+          · {work.journal_issue.year}
+        </p>
+      )}
+
+      {!work.journal_issue && work.edition_id !== undefined && work.edition_id !== null && (
         <p className="vol-masthead-eyebrow">
           <Link to={editionPath({ id: work.edition_id, url_slug: edition?.url_slug })}>
             {edition ? `${edition.title} · ${volumeCoordinates(work)}` : volumeCoordinates(work)}

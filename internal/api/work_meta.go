@@ -82,6 +82,7 @@ var (
 		models.WorkRoleVolume:             true,
 		models.WorkRoleFrontMatter:        true,
 		models.WorkRoleEditionFrontMatter: true,
+		models.WorkRoleJournalIssue:       true,
 	}
 	validNumberings = map[string]bool{models.NumberingArabic: true, models.NumberingRoman: true}
 )
@@ -152,8 +153,20 @@ func applyWorkMeta(w *models.Work, m workMeta) error {
 	if numbering == "" {
 		numbering = models.NumberingArabic
 	}
+	// Роль номера журнала ставит только POST /journals/{id}/issues — вместе со
+	// строкой journal_issues. Общая правка работы её не ставит и не снимает:
+	// том, ставший «номером», остался бы без строки номера (сирота нигде не
+	// виден), а номер, ставший томом, при живой строке journal_issues уехал бы
+	// в каталог, OPDS и карту сайта.
+	stored := w.Role
+	if stored == "" {
+		stored = models.WorkRoleVolume
+	}
+	if (stored == models.WorkRoleJournalIssue) != (role == models.WorkRoleJournalIssue) {
+		return fmt.Errorf("role journal_issue is set only by POST /journals/{id}/issues and cannot be changed, got %q -> %q", stored, role)
+	}
 	if !validRoles[role] {
-		return fmt.Errorf("role must be volume, front_matter or edition_front_matter, got %q", role)
+		return fmt.Errorf("role must be volume, front_matter, edition_front_matter or journal_issue, got %q", role)
 	}
 	if !validNumberings[numbering] {
 		return fmt.Errorf("numbering_style must be arabic or roman, got %q", numbering)
@@ -175,6 +188,14 @@ func applyWorkMeta(w *models.Work, m workMeta) error {
 		}
 		if w.VolumeNumber != nil {
 			return fmt.Errorf("edition_front_matter work cannot have volume_number")
+		}
+	case models.WorkRoleJournalIssue:
+		// Зеркало works_parent_role_check: номер без родителя и без издания.
+		if parent != nil {
+			return fmt.Errorf("journal_issue work cannot have parent_work_id")
+		}
+		if w.EditionID != nil || w.VolumeNumber != nil {
+			return fmt.Errorf("journal_issue work cannot belong to an edition")
 		}
 	default:
 		if parent == nil {

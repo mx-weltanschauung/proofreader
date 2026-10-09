@@ -13,12 +13,19 @@ import {
   seamMarker,
 } from '../utils/citation';
 import { printedFolio } from '../utils/folio';
+import { issueOf } from '../utils/citationPlace';
 import './CiteButton.css';
 
 export interface CitationContext {
   work: Work;
-  /** Заголовок неаппаратной главы верхнего уровня, накрывающей полосу. */
+  /** Произведение подписи на полосе — `citationPlace(...).workTitle`. */
   workTitleFor: (pageNumber: number) => string;
+  /**
+   * Автор подписи на полосе — `citationPlace(...).author`; без него —
+   * `work.author`. У номера журнала обязателен по смыслу: `work.author` там
+   * пуст, автор — подпись статьи.
+   */
+  authorFor?: (pageNumber: number) => string;
   /**
    * Адрес места в тексте — для ТОЙ поверхности, с которой снимают цитату:
    * путь с готовой строкой параметров (`?quote=…&to=…`) и, если поверхность
@@ -87,6 +94,7 @@ function hasSelectionInside(root: HTMLElement | null): boolean {
 export const CiteButton: React.FC<CiteButtonProps> = ({
   work,
   workTitleFor,
+  authorFor,
   quoteHref,
   contentRef,
   visiblePage,
@@ -147,7 +155,7 @@ export const CiteButton: React.FC<CiteButtonProps> = ({
     // важное 1: дефект мой).
     const ends = span.length > 1 ? [span[0], span[span.length - 1]] : [span[0]];
     const signature = citationSignature({
-      author: work.author ?? '',
+      author: authorFor ? authorFor(pages[0]) : (work.author ?? ''),
       workTitle: workTitleFor(pages[0]),
       editionTitle: work.edition_title ?? '',
       volumeTitle: work.title,
@@ -155,6 +163,7 @@ export const CiteButton: React.FC<CiteButtonProps> = ({
       volumePart: work.volume_part,
       folios: ends.map((n) => printedFolio(n, work)),
       pageNumbers: ends,
+      issue: issueOf(work),
     });
 
     // Адрес приклеивают грани буфера, а не подпись: в html-грани он обязан

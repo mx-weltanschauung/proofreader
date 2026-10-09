@@ -337,3 +337,53 @@ func TestApplyWorkMeta_RejectsOverlongDescription(t *testing.T) {
 		t.Errorf("отвергнутый запрос изменил работу: Description = %q", w.Description)
 	}
 }
+
+func TestApplyWorkMeta_JournalIssueRole(t *testing.T) {
+	role := models.WorkRoleJournalIssue
+	meta := workMeta{Role: &role, HasRole: true}
+
+	// Зеркало works_parent_role_check у самого номера.
+	parent := int64(7)
+	w := &models.Work{ID: 42, Role: models.WorkRoleJournalIssue}
+	if err := applyWorkMeta(w, workMeta{Role: &role, HasRole: true, ParentWorkID: &parent, HasParentWorkID: true}); err == nil {
+		t.Fatal("journal_issue с parent_work_id принят")
+	}
+	ed := int64(3)
+	w = &models.Work{ID: 42, Role: models.WorkRoleJournalIssue, EditionID: &ed}
+	if err := applyWorkMeta(w, meta); err == nil {
+		t.Fatal("journal_issue с edition_id принят")
+	}
+	w = &models.Work{ID: 42, Role: models.WorkRoleJournalIssue}
+	if err := applyWorkMeta(w, meta); err != nil {
+		t.Fatalf("номер с той же ролью отвергнут: %v", err)
+	}
+	// Правка номера без ключа роли роль не трогает.
+	if err := applyWorkMeta(w, workMeta{}); err != nil || w.Role != models.WorkRoleJournalIssue {
+		t.Fatalf("правка номера без роли: %v, роль %q", err, w.Role)
+	}
+}
+
+// Финальная рецензия: роль номера ставит и снимает только создание номера.
+func TestApplyWorkMeta_JournalIssueRoleCannotChange(t *testing.T) {
+	issue := models.WorkRoleJournalIssue
+	volume := models.WorkRoleVolume
+	for _, tc := range []struct {
+		name   string
+		stored string
+		meta   workMeta
+	}{
+		{"том -> номер", models.WorkRoleVolume, workMeta{Role: &issue, HasRole: true}},
+		{"работа без роли -> номер", "", workMeta{Role: &issue, HasRole: true}},
+		{"номер -> том", models.WorkRoleJournalIssue, workMeta{Role: &volume, HasRole: true}},
+		{"номер -> null (том)", models.WorkRoleJournalIssue, workMeta{HasRole: true}},
+	} {
+		w := &models.Work{ID: 42, Role: tc.stored}
+		err := applyWorkMeta(w, tc.meta)
+		if err == nil || !strings.Contains(err.Error(), "journal_issue") {
+			t.Errorf("%s: принято (%v)", tc.name, err)
+		}
+		if w.Role != tc.stored {
+			t.Errorf("%s: отвергнутый запрос изменил роль: %q", tc.name, w.Role)
+		}
+	}
+}

@@ -50,7 +50,105 @@ export interface AuthResponse {
   refresh_token: string;
 }
 
+export const ARTICLE_KINDS = [
+  'статья',
+  'рецензия',
+  'документ',
+  'от_редакции',
+  'выступление',
+  'прочее',
+] as const;
+export type ArticleKind = (typeof ARTICLE_KINDS)[number];
+
+export interface ArticleCredit {
+  position: number;
+  role: 'author' | 'translator';
+  printed: string;
+  person_id?: number | null;
+  person_slug?: string;
+}
+
+export interface CreditInput {
+  role: 'author' | 'translator';
+  printed: string;
+  person_id: number | null;
+}
+
+export interface Journal {
+  id: number;
+  slug: string;
+  title: string;
+  subtitle: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JournalSummary extends Journal {
+  issues_total: number;
+  year_from?: number | null;
+  year_to?: number | null;
+}
+
+export interface JournalIssueRef {
+  id: number;
+  label: string;
+  months: string;
+  work_id: number;
+  work_slug: string;
+}
+
+export interface JournalYear {
+  year: number;
+  issues: JournalIssueRef[];
+}
+
+export interface JournalDetail {
+  journal: Journal;
+  years: JournalYear[];
+}
+
+export interface WorkJournalIssue {
+  issue_id: number;
+  journal_id: number;
+  journal_slug: string;
+  journal_title: string;
+  year: number;
+  label: string;
+  months: string;
+}
+
+export interface Person {
+  id: number;
+  name: string;
+  sort_key: string;
+  slug: string;
+}
+
+export interface PersonArticle {
+  chapter_id: number;
+  chapter_slug: string;
+  title: string;
+  article_kind: ArticleKind | '';
+  role: 'author' | 'translator';
+  work_id: number;
+  work_slug: string;
+  journal_slug: string;
+  journal_title: string;
+  year: number;
+  label: string;
+  start_page: number;
+  end_page: number;
+}
+
+export interface PersonDetail {
+  person: Person;
+  articles: PersonArticle[];
+}
+
 export interface Work {
+  /** Журнальные координаты работы-номера; у остальных работ поля нет. */
+  journal_issue?: WorkJournalIssue;
   id: number;
   title: string;
   /**
@@ -243,6 +341,8 @@ export interface ShelfEdition {
 export interface Shelf {
   editions: ShelfEdition[];
   loose_works: ShelfWork[];
+  /** Необязательно: бэкенд старше журналов поля не шлёт. */
+  journals?: JournalSummary[];
 }
 
 /**
@@ -306,6 +406,8 @@ export interface PageVersion {
 }
 
 export interface Chapter {
+  article_kind?: ArticleKind | null;
+  credits?: ArticleCredit[];
   id: number;
   work_id: number;
   parent_id?: number | null;

@@ -65,6 +65,8 @@ func main() {
 	chapterRepo := repository.NewChapterRepository(db.Pool)
 	documentRepo := repository.NewDocumentRepository(db.Pool)
 	editionRepo := repository.NewEditionRepository(db.Pool)
+	journalRepo := repository.NewJournalRepository(db.Pool)
+	personRepo := repository.NewPersonRepository(db.Pool)
 	collectionRepo := repository.NewCollectionRepository(db.Pool)
 	indexRepo := repository.NewIndexRepository(db.Pool)
 	fragmentRepo := repository.NewIndexFragmentRepository(db.Pool)
@@ -189,7 +191,8 @@ func main() {
 	categoryHandler := api.NewCategoryHandler(categoryRepo)
 	pageHandler := api.NewPageHandler(pageRepo, pageVersionRepo, fragmentRepo, documentCutRepo, markdownRenderer, scans, cfg.S3.PresignTTL)
 	chapterHandler := api.NewChapterHandler(chapterRepo, pageRepo, markdownRenderer, rangeCache).
-		WithRecordings(audioRecordingRepo)
+		WithRecordings(audioRecordingRepo).
+		WithCredits(personRepo)
 	readingHandler := api.NewReadingHandler(pageRepo, markdownRenderer)
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же
 	// набор источников, что у чтения разбора, плюс свой рендер без подрезки.
@@ -197,7 +200,7 @@ func main() {
 	userHandler := api.NewUserHandler(userRepo, authService)
 	exportHandler := api.NewExportHandler(workRepo, chapterRepo, pageRepo)
 	editionHandler := api.NewEditionHandler(editionRepo)
-	shelfHandler := api.NewShelfHandler(editionRepo, workRepo)
+	shelfHandler := api.NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo)
 	highlightHandler := api.NewHighlightHandler(editionRepo)
 	searchRepo := repository.NewSearchRepository(db.Pool)
 	searchHandler := api.NewSearchHandler(searchRepo)
@@ -256,7 +259,7 @@ func main() {
 	workHandler := api.NewWorkHandler(
 		workRepo, pageRepo, markdownRenderer, scans, cfg.S3.PresignTTL,
 		servingCache, apparatusRepo,
-	).WithAudioStore(audioStore)
+	).WithAudioStore(audioStore).WithJournalIssues(journalRepo)
 	// documentHandler/documentReviewHandler собираются здесь же, а не рядом с
 	// остальными обработчиками разбора выше: снятие с публикации и удаление
 	// обязаны сбросить краулерскую половину servingCache (см. DropCrawler), а
@@ -343,6 +346,7 @@ func main() {
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
 		WithSite(api.NewSiteHandler(cfg.Site)).
+		WithJournals(api.NewJournalHandler(journalRepo), api.NewPersonHandler(personRepo, personRepo, chapterRepo)).
 		WithStaticArchive(api.NewStaticArchiveHandler(cfg.Server.StaticArchiveURL, &http.Client{Timeout: 5 * time.Second})).
 		WithStats(api.NewStatsHandler(statsRecorder, statsRepo, appMetrics, cfg.Server.TrustProxyHeaders)).
 		WithMetrics(appMetrics)

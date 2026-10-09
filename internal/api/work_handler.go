@@ -40,6 +40,14 @@ type WorkHandler struct {
 	apparatus ApparatusStore
 	// audioStore — аудиобакет; nil — звука нет, снос его не касается.
 	audioStore storage.Storage
+	// issues — журнальные координаты номера; nil — журналов нет.
+	issues JournalIssueLookup
+}
+
+// WithJournalIssues подключает поиск журнальных координат номера.
+func (h *WorkHandler) WithJournalIssues(l JournalIssueLookup) *WorkHandler {
+	h.issues = l
+	return h
 }
 
 // WithAudioStore подключает аудиобакет: снос тома и снятие аппарата обязаны
@@ -218,6 +226,14 @@ func (h *WorkHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, kid := range kids {
 		resp.Children = append(resp.Children, newWorkResponse(r.Context(), kid, h.store, h.presignTTL))
+	}
+
+	if h.issues != nil && work.Role == models.WorkRoleJournalIssue {
+		if ji, err := h.issues.IssueForWork(ctx, work.ID); err != nil {
+			log.Printf("journal issue for work %d: %v", work.ID, err)
+		} else {
+			resp.JournalIssue = ji
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

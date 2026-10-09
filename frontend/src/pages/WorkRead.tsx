@@ -9,6 +9,7 @@ import { useReadingStream } from '../hooks/useReadingStream';
 import { useVisiblePage } from '../hooks/useVisiblePage';
 import { useInfiniteSentinel } from '../hooks/useInfiniteSentinel';
 import { chapterLevelsForPage } from '../hooks/useChaptersForPage';
+import { citationPlace } from '../utils/citationPlace';
 import { useRecordRead } from '../hooks/useReadingProgress';
 import { getActivePopover } from '../hooks/popoverPlacement';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -241,15 +242,15 @@ export const WorkRead: React.FC = () => {
 
   // Данные для «Цитировать»/«Ссылка»: дерево глав уже загружено (chapters, для
   // бегущего заголовка), поэтому второго запроса ради подписи не нужно.
-  // Произведение подписи — неаппаратная глава ВЕРХНЕГО уровня, накрывающая
-  // полосу, тем же правилом, что и у ChapterView.
+  // Произведение и автор подписи — тот же помощник citationPlace, что и у
+  // ChapterView (у номера журнала — статья полосы, а не рубрика).
   const citation = useMemo(
     () =>
       work
         ? {
             work,
-            workTitleFor: (n: number) =>
-              chapterLevelsForPage(chapters, n)[0]?.find((c) => !c.is_apparatus)?.title ?? '',
+            workTitleFor: (n: number) => citationPlace(work, chapters, n).workTitle,
+            authorFor: (n: number) => citationPlace(work, chapters, n).author,
             // Из потока чтения цитата ведёт на ПОЛОСУ, а не на адрес потока
             // (`/read/{n}`), и это названная граница, а не недосмотр: поток
             // пары якорей не разбирает вовсе — ни ?quote=, ни &to= он не

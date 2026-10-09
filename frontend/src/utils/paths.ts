@@ -23,6 +23,14 @@ function segment(id: number, slug?: string): string {
   return slug ? `${id}-${slug}` : `${id}`;
 }
 
+export function journalPath(journal: { slug: string }): string {
+  return `/journals/${journal.slug}`;
+}
+
+export function authorPath(person: { slug: string }): string {
+  return `/authors/${person.slug}`;
+}
+
 export function workPath(work: Identified): string {
   return `/works/${segment(work.id, work.slug)}`;
 }

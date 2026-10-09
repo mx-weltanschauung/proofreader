@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -44,6 +45,23 @@ func insertRow(ctx context.Context, pool *pgxpool.Pool, table string, id int64,
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // после Commit это no-op
+	if err := insertRowTx(ctx, tx, table, id, cols, args, dest...); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// insertRowTx — вставка в чужой транзакции: номер журнала заводит работу и
+// строку номера одной транзакцией, обе — с необязательным явным id.
+// id <= 0 — id выдаёт последовательность; иначе — строка под явным id и
+// подтяжка последовательности, как в insertRow.
+func insertRowTx(ctx context.Context, tx pgx.Tx, table string, id int64,
+	cols []string, args []any, dest ...any) error {
+	if id <= 0 {
+		q := fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s) RETURNING id, created_at, updated_at`,
+			table, strings.Join(cols, ", "), placeholders(1, len(cols)))
+		return tx.QueryRow(ctx, q, args...).Scan(dest...)
+	}
 	q := fmt.Sprintf(`INSERT INTO %s (id, %s) VALUES ($1, %s) RETURNING id, created_at, updated_at`,
 		table, strings.Join(cols, ", "), placeholders(2, len(cols)))
 	if err := tx.QueryRow(ctx, q, append([]any{id}, args...)...).Scan(dest...); err != nil {
@@ -58,5 +76,5 @@ func insertRow(ctx context.Context, pool *pgxpool.Pool, table string, id int64,
 		table)); err != nil {
 		return fmt.Errorf("подтяжка последовательности %s_id_seq: %w", table, err)
 	}
-	return tx.Commit(ctx)
+	return nil
 }
