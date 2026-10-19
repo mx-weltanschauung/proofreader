@@ -87,7 +87,13 @@ type Work struct {
 	// editions.title молча. Нужна подписи цитаты, которая собирается на
 	// клиенте в пределах жеста — четвёртому запросу в этот момент места нет.
 	// Пустая строка — работа вне собрания.
-	EditionTitle    string     `json:"edition_title" db:"-"`
+	EditionTitle string `json:"edition_title" db:"-"`
+	// VolumeOrderOnly — номер тома условный: собрание работы (у передних
+	// листов — собрание родителя) ведёт нумерацию «order». Считается на
+	// чтении из editions.volume_numbering, как EditionTitle. При нём
+	// VolumeNumber задаёт только порядок, а подписи для читателя номера не
+	// печатают — см. ShownVolumeNumber. Редактору номер отдаётся как прежде.
+	VolumeOrderOnly bool       `json:"volume_order_only,omitempty" db:"-"`
 	Author          string     `json:"author" db:"author"`
 	PublicationDate *time.Time `json:"publication_date,omitempty" db:"publication_date"`
 	Language        string     `json:"language" db:"language"`
@@ -335,9 +341,47 @@ type Edition struct {
 	// Сколько томов в собрании по плану издания; пусто — план неизвестен.
 	// Полка на главной пишет по нему «45 из 55»: сколько томов ещё не снято
 	// со сканов, из самих данных о работах не выводится никак.
-	VolumesPlanned *int      `json:"volumes_planned,omitempty" db:"volumes_planned"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	VolumesPlanned *int `json:"volumes_planned,omitempty" db:"volumes_planned"`
+	// VolumeNumbering — печатная («printed») или условная («order») нумерация
+	// томов. При условной номер тома только ставит книги по порядку на полке,
+	// а читателю не печатается нигде (миграция 000039).
+	VolumeNumbering string    `json:"volume_numbering" db:"volume_numbering"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// Виды нумерации томов собрания (editions.volume_numbering).
+const (
+	// VolumeNumberingPrinted — номер стоит на книге; читальня его печатает.
+	VolumeNumberingPrinted = "printed"
+	// VolumeNumberingOrder — номер условный: задаёт порядок полки и
+	// уникальность внутри издания, но читателю не показывается.
+	VolumeNumberingOrder = "order"
+)
+
+// ValidVolumeNumbering — входит ли значение в перечень editions_volume_numbering_check.
+func ValidVolumeNumbering(v string) bool {
+	return v == VolumeNumberingPrinted || v == VolumeNumberingOrder
+}
+
+// ShownVolumeNumber — номер тома, который можно печатать читателю: «т. N»,
+// «Том N». У тома собрания с условной нумерацией его нет (nil), хотя сам
+// VolumeNumber на месте — по нему стоит полка. Все подписи тома на сервере
+// берут номер отсюда, а не из VolumeNumber напрямую.
+func (w *Work) ShownVolumeNumber() *int {
+	if w.VolumeOrderOnly {
+		return nil
+	}
+	return w.VolumeNumber
+}
+
+// ShownVolumePart — часть тома при показанном номере; без номера часть
+// одна ничего не значит и тоже не печатается.
+func (w *Work) ShownVolumePart() *string {
+	if w.ShownVolumeNumber() == nil {
+		return nil
+	}
+	return w.VolumePart
 }
 
 // Index concept kinds and link kinds.

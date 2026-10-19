@@ -70,6 +70,7 @@ describe('EditionForm', () => {
       slug: 'mae-2',
       url_slug: '',
       description: '',
+      volume_numbering: 'printed',
     });
     // Именно созданное собрание (id из ответа сервера), а не /editions
     // вообще — этого экрана в приложении больше нет.
@@ -115,6 +116,7 @@ describe('EditionForm', () => {
       slug: 'mae-2',
       url_slug: '',
       description: 'Второе издание',
+      volume_numbering: 'printed',
     });
     // Правка возвращает на страницу собрания, а не на /editions — этого
     // экрана в приложении больше нет.
@@ -150,6 +152,7 @@ describe('EditionForm', () => {
       slug: 'mae-2',
       url_slug: 'mae',
       description: '',
+      volume_numbering: 'printed',
     });
   });
 
@@ -172,6 +175,7 @@ describe('EditionForm', () => {
       slug: 'mae-2',
       url_slug: 'mae-classic',
       description: 'Маркс и Энгельс',
+      volume_numbering: 'printed',
     });
   });
 
@@ -224,5 +228,28 @@ describe('EditionForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Отмена' }));
 
     expect(await screen.findByText(`страница собрания ${EDITION.id}`)).toBeInTheDocument();
+  });
+
+  it('показывает условную нумерацию пришедшего собрания и шлёт её обратно', async () => {
+    vi.spyOn(editionsApi, 'get').mockImplementation(() =>
+      ok({ ...EDITION, volume_numbering: 'order' as const }),
+    );
+    const update = vi.spyOn(editionsApi, 'update').mockImplementation(() => ok(EDITION));
+    renderAt('/editions/1/edit');
+
+    const box = await screen.findByRole('checkbox', { name: 'Нумерация томов условная' });
+    expect(box).toBeChecked();
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(update).toHaveBeenCalledWith(1, expect.objectContaining({ volume_numbering: 'order' }));
+  });
+
+  it('флажок переводит собрание на условную нумерацию', async () => {
+    const create = vi.spyOn(editionsApi, 'create').mockImplementation(() => ok(EDITION));
+    renderAt('/editions/new');
+
+    await userEvent.type(screen.getByLabelText(/Название/), 'Стенографические отчёты');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Нумерация томов условная' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ volume_numbering: 'order' }));
   });
 });

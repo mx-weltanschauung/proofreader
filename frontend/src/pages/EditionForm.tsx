@@ -29,6 +29,10 @@ export const EditionForm: React.FC = () => {
   // который остаётся ключом журнала публикации и не переименовывается.
   const [urlSlug, setUrlSlug] = useState('');
   const [description, setDescription] = useState('');
+  // Условная нумерация томов: номер только ставит книги по порядку на полке,
+  // читателю он не печатается (utils/shownVolume.ts). Флажок, а не выбор из
+  // двух: второе значение — обычная печатная нумерация.
+  const [orderOnly, setOrderOnly] = useState(false);
   // Подсказка слага живёт только до первой ручной правки: иначе набор
   // названия затирал бы осознанно выбранный слаг.
   const [slugTouched, setSlugTouched] = useState(false);
@@ -46,6 +50,7 @@ export const EditionForm: React.FC = () => {
         setSlug(response.data.slug);
         setUrlSlug(response.data.url_slug ?? '');
         setDescription(response.data.description);
+        setOrderOnly(response.data.volume_numbering === 'order');
         // Существующий слаг менять подсказкой нельзя ни при каких правках.
         setSlugTouched(true);
       } catch (err: unknown) {
@@ -81,6 +86,7 @@ export const EditionForm: React.FC = () => {
       slug: slug.trim(),
       url_slug: urlSlug.trim(),
       description,
+      volume_numbering: orderOnly ? ('order' as const) : ('printed' as const),
     };
 
     try {
@@ -191,6 +197,23 @@ export const EditionForm: React.FC = () => {
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
             />
+          </div>
+
+          <div className="form-group">
+            <label className="edition-form-checkbox" htmlFor="edition-order-only">
+              <input
+                id="edition-order-only"
+                type="checkbox"
+                checked={orderOnly}
+                onChange={(e) => setOrderOnly(e.target.checked)}
+              />
+              Нумерация томов условная
+            </label>
+            <p className="form-help-text">
+              Номер тома только ставит книги по порядку на полке: у книг собрания нет общей печатной
+              нумерации. Читателю номер не показывается — ни в цитате, ни в подписях тома, ни в
+              выгрузках.
+            </p>
           </div>
 
           <div className="form-actions">

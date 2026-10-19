@@ -30,6 +30,7 @@ import type {
   AdminReaderCollection,
   UserRole,
   Edition,
+  VolumeNumbering,
   Shelf,
   StaticArchive,
   EditionHighlight,
@@ -422,6 +423,16 @@ export const documentsApi = {
 };
 
 // Editions API — собрания сочинений и их тома
+// Тело POST/PUT /editions. volume_numbering необязателен: без него сервер
+// заводит печатную нумерацию, а при правке оставляет прежнюю.
+export interface EditionPayload {
+  title: string;
+  slug: string;
+  url_slug: string;
+  description: string;
+  volume_numbering?: VolumeNumbering;
+}
+
 export const editionsApi = {
   // Списки приходят из репозиториев, которые накапливают строки в nil-слайс,
   // так что на пустой выборке в теле лежит null, а не []. Потребители обязаны
@@ -439,13 +450,9 @@ export const editionsApi = {
   saveHighlights: (editionId: number, items: { chapter_id: number; label: string }[]) =>
     api.put<EditionHighlight[]>(`/editions/${editionId}/highlights`, items),
 
-  create: (data: { title: string; slug: string; url_slug: string; description: string }) =>
-    api.post<Edition>('/editions', data),
+  create: (data: EditionPayload) => api.post<Edition>('/editions', data),
 
-  update: (
-    id: number,
-    data: { title: string; slug: string; url_slug: string; description: string },
-  ) => api.put<Edition>(`/editions/${id}`, data),
+  update: (id: number, data: EditionPayload) => api.put<Edition>(`/editions/${id}`, data),
 
   remove: (id: number) => api.delete(`/editions/${id}`),
 };

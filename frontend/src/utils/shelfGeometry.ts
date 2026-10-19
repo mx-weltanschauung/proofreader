@@ -13,6 +13,8 @@
 export interface Positioned {
   volume_number?: number;
   volume_part?: string;
+  /** Номер условный (см. `utils/shownVolume.ts`): только порядок, без пропусков. */
+  volume_order_only?: boolean;
 }
 
 /**
@@ -59,6 +61,14 @@ export function shelfSlots<T extends Positioned>(
       a.volume_number! - b.volume_number! ||
       (a.volume_part ?? '').localeCompare(b.volume_part ?? ''),
   );
+
+  // Условная нумерация собрания: номер лишь ставит книги по порядку, и
+  // «пропуск» между 7 и 24 — не ненаписанные тома, а выдуманные числа. Пустое
+  // место с подписью «Тома 8—23 ещё не сняты» напечатало бы их читателю, а
+  // плана собрания такой нумерации нет. Книги — подряд, без пустых мест.
+  if (volumes.some((v) => v.volume_order_only)) {
+    return [...ordered, ...unnumbered].map((volume) => ({ kind: 'volume', volume }));
+  }
 
   const slots: ShelfSlot<T>[] = [];
   // Начинаем с первого номера собрания, а не с первого залитого тома: пустое

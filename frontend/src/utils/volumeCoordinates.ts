@@ -1,4 +1,5 @@
 import type { Work } from '../types';
+import { shownVolumeNumber } from './shownVolume';
 
 /**
  * Координаты работы внутри собрания: «т. 4», «т. 25, I».
@@ -11,12 +12,17 @@ import type { Work } from '../types';
  * указатель), и это не пустое место, а осмысленная роль. `spineNumber`
  * сокращает этот случай до «ук» ради узкого корешка; в списке томов есть
  * место назвать его словами.
+ *
+ * У собрания с условной нумерацией (`volume_order_only`) координаты нет —
+ * пустая строка, и вызывающий её не печатает.
  */
 export function volumeCoordinates(work: Work): string {
-  if (work.volume_number === undefined || work.volume_number === null) {
+  // Условная нумерация собрания: номер есть, но читателю он не печатается, а
+  // «справочным» такой том не назовёшь — координаты нет вовсе.
+  if (work.volume_order_only) return '';
+  const number = shownVolumeNumber(work);
+  if (number === undefined) {
     return 'справочный том';
   }
-  return work.volume_part
-    ? `т. ${work.volume_number}, ${work.volume_part}`
-    : `т. ${work.volume_number}`;
+  return work.volume_part ? `т. ${number}, ${work.volume_part}` : `т. ${number}`;
 }

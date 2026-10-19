@@ -2,6 +2,7 @@ import type { Chapter, Concept, Work } from '../types';
 import { chapterPath } from './paths';
 import { printedFolio } from './folio';
 import { encodeRubricPath } from './rubricPathParam';
+import { shownVolumeNumber, shownVolumePart } from './shownVolume';
 
 /** Как pkg/book/title.go: «. » между частями, но не после знака конца. */
 function joinSourceParts(parts: (string | undefined)[]): string {
@@ -24,14 +25,18 @@ function joinSourceParts(parts: (string | undefined)[]): string {
 export function askAiPrompt(work: Work, chapter: Chapter, origin: string): string {
   const from = printedFolio(chapter.start_page, work);
   const to = printedFolio(chapter.end_page, work);
-  const volume = work.volume_number
-    ? `т. ${work.volume_number}${work.volume_part ? ` ${work.volume_part}` : ''}`
-    : '';
+  const number = shownVolumeNumber(work);
+  const part = shownVolumePart(work);
+  const volume = number ? `т. ${number}${part ? ` ${part}` : ''}` : '';
   // work.title у корпуса повторяет название собрания («… Сочинения. Том 1»),
   // поэтому у тома источник собирается из собрания и номера, а не из заглавия.
-  const parts = work.volume_number
+  // У собрания с условной нумерацией номер не печатается, и том называет его
+  // заглавие («XII пленум ИККИ») вслед за собранием.
+  const parts = number
     ? [work.author, work.edition_title, volume]
-    : [work.author, work.title];
+    : work.volume_order_only
+      ? [work.author, work.edition_title, work.title]
+      : [work.author, work.title];
   const source = joinSourceParts(parts);
   const pages = from && to ? `с. ${from}—${to}` : '';
   const about = [source, pages].filter(Boolean).join(', ');

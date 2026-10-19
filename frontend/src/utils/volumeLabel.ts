@@ -226,6 +226,9 @@ export function isMostlyCaps(text: string): boolean {
  * двузначное «55».
  */
 export function spineNumberParts(volume: VolumeSummary): { number: string; part?: string } {
+  // Условная нумерация собрания: номер ставит книгу по порядку, но на корешке
+  // его нет — клеймо пустое, а не «ук» (справочным такой том не является).
+  if (volume.volume_order_only) return { number: '' };
   if (volume.volume_number === undefined) return { number: 'ук' };
   const number = `${volume.volume_number}`;
   return volume.volume_part ? { number, part: volume.volume_part } : { number };
@@ -233,9 +236,20 @@ export function spineNumberParts(volume: VolumeSummary): { number: string; part?
 
 /**
  * Номер на корешке одной строкой. Нужен там, где ярусов нет: `aria-label`
- * книги и заголовок карточки читаются подряд.
+ * книги и заголовок карточки читаются подряд. Пустая строка — номер
+ * условный и не печатается (см. `volumeName`).
  */
 export function spineNumber(volume: VolumeSummary): string {
   const { number, part } = spineNumberParts(volume);
   return part ? `${number}·${part}` : number;
+}
+
+/**
+ * Имя тома для заголовка карточки и чтения с экрана: «Том 26·III» — или, у
+ * собрания с условной нумерацией, заглавие тома: «Том » без номера читалось
+ * бы оборванной фразой, а номер печатать нельзя.
+ */
+export function volumeName(volume: VolumeSummary): string {
+  const number = spineNumber(volume);
+  return number ? `Том ${number}` : volume.title;
 }
