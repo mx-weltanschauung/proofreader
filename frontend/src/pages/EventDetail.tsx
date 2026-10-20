@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { eventsApi } from '../services/api';
-import type { EventDetail as Detail, EventTarget } from '../types';
+import type { EventDetail as Detail, EventEntry, EventSection, EventTarget } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { apiErrorMessage } from '../utils/apiError';
 import { chapterPath, eventEditPath, organizationPath, workPath } from '../utils/paths';
@@ -24,6 +24,34 @@ function BrokenTarget({ t }: { t: EventTarget }) {
       {t.kind === 'chapter' ? 'глава не найдена' : 'том не найден'}: {t.title}
     </span>
   );
+}
+
+/**
+ * Строка, которую не-сотрудник не получит: ни одной цели либо все битые или в
+ * закрытых работах (сервер выбросит её из ответа вместе с подписью).
+ */
+function entryHiddenFromReaders(e: EventEntry): boolean {
+  return e.targets.every((t) => t.broken || t.closed);
+}
+
+/** Пункт без строк или только со строками, которых читатель не получит. */
+function sectionHiddenFromReaders(s: EventSection): boolean {
+  return s.entries.every(entryHiddenFromReaders);
+}
+
+/** Пометка сотруднику: этого читатель не увидит — сервер его не отдаст. */
+function HiddenMark() {
+  return <span className="event-hidden-mark">читателям не видно</span>;
+}
+
+/** Якорь из адреса; битая %-последовательность — сырой вид, а не падение. */
+function anchorFromHash(hash: string): string {
+  const raw = hash.slice(1);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }
 
 function SingleTarget({ label, t }: { label: string; t: EventTarget }) {
@@ -75,7 +103,7 @@ export function EventDetail() {
   // Пункты появляются после ответа API, и браузер к якорю из адреса уже не
   // вернётся: прыгаем сами, когда заголовки встали в документ.
   useEffect(() => {
-    if (event && hash) jumpToAnchor(decodeURIComponent(hash.slice(1)));
+    if (event && hash) jumpToAnchor(anchorFromHash(hash));
   }, [event, hash]);
 
   if (isLoading) return <div className="event-state">Загрузка…</div>;
@@ -90,6 +118,7 @@ export function EventDetail() {
     );
   }
   const where = [event.dates, event.place].filter(Boolean).join(', ');
+  const staff = canEdit(user);
   return (
     <div className="event-page">
       <Link to={organizationPath(event.organization)} className="event-back-link">
@@ -97,7 +126,7 @@ export function EventDetail() {
       </Link>
       <header className="event-header">
         <h1 className="event-title">{event.title}</h1>
-        {canEdit(user) && (
+        {staff && (
           <Link to={eventEditPath(event.organization.slug, event.slug)} className="event-edit-link">
             Править
           </Link>
@@ -110,6 +139,7 @@ export function EventDetail() {
           <h2 id={`section-${section.position + 1}`} tabIndex={-1} className="event-section-title">
             {section.title}
           </h2>
+          {staff && sectionHiddenFromReaders(section) && <HiddenMark />}
           <ul className="event-entries">
             {section.entries.map((entry, i) => (
               <li key={i} className="event-entry">
@@ -132,6 +162,12 @@ export function EventDetail() {
                         )}
                       </span>
                     ))}
+                  </>
+                )}
+                {staff && entryHiddenFromReaders(entry) && (
+                  <>
+                    {' '}
+                    <HiddenMark />
                   </>
                 )}
               </li>

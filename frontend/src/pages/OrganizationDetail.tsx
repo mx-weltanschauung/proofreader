@@ -9,6 +9,16 @@ import { plural } from '../utils/volumeLabel';
 import { useAuth, canEdit } from '../hooks/useAuth';
 import './OrganizationDetail.css';
 
+/**
+ * Пометка сотруднику. Видна она только у события без единой небитой цели и у
+ * вида, где таких событий не осталось: `materials_total` сотруднику считает
+ * все небитые цели, закрытые тоже, — событие, все материалы которого закрыты,
+ * отсюда не распознать, и пометки у него нет.
+ */
+function HiddenMark() {
+  return <span className="org-hidden-mark">читателям не видно</span>;
+}
+
 export function OrganizationDetail() {
   const { slug = '' } = useParams<{ slug: string }>();
   const [org, setOrg] = useState<EventOrganizationDetail | null>(null);
@@ -37,6 +47,7 @@ export function OrganizationDetail() {
     };
   }, [slug]);
 
+  const staff = canEdit(user);
   if (isLoading) return <div className="org-state">Загрузка…</div>;
   if (error || !org) {
     return (
@@ -55,7 +66,7 @@ export function OrganizationDetail() {
       </Link>
       <header className="org-header">
         <h1 className="org-title">{org.title}</h1>
-        {canEdit(user) && (
+        {staff && (
           <Link to={organizationEditPath(org.slug)} className="org-edit-link">
             Править
           </Link>
@@ -65,6 +76,7 @@ export function OrganizationDetail() {
       {org.kinds.map((kind) => (
         <section key={kind.id} className="org-kind">
           <h2 className="org-kind-title">{kind.title}</h2>
+          {staff && kind.events.every((ev) => ev.materials_total === 0) && <HiddenMark />}
           <ul className="org-events">
             {kind.events.map((ev) => (
               <li key={ev.id} className="org-event">
@@ -75,6 +87,7 @@ export function OrganizationDetail() {
                 <span className="org-event-meta">
                   {plural(ev.materials_total, ['материал', 'материала', 'материалов'])}
                 </span>
+                {staff && ev.materials_total === 0 && <HiddenMark />}
               </li>
             ))}
           </ul>

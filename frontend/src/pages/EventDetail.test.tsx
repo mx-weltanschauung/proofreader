@@ -137,4 +137,77 @@ describe('EventDetail', () => {
     await vi.waitFor(() => expect(scroll).toHaveBeenCalled());
     expect(scroll.mock.contexts[0]).toBe(container.querySelector('h2#section-2'));
   });
+  it('сотруднику — «читателям не видно» у пустого и закрытого, у открытого нет', async () => {
+    useAuth.setState({
+      user: { role: 'editor' } as never,
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    const marked: Detail = {
+      ...DETAIL,
+      sections: [
+        {
+          position: 0,
+          title: 'Открытый пункт',
+          entries: [
+            { label: 'Открытая строка', targets: [target({})] },
+            { label: 'Закрытая строка', targets: [target({ chapter_id: 74, closed: true })] },
+            { label: 'Строка без целей', targets: [] },
+          ],
+        },
+        { position: 1, title: 'Пустой пункт', entries: [] },
+        {
+          position: 2,
+          title: 'Битый пункт',
+          entries: [
+            {
+              label: 'Битая и закрытая',
+              targets: [
+                target({ chapter_id: null, broken: true, title: 'Старое' }),
+                target({ chapter_id: 75, closed: true, label: 'засед. 1' }),
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    vi.spyOn(eventsApi, 'event').mockImplementation(() => ok(marked));
+    const { container } = renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'I съезд' });
+    const sectionMarked = (n: number) =>
+      container
+        .querySelector(`h2#section-${n}`)
+        ?.parentElement?.querySelector(':scope > .event-hidden-mark') != null;
+    expect(sectionMarked(1)).toBe(false);
+    expect(sectionMarked(2)).toBe(true);
+    expect(sectionMarked(3)).toBe(true);
+    const entryMarked = (text: RegExp) =>
+      [...container.querySelectorAll('li.event-entry')]
+        .find((li) => text.test(li.textContent ?? ''))
+        ?.querySelector('.event-hidden-mark') != null;
+    expect(entryMarked(/Открытая строка/)).toBe(false);
+    expect(entryMarked(/Закрытая строка/)).toBe(true);
+    expect(entryMarked(/Строка без целей/)).toBe(true);
+    expect(entryMarked(/Битая и закрытая/)).toBe(true);
+  });
+
+  it('читателю пометки «читателям не видно» нет', async () => {
+    const withEmpty: Detail = {
+      ...DETAIL,
+      sections: [...DETAIL.sections, { position: 2, title: 'Пустой пункт', entries: [] }],
+    };
+    vi.spyOn(eventsApi, 'event').mockImplementation(() => ok(withEmpty));
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'I съезд' });
+    expect(screen.queryByText('читателям не видно')).not.toBeInTheDocument();
+  });
+
+  it('битая %-последовательность в адресе не роняет страницу', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.spyOn(eventsApi, 'event').mockImplementation(() => ok(DETAIL));
+    renderPage('/organizations/org-a/e1#%E0');
+    expect(await screen.findByRole('heading', { level: 1, name: 'I съезд' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Доклад' })).toBeInTheDocument();
+  });
 });
