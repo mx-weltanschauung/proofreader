@@ -1,0 +1,7 @@
+.org-edit { max-width: 52rem; margin: 0 auto; }
+.org-edit-head { display: flex; flex-direction: column; gap: 0.75rem; }
+.org-edit-head label { display: flex; flex-direction: column; gap: 0.25rem; }
+.org-edit-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.org-edit-kind { margin: 1rem 0; padding: 0.75rem; border: 1px solid var(--color-border); }
+.org-edit-new { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.org-edit-error { color: var(--color-error-ink); }

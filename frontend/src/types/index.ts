@@ -1236,3 +1236,36 @@ export interface ChapterEventLink {
   section_title: string;
   section_position: number;
 }
+
+export interface EventKind {
+  id: number;
+  organization_id: number;
+  title: string;
+  position: number;
+}
+
+/** Событие как его отдают ответы записи (без повестки). */
+export interface EventRecord {
+  id: number;
+  kind_id: number;
+  slug: string;
+  title: string;
+  dates: string;
+  place: string;
+  description: string;
+  position: number;
+}
+
+/** Тело `PUT /events/{id}/agenda`. */
+export interface AgendaTargetInput {
+  kind: 'chapter' | 'work';
+  work_id: number;
+  chapter_id?: number;
+  label: string;
+}
+export interface AgendaInput {
+  sections: {
+    title: string;
+    entries: { label: string; targets: AgendaTargetInput[] }[];
+  }[];
+}
