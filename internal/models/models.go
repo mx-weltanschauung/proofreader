@@ -193,6 +193,17 @@ type Shelf struct {
 	LooseWorks []ShelfWork    `json:"loose_works"`
 	// Journals — журналы, у которых есть хоть один номер; всегда массив.
 	Journals []JournalSummary `json:"journals"`
+	// Organizations — организации, у которых виден хоть один съезд или
+	// пленум; всегда массив.
+	Organizations []EventOrganizationSummary `json:"organizations"`
+}
+
+// EventOrganizationSummary — строка организации на главной.
+type EventOrganizationSummary struct {
+	ID          int64  `json:"id"`
+	Slug        string `json:"slug"`
+	Title       string `json:"title"`
+	EventsTotal int    `json:"events_total"`
 }
 
 // Category represents a work category

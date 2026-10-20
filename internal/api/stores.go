@@ -305,3 +305,23 @@ type ClosedStore interface {
 	ClosedIDs(ctx context.Context) (map[int64]bool, error)
 	ClosedEditionIDs(ctx context.Context) (map[int64]bool, error)
 }
+
+// EventStore — организации, виды, события и повестки
+// (repository.EventRepository).
+type EventStore interface {
+	CreateOrganization(ctx context.Context, o *models.EventOrganization) error
+	UpdateOrganization(ctx context.Context, o *models.EventOrganization) error
+	CreateKind(ctx context.Context, k *models.EventKind) error
+	UpdateKind(ctx context.Context, k *models.EventKind) error
+	DeleteKind(ctx context.Context, id int64) error
+	KindByID(ctx context.Context, id int64) (*models.EventKind, error)
+	CreateEvent(ctx context.Context, e *models.Event) error
+	UpdateEvent(ctx context.Context, e *models.Event) error
+	DeleteEvent(ctx context.Context, id int64) error
+	EventByID(ctx context.Context, id int64) (*models.Event, error)
+	Organizations(ctx context.Context) ([]models.EventOrganizationDetail, error)
+	OrganizationDetail(ctx context.Context, slug string) (*models.EventOrganizationDetail, error)
+	EventDetail(ctx context.Context, slug string) (*models.EventDetail, error)
+	ReplaceAgenda(ctx context.Context, eventID int64, in models.AgendaInput) error
+	ChapterEvents(ctx context.Context, workID, chapterID int64) ([]models.ChapterEventLink, error)
+}

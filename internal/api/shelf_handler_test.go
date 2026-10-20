@@ -153,7 +153,7 @@ func TestShelfHandlerEmptyListsAreArrays(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("код %d, ожидался 200", rec.Code)
 	}
-	if body := rec.Body.String(); body != `{"editions":[],"loose_works":[],"journals":[]}`+"\n" {
+	if body := rec.Body.String(); body != `{"editions":[],"loose_works":[],"journals":[],"organizations":[]}`+"\n" {
 		t.Errorf("тело = %q, ожидались пустые списки", body)
 	}
 }

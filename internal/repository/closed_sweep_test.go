@@ -363,6 +363,10 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		"collections/{nickname}": {f.readerNick},
 		"items/{itemId}":         ids(append(append([]int64{}, f.staffItems...), f.readerItems...)...),
 		"readers/{nickname}":     {f.readerNick},
+		// Заглушки: настоящую фикстуру организации и события заведёт сторож
+		// закрытого (задача 4 плана событий).
+		"organizations/{slug}":      {"org-a"},
+		"organizations/{eventSlug}": {"event-a"},
 	}
 }
 
@@ -401,32 +405,37 @@ func closedSweepSilent() map[string]string {
 	const admin = "только администратор: анониму 401, читателю 403"
 	const staff = "только сотрудник: анониму 401, читателю 403"
 	return map[string]string{
-		"/api/admin/stats/crawlers":                   admin,
-		"/api/admin/stats/devices":                    admin,
-		"/api/admin/stats/health":                     admin,
-		"/api/admin/stats/referrers":                  admin,
-		"/api/admin/stats/searches":                   admin,
-		"/api/admin/stats/top":                        admin,
-		"/api/admin/stats/traffic":                    admin,
-		"/api/cache/stats":                            admin,
-		"/api/export":                                 admin,
-		"/api/feedback":                               admin,
-		"/api/feedback/unread-count":                  admin,
-		"/api/readers":                                admin,
-		"/api/readers/{nickname}/collections":         admin,
-		"/api/users":                                  admin,
-		"/api/audio/queue":                            staff,
-		"/api/documents/review":                       staff,
-		"/api/suggestions":                            staff,
-		"/api/suggestions/{id}":                       staff,
-		"/api/works/{id}/apparatus":                   staff,
-		"/api/works/{workId}/pages/{pageId}/versions": staff,
+		// Временно: в фикстуре сторожа ещё нет организации и события (задача 4
+		// плана событий), поэтому обе ручки отвечают 404 всем. Строки удалить
+		// вместе с заведением фикстуры.
+		"/api/organizations/{slug}":                               "в фикстуре пока нет организации (задача 4)",
+		"/api/organizations/{slug}/{eventSlug}":                   "в фикстуре пока нет события (задача 4)",
+		"/api/admin/stats/crawlers":                               admin,
+		"/api/admin/stats/devices":                                admin,
+		"/api/admin/stats/health":                                 admin,
+		"/api/admin/stats/referrers":                              admin,
+		"/api/admin/stats/searches":                               admin,
+		"/api/admin/stats/top":                                    admin,
+		"/api/admin/stats/traffic":                                admin,
+		"/api/cache/stats":                                        admin,
+		"/api/export":                                             admin,
+		"/api/feedback":                                           admin,
+		"/api/feedback/unread-count":                              admin,
+		"/api/readers":                                            admin,
+		"/api/readers/{nickname}/collections":                     admin,
+		"/api/users":                                              admin,
+		"/api/audio/queue":                                        staff,
+		"/api/documents/review":                                   staff,
+		"/api/suggestions":                                        staff,
+		"/api/suggestions/{id}":                                   staff,
+		"/api/works/{id}/apparatus":                               staff,
+		"/api/works/{workId}/pages/{pageId}/versions":             staff,
 		"/api/works/{workId}/pages/{pageId}/versions/{versionId}": staff,
-		"/api/static-archive":          "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
-		"/api/static-archive/download": "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
-		"/mcp":                         "GET отвечает 405 по устройству; MCP проверяет sweepMCP",
-		"/og/":                         "голый префикс — 404; карточки обходит sweepTokenless",
-		"/sitemap-":                    "голый префикс — 404; куски карты обходит sweepTokenless от /sitemap.xml",
+		"/api/static-archive":                                     "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
+		"/api/static-archive/download":                            "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
+		"/mcp":                                                    "GET отвечает 405 по устройству; MCP проверяет sweepMCP",
+		"/og/":                                                    "голый префикс — 404; карточки обходит sweepTokenless",
+		"/sitemap-":                                               "голый префикс — 404; куски карты обходит sweepTokenless от /sitemap.xml",
 	}
 }
 

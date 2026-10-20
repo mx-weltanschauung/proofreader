@@ -22,6 +22,14 @@ type ShelfHandler struct {
 	works    ShelfWorks
 	journals ShelfJournals
 	closed   ClosedStore
+	events   EventStore
+}
+
+// WithEvents подключает организации с событиями; без них полка отдаёт
+// пустой массив.
+func (h *ShelfHandler) WithEvents(e EventStore) *ShelfHandler {
+	h.events = e
+	return h
 }
 
 // WithClosed подключает хранилище закрытых работ: свободные тома, закрытые
@@ -118,6 +126,32 @@ func (h *ShelfHandler) Get(w http.ResponseWriter, r *http.Request) {
 			if j.IssuesTotal > 0 {
 				shelf.Journals = append(shelf.Journals, j)
 			}
+		}
+	}
+
+	shelf.Organizations = []models.EventOrganizationSummary{}
+	if h.events != nil {
+		orgs, err := h.events.Organizations(ctx)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать организации")
+			return
+		}
+		closed, err := fullClosedSet(ctx, h.closed)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать организации")
+			return
+		}
+		for i := range orgs {
+			vis, ok := visibleOrganization(&orgs[i], closed, staff)
+			if !ok {
+				continue
+			}
+			n := 0
+			for _, k := range vis.Kinds {
+				n += len(k.Events)
+			}
+			shelf.Organizations = append(shelf.Organizations, models.EventOrganizationSummary{
+				ID: vis.ID, Slug: vis.Slug, Title: vis.Title, EventsTotal: n})
 		}
 	}
 
