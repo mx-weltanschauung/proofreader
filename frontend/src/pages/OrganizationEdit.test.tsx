@@ -32,7 +32,9 @@ const ORG = {
 };
 
 function setup(path = '/organizations/org-a/edit') {
-  vi.spyOn(eventsApi, 'organization').mockReturnValue(ok(ORG));
+  if (!vi.isMockFunction(eventsApi.organization)) {
+    vi.spyOn(eventsApi, 'organization').mockReturnValue(ok(ORG));
+  }
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
@@ -105,7 +107,7 @@ describe('OrganizationEdit', () => {
     );
   });
 
-  const fullEvent = (id: number, slug: string, title: string) =>
+  const fullEvent = (id: number, slug: string, title: string, position: number) =>
     ({
       id,
       kind_id: 1,
@@ -114,38 +116,70 @@ describe('OrganizationEdit', () => {
       dates: '',
       place: '',
       description: '',
-      position: 9,
+      position,
       organization: ORG,
       kind_title: 'Съезды',
       sections: [],
     }) as never;
 
-  function stubEvents() {
-    vi.spyOn(eventsApi, 'event').mockImplementation((_o, slug) =>
-      ok(slug === 'e1' ? fullEvent(5, 'e1', 'I съезд') : fullEvent(6, 'e2', 'II съезд')),
-    );
+  const THREE = {
+    ...ORG,
+    kinds: [
+      {
+        ...ORG.kinds[0],
+        events: [
+          ...ORG.kinds[0].events,
+          { id: 7, slug: 'e3', title: 'III съезд', dates: '', materials_total: 0 },
+        ],
+      },
+    ],
+  };
+
+  function stubEvents(positions: number[]) {
+    const byslug: Record<string, never> = {
+      e1: fullEvent(5, 'e1', 'I съезд', positions[0]),
+      e2: fullEvent(6, 'e2', 'II съезд', positions[1]),
+      e3: fullEvent(7, 'e3', 'III съезд', positions[2]),
+    };
+    vi.spyOn(eventsApi, 'organization').mockReturnValue(ok(THREE));
+    vi.spyOn(eventsApi, 'event').mockImplementation((_o, slug) => ok(byslug[slug]));
   }
 
-  it('перестановка события пишет ровно два с обменянными позициями и перечитывает', async () => {
-    stubEvents();
+  it('перестановка нумерует по новому порядку: хранимые 10/20/30', async () => {
+    stubEvents([10, 20, 30]);
     const upd = vi.spyOn(eventsApi, 'updateEvent').mockReturnValue(ok({} as never));
     setup();
     const u = userEvent.setup();
     await screen.findByText('Правка организации');
     const loads = vi.mocked(eventsApi.organization).mock.calls.length;
-    await u.click(screen.getByRole('button', { name: 'Событие I съезд вниз' }));
-    await waitFor(() => expect(upd).toHaveBeenCalledTimes(2));
+    await u.click(screen.getByRole('button', { name: 'Событие II съезд вниз' }));
+    await waitFor(() => expect(upd).toHaveBeenCalledTimes(3));
     expect(upd.mock.calls.map((c) => [c[0], c[1].position])).toEqual([
-      [5, 1],
-      [6, 0],
+      [5, 0],
+      [7, 1],
+      [6, 2],
     ]);
     await waitFor(() =>
       expect(vi.mocked(eventsApi.organization).mock.calls.length).toBeGreaterThan(loads),
     );
   });
 
+  it('перестановка при равных хранимых позициях разводит все', async () => {
+    stubEvents([0, 0, 0]);
+    const upd = vi.spyOn(eventsApi, 'updateEvent').mockReturnValue(ok({} as never));
+    setup();
+    const u = userEvent.setup();
+    await screen.findByText('Правка организации');
+    await u.click(screen.getByRole('button', { name: 'Событие I съезд вниз' }));
+    await waitFor(() => expect(upd).toHaveBeenCalledTimes(2));
+    expect(upd.mock.calls.map((c) => [c[0], c[1].position])).toEqual([
+      [5, 1],
+      [7, 2],
+    ]);
+  });
+
   it('провал записи при перестановке всё равно перечитывает и показывает ошибку', async () => {
-    stubEvents();
+    stubEvents([0, 1, 2]);
     vi.spyOn(eventsApi, 'updateEvent').mockRejectedValue({
       response: { status: 500, data: { message: 'База недоступна' } },
     });

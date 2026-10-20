@@ -81,25 +81,28 @@ export const OrganizationEdit: React.FC = () => {
     });
   };
 
-  // Меняются местами ровно два события: их шапки берём свежими, пишем две.
+  // Хранимых позиций в сводке организации нет, поэтому шапки читаем (только
+  // чтение), строим новый порядок и пишем position = индекс лишь тем, у кого
+  // хранимая позиция отличается: так работают и 10/20/30, и все-равные.
   const moveEvent = (kindId: number, i: number, d: number) => {
     const list = org.kinds.find((k) => k.id === kindId)?.events ?? [];
     const j = i + d;
     if (!list[i] || !list[j]) return;
     void run('Не удалось переставить событие', async () => {
-      const moved: [(typeof list)[number], number][] = [
-        [list[i], j],
-        [list[j], i],
-      ];
-      for (const [e, position] of moved) {
-        const { data } = await eventsApi.event(org.slug, e.slug);
-        await eventsApi.updateEvent(data.id, {
-          kind_id: data.kind_id,
-          title: data.title,
-          dates: data.dates,
-          place: data.place,
-          description: data.description,
-          position,
+      const heads = (await Promise.all(list.map((e) => eventsApi.event(org.slug, e.slug)))).map(
+        (r) => r.data,
+      );
+      [heads[i], heads[j]] = [heads[j], heads[i]];
+      for (let p = 0; p < heads.length; p++) {
+        const h = heads[p];
+        if (h.position === p) continue;
+        await eventsApi.updateEvent(h.id, {
+          kind_id: h.kind_id,
+          title: h.title,
+          dates: h.dates,
+          place: h.place,
+          description: h.description,
+          position: p,
         });
       }
     });
