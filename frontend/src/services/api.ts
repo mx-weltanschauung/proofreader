@@ -5,6 +5,9 @@ import type {
   ArticleCredit,
   CreditInput,
   JournalDetail,
+  EventOrganizationDetail,
+  EventDetail,
+  ChapterEventLink,
   JournalSummary,
   Person,
   PersonDetail,
@@ -480,6 +483,17 @@ export const journalsApi = {
   get: (slug: string) => api.get<JournalDetail>(`/journals/${encodeURIComponent(slug)}`),
   setClosed: (id: number, closed: boolean) =>
     api.put<ClosedResult>(`/journals/${id}/closed`, { closed }),
+};
+
+export const eventsApi = {
+  organization: (slug: string) =>
+    api.get<EventOrganizationDetail>(`/organizations/${encodeURIComponent(slug)}`),
+  event: (orgSlug: string, eventSlug: string) =>
+    api.get<EventDetail>(
+      `/organizations/${encodeURIComponent(orgSlug)}/${encodeURIComponent(eventSlug)}`,
+    ),
+  chapterEvents: (workId: number, chapterId: number) =>
+    api.get<ChapterEventLink[]>(`/works/${workId}/chapters/${chapterId}/events`),
 };
 
 export const personsApi = {

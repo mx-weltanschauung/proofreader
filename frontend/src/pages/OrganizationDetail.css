@@ -1,0 +1,69 @@
+.org-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.org-back-link {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--color-link);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.org-back-link:hover {
+  color: var(--color-link-hover);
+  text-decoration: underline;
+}
+
+.org-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--color-text-secondary);
+}
+
+.org-state-error {
+  color: var(--color-error-ink);
+}
+
+.org-header {
+  margin-bottom: 1.5rem;
+}
+
+.org-title {
+  margin: 0 0 0.25rem;
+}
+
+.org-edit-link {
+  color: var(--color-link);
+  font-size: 0.9rem;
+}
+
+.org-description {
+  margin: 0.5rem 0 0;
+  color: var(--color-text-secondary);
+}
+
+.org-kind-title {
+  margin: 1.5rem 0 0.5rem;
+}
+
+.org-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.org-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  padding: 0.3rem 0;
+}
+
+.org-event-meta {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
