@@ -7,7 +7,14 @@ import { forgetRead, readRecent, type LastRead } from '../hooks/useReadingProgre
 import { EditionSummary } from '../components/EditionSummary';
 import { VolumeShelf } from '../components/VolumeShelf';
 import { JournalShelf } from '../components/JournalShelf';
-import type { JournalSummary, ShelfEdition, ShelfWork, VolumeSummary } from '../types';
+import { OrganizationShelf } from '../components/OrganizationShelf';
+import type {
+  EventOrganizationSummary,
+  JournalSummary,
+  ShelfEdition,
+  ShelfWork,
+  VolumeSummary,
+} from '../types';
 import { apiErrorMessage } from '../utils/apiError';
 import { splitEditionVolumes } from '../utils/editionStats';
 import { corpusSentence } from '../utils/corpusSentence';
@@ -38,6 +45,7 @@ export const Dashboard: React.FC = () => {
   const [shelves, setShelves] = useState<ShelfEdition[]>([]);
   const [looseWorks, setLooseWorks] = useState<ShelfWork[]>([]);
   const [journals, setJournals] = useState<JournalSummary[]>([]);
+  const [organizations, setOrganizations] = useState<EventOrganizationSummary[]>([]);
   const [recent, setRecent] = useState<LastRead[]>(() => readRecent());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -65,6 +73,7 @@ export const Dashboard: React.FC = () => {
         setShelves(data.editions);
         setLooseWorks(data.loose_works);
         setJournals(data.journals ?? []);
+        setOrganizations(data.organizations ?? []);
       } catch (err: unknown) {
         setError(apiErrorMessage(err, 'Не удалось загрузить собрание'));
       } finally {
@@ -208,6 +217,8 @@ export const Dashboard: React.FC = () => {
 
       <JournalShelf journals={journals} />
 
+      <OrganizationShelf organizations={organizations} />
+
       {/* Корешок требует агрегатов, которых /works не отдаёт: подписи,
           состава и объёма тома. Нарисовать их нулями значило бы соврать про
           содержимое работы. Поэтому просто список. */}
@@ -229,7 +240,7 @@ export const Dashboard: React.FC = () => {
           Ссылки здесь нет: строка действий ниже не зависит от числа собраний
           и её «Добавить том» ведёт туда же — вести на /works/new дважды
           незачем. */}
-      {shelves.length === 0 && journals.length === 0 && !error && (
+      {shelves.length === 0 && journals.length === 0 && organizations.length === 0 && !error && (
         <div className="empty-state">
           <p>Пока ни одного собрания.</p>
         </div>

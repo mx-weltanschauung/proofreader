@@ -64,6 +64,13 @@ type closedSweep struct {
 	openRecording                   int64
 	suggestion                      int64
 	category                        int64
+	// События: организация с закрытым событием и смешанным, вторая
+	// организация — только закрытое.
+	orgA, orgB                          string
+	eventClosed, eventMixed, eventOther string
+	// Событие вида с маркером в первой организации: вид держит только его,
+	// и оно закрыто — вид не должен появиться на странице организации.
+	eventKindClosed string
 }
 
 func (f *closedSweep) closedWorks() []int64 { return []int64{f.self, f.front, f.edVol, f.issue} }
@@ -267,6 +274,83 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 		VALUES ($1::bigint, $2, 1, 'Чтец', 'works/' || $1::bigint || '/rec/1.ogg', 'audio/ogg', 10, 1000) RETURNING id`,
 		f.open, f.chapters[f.open])
 
+	// События. Повестку пишет настоящий ReplaceAgenda. Событие 1 — целиком из
+	// закрытого тома (подпись строки и заглавие пункта несут маркер); событие
+	// 2 — открытый пункт и строка с маркером, ведущая в закрытый том;
+	// у события 2 есть и пункт с маркером, единственная строка которого ведёт
+	// в закрытый том, и пустой пункт с маркером — оба аноним не должен
+	// увидеть даже заглавием; вторая организация держит только событие
+	// 1-го вида, тоже закрытое; у первой организации есть вид с маркером,
+	// чьё единственное событие закрыто.
+	// Маркер — тот же closedMarker, что у остальной фикстуры.
+	f.orgA, f.orgB = "org-a", "org-b"
+	f.eventClosed, f.eventMixed, f.eventOther = "event-closed", "event-mixed", "event-other"
+	f.eventKindClosed = "event-kind-closed"
+	events := repository.NewEventRepository(pool)
+	mustEvent := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	orgA := &models.EventOrganization{Slug: f.orgA, Title: "Первая организация", Position: 1}
+	orgB := &models.EventOrganization{Slug: f.orgB, Title: "Вторая организация " + closedMarker, Position: 2}
+	mustEvent(events.CreateOrganization(ctx, orgA))
+	mustEvent(events.CreateOrganization(ctx, orgB))
+	kindA := &models.EventKind{OrganizationID: orgA.ID, Title: "Первый вид", Position: 1}
+	kindB := &models.EventKind{OrganizationID: orgB.ID, Title: "Вид второй организации", Position: 1}
+	kindAClosed := &models.EventKind{OrganizationID: orgA.ID, Title: "Вид " + closedMarker, Position: 2}
+	mustEvent(events.CreateKind(ctx, kindA))
+	mustEvent(events.CreateKind(ctx, kindB))
+	mustEvent(events.CreateKind(ctx, kindAClosed))
+	event1 := &models.Event{KindID: kindA.ID, Slug: f.eventClosed, Title: "Событие " + closedMarker, Dates: "1 января", Position: 1}
+	event2 := &models.Event{KindID: kindA.ID, Slug: f.eventMixed, Title: "Смешанное событие", Dates: "2 января", Position: 2}
+	event3 := &models.Event{KindID: kindB.ID, Slug: f.eventOther, Title: "Событие второй организации", Dates: "3 января", Position: 1}
+	event4 := &models.Event{KindID: kindAClosed.ID, Slug: f.eventKindClosed, Title: "Событие вида " + closedMarker, Dates: "4 января", Position: 1}
+	for _, e := range []*models.Event{event1, event2, event3, event4} {
+		mustEvent(events.CreateEvent(ctx, e))
+	}
+	chapterTarget := func(w int64, label string) models.AgendaTargetInput {
+		return models.AgendaTargetInput{Kind: models.EventTargetChapter, WorkID: w, ChapterID: ptr(f.chapters[w]), Label: label}
+	}
+	mustEvent(events.ReplaceAgenda(ctx, event1.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Пункт " + closedMarker,
+		Entries: []models.AgendaEntryInput{{
+			Label:   "Строка " + closedMarker,
+			Targets: []models.AgendaTargetInput{chapterTarget(f.self, "Цель "+closedMarker)},
+		}},
+	}}}))
+	mustEvent(events.ReplaceAgenda(ctx, event2.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Открытый пункт",
+		Entries: []models.AgendaEntryInput{
+			{Label: "Открытая строка", Targets: []models.AgendaTargetInput{chapterTarget(f.open, "")}},
+			{Label: "Строка " + closedMarker, Targets: []models.AgendaTargetInput{
+				{Kind: models.EventTargetWork, WorkID: f.edVol, Label: "Том " + closedMarker}}},
+		},
+	}, {
+		Title: "Закрытый пункт " + closedMarker,
+		Entries: []models.AgendaEntryInput{{
+			Label:   "Строка закрытого пункта " + closedMarker,
+			Targets: []models.AgendaTargetInput{chapterTarget(f.self, "")},
+		}},
+	}, {
+		Title: "Пустой пункт " + closedMarker,
+	}}}))
+	mustEvent(events.ReplaceAgenda(ctx, event4.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Пункт события вида " + closedMarker,
+		Entries: []models.AgendaEntryInput{{
+			Label:   "Строка " + closedMarker,
+			Targets: []models.AgendaTargetInput{chapterTarget(f.self, "")},
+		}},
+	}}}))
+	mustEvent(events.ReplaceAgenda(ctx, event3.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Пункт второй организации",
+		Entries: []models.AgendaEntryInput{{
+			Label:   "Строка " + closedMarker,
+			Targets: []models.AgendaTargetInput{chapterTarget(f.issue, "")},
+		}},
+	}}}))
+
 	// Правка читателя на полосе, которую потом закрыли.
 	f.suggestion = one(`INSERT INTO page_suggestions (page_id, base_markdown, proposed_markdown, user_id)
 		SELECT id, content_markdown, content_markdown || ' правка', $2 FROM pages WHERE id = $1 RETURNING id`,
@@ -341,28 +425,30 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		pages = append(pages, itoa(f.pages[w]))
 	}
 	return map[string][]string{
-		"works/{id}":             works,
-		"works/{workId}":         works,
-		"chapters/{id}":          chapters,
-		"pages/{pageId}":         pages,
-		"by-number/{pageNumber}": {"1"},
-		"versions/{versionId}":   {"1"},
-		"editions/{id}":          ids(f.openEd, f.closedEd),
-		"journals/{slug}":        {f.journalSlug, f.openJournal},
-		"persons/{slug}":         {f.person, f.openPerson},
-		"categories/{id}":        ids(f.category),
-		"concepts/{slug}":        {f.closedConcept, f.openConcept},
-		"references/{refId}":     ids(f.refs...),
-		"audio/{id}":             ids(f.track, f.openTrack),
-		"rec/{id}":               ids(f.recording, f.openRecording),
-		"suggestions/{id}":       ids(f.suggestion),
-		"documents/{slug}":       {"razbor"},
-		"documents/{nickname}":   {f.readerNick},
-		"cuts/{cutId}":           ids(f.cuts...),
-		"collections/{slug}":     {"podborka"},
-		"collections/{nickname}": {f.readerNick},
-		"items/{itemId}":         ids(append(append([]int64{}, f.staffItems...), f.readerItems...)...),
-		"readers/{nickname}":     {f.readerNick},
+		"works/{id}":                works,
+		"works/{workId}":            works,
+		"chapters/{id}":             chapters,
+		"pages/{pageId}":            pages,
+		"by-number/{pageNumber}":    {"1"},
+		"versions/{versionId}":      {"1"},
+		"editions/{id}":             ids(f.openEd, f.closedEd),
+		"journals/{slug}":           {f.journalSlug, f.openJournal},
+		"persons/{slug}":            {f.person, f.openPerson},
+		"categories/{id}":           ids(f.category),
+		"concepts/{slug}":           {f.closedConcept, f.openConcept},
+		"references/{refId}":        ids(f.refs...),
+		"audio/{id}":                ids(f.track, f.openTrack),
+		"rec/{id}":                  ids(f.recording, f.openRecording),
+		"suggestions/{id}":          ids(f.suggestion),
+		"documents/{slug}":          {"razbor"},
+		"documents/{nickname}":      {f.readerNick},
+		"cuts/{cutId}":              ids(f.cuts...),
+		"collections/{slug}":        {"podborka"},
+		"collections/{nickname}":    {f.readerNick},
+		"items/{itemId}":            ids(append(append([]int64{}, f.staffItems...), f.readerItems...)...),
+		"readers/{nickname}":        {f.readerNick},
+		"organizations/{slug}":      {f.orgA, f.orgB},
+		"organizations/{eventSlug}": {f.eventClosed, f.eventMixed, f.eventOther, f.eventKindClosed},
 	}
 }
 
@@ -451,6 +537,10 @@ func closedDirectValues(f *closedSweep) map[string]map[string]bool {
 		"concepts/{slug}": set(f.closedConcept),
 		"audio/{id}":      set(itoa(f.track)),
 		"rec/{id}":        set(itoa(f.recording)),
+		// Вторая организация и событие 1 видны только закрытым: 404 всем,
+		// кроме сотрудника.
+		"organizations/{slug}":      set(f.orgB),
+		"organizations/{eventSlug}": set(f.eventClosed, f.eventKindClosed),
 	}
 }
 
@@ -606,6 +696,8 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 		"/api/shelf", "/api/collections/podborka", "/api/collections/" + f.readerNick + "/podborka",
 		"/api/documents/razbor/view", "/api/documents/" + f.readerNick + "/razbor/view",
 		"/api/concepts/" + f.openConcept, "/api/categories/" + itoa(f.category),
+		"/api/organizations/" + f.orgA, "/api/organizations/" + f.orgA + "/" + f.eventMixed,
+		"/api/works/" + itoa(f.open) + "/chapters/" + openCh + "/events",
 	} {
 		if res := sweepDo(t, router, path, ""); res.code != http.StatusOK {
 			t.Errorf("аноним: открытое %s отвечает %d — проверка ничего не значит", path, res.code)
@@ -634,11 +726,40 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 		"/api/editions/"+itoa(f.closedEd),
 		"/api/persons/"+f.person,
 		"/api/concepts/"+f.closedConcept,
+		"/api/organizations/"+f.orgB,
+		"/api/organizations/"+f.orgA+"/"+f.eventClosed,
+		"/api/organizations/"+f.orgA+"/"+f.eventKindClosed,
+		"/api/organizations/"+f.orgB+"/"+f.eventOther,
 	)
 	for _, path := range staffSees {
 		res := sweepDo(t, router, path, f.editorTok)
 		if res.code != http.StatusOK || leakIn(f, res.text) == "" {
 			t.Errorf("сотрудник: %s (%d) не видит закрытого — фикстура ничего не доказывает", path, res.code)
+		}
+	}
+	// События: закрытое событие и организация, у которой видимого нет, аноним
+	// и читатель получают 404; смешанное событие показывает открытую строку и
+	// не показывает строку с маркером.
+	for _, tok := range []string{"", f.readerTok} {
+		for _, path := range []string{
+			"/api/organizations/" + f.orgA + "/" + f.eventClosed,
+			"/api/organizations/" + f.orgA + "/" + f.eventKindClosed,
+			"/api/organizations/" + f.orgB,
+			"/api/organizations/" + f.orgB + "/" + f.eventOther,
+		} {
+			if res := sweepDo(t, router, path, tok); res.code != http.StatusNotFound {
+				t.Errorf("события: %s отвечает %d, ждали 404", path, res.code)
+			}
+		}
+		res := sweepDo(t, router, "/api/organizations/"+f.orgA+"/"+f.eventMixed, tok)
+		if res.code != http.StatusOK || !strings.Contains(res.text, "Открытая строка") || leakIn(f, res.text) != "" {
+			t.Errorf("события: смешанное событие (%d) должно отдать открытую строку без маркера", res.code)
+		}
+		// Страница организации: вид с маркером держит только закрытое
+		// событие — его нет вовсе, открытое событие на месте.
+		res = sweepDo(t, router, "/api/organizations/"+f.orgA, tok)
+		if res.code != http.StatusOK || !strings.Contains(res.text, f.eventMixed) || leakIn(f, res.text) != "" {
+			t.Errorf("события: организация (%d) должна отдать смешанное событие без вида с маркером", res.code)
 		}
 	}
 	// Звук закрытого сотруднику — редирект на подписанную ссылку своего ключа.

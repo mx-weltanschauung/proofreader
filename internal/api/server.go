@@ -87,6 +87,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		WithRecordings(audioRecordingRepo).
 		WithCredits(personRepo)
 	closedRepo := repository.NewClosedRepository(pool)
+	eventRepo := repository.NewEventRepository(pool)
 	readingHandler := NewReadingHandler(pageRepo, markdownRenderer)
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же
 	// набор источников, что у чтения разбора, плюс свой рендер без подрезки.
@@ -94,7 +95,7 @@ func NewServer(d ServerDeps) *mux.Router {
 	userHandler := NewUserHandler(userRepo, authService)
 	exportHandler := NewExportHandler(workRepo, chapterRepo, pageRepo)
 	editionHandler := NewEditionHandler(editionRepo)
-	shelfHandler := NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo)
+	shelfHandler := NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo).WithEvents(eventRepo)
 	highlightHandler := NewHighlightHandler(editionRepo).WithClosed(closedRepo)
 	searchRepo := repository.NewSearchRepository(pool)
 	searchHandler := NewSearchHandler(searchRepo)
@@ -244,6 +245,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		WithClosedWriter(NewClosedHandler(closedRepo, servingCache)).
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
+		WithEvents(NewEventHandler(eventRepo, closedRepo)).
 		WithSite(NewSiteHandler(cfg.Site)).
 		WithJournals(NewJournalHandler(journalRepo), NewPersonHandler(personRepo, personRepo, chapterRepo)).
 		WithStaticArchive(NewStaticArchiveHandler(cfg.Server.StaticArchiveURL, &http.Client{Timeout: 5 * time.Second})).

@@ -46,6 +46,7 @@ type Router struct {
 	journalHandler        *JournalHandler
 	closedHandler         *ClosedHandler
 	personHandler         *PersonHandler
+	eventHandler          *EventHandler
 	indexHandler          *IndexHandler
 	collectionHandler     *CollectionHandler
 	downloadHandler       *DownloadHandler
@@ -182,6 +183,13 @@ func (rt *Router) WithStaticArchive(h *StaticArchiveHandler) *Router {
 // WithAudio: маршруты регистрируются всегда, чтобы их видел сторож ролей.
 func (rt *Router) WithJournals(j *JournalHandler, p *PersonHandler) *Router {
 	rt.journalHandler, rt.personHandler = j, p
+	return rt
+}
+
+// WithEvents подключает организации, события и повестки. nil допустим, как у
+// WithJournals: маршруты регистрируются всегда, чтобы их видел сторож ролей.
+func (rt *Router) WithEvents(h *EventHandler) *Router {
+	rt.eventHandler = h
 	return rt
 }
 
@@ -354,6 +362,20 @@ func (rt *Router) Setup() *mux.Router {
 	// работы вне собраний. Полки эти же данные собирали шестью запросами в
 	// две волны — см. ShelfHandler.
 	public.HandleFunc("/shelf", rt.shelfHandler.Get).Methods("GET")
+	// События: у организации под слагом только событие, буквальных сегментов
+	// под ней нет, поэтому второй шаблон ничего не перехватывает.
+	public.HandleFunc("/organizations/{slug}", rt.eventHandler.GetOrganization).Methods("GET")
+	public.HandleFunc("/organizations/{slug}/{eventSlug}", rt.eventHandler.GetEvent).Methods("GET")
+	public.HandleFunc("/works/{workId}/chapters/{id}/events", rt.eventHandler.ChapterEvents).Methods("GET")
+	staff.HandleFunc("/organizations", rt.eventHandler.CreateOrganization).Methods("POST")
+	staff.HandleFunc("/organizations/{id}", rt.eventHandler.UpdateOrganization).Methods("PUT")
+	staff.HandleFunc("/organizations/{id}/kinds", rt.eventHandler.CreateKind).Methods("POST")
+	staff.HandleFunc("/event-kinds/{id}", rt.eventHandler.UpdateKind).Methods("PUT")
+	staff.HandleFunc("/event-kinds/{id}", rt.eventHandler.DeleteKind).Methods("DELETE")
+	staff.HandleFunc("/event-kinds/{id}/events", rt.eventHandler.CreateEvent).Methods("POST")
+	staff.HandleFunc("/events/{id}", rt.eventHandler.UpdateEvent).Methods("PUT")
+	staff.HandleFunc("/events/{id}", rt.eventHandler.DeleteEvent).Methods("DELETE")
+	staff.HandleFunc("/events/{id}/agenda", rt.eventHandler.ReplaceAgenda).Methods("PUT")
 	public.HandleFunc("/journals", rt.journalHandler.List).Methods("GET")
 	public.HandleFunc("/journals/{slug}", rt.journalHandler.Get).Methods("GET")
 	staff.HandleFunc("/journals", rt.journalHandler.Create).Methods("POST")

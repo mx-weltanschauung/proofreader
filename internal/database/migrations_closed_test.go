@@ -88,8 +88,10 @@ func TestClosedMigrationDownRefuses(t *testing.T) {
 		t.Fatalf("после up столбцов closed %d, ждали 3", got)
 	}
 	// Чужое закрытое держало бы отказ за этот тест — открываем его, иначе
-	// каждая проверка ниже ничего не говорит.
-	openAllClosed(ctx, t, pool)
+	// каждая проверка ниже ничего не говорит. Чужие события держали бы отказ
+	// миграции сверху (000041), через которую идёт шаг вниз, — их тоже нет.
+	clearDownRefusals(ctx, t, pool)
+	top, _ := version()
 
 	var ownerID, workID, editionID, journalID int64
 	if err := pool.QueryRow(ctx, `SELECT id FROM users ORDER BY id LIMIT 1`).Scan(&ownerID); err != nil {
@@ -161,7 +163,9 @@ func TestClosedMigrationDownRefuses(t *testing.T) {
 	if got := columns(); got != 3 {
 		t.Fatalf("после повторного up столбцов closed %d", got)
 	}
-	if v, dirty := version(); v != closedMigrationVersion || dirty {
-		t.Fatalf("итог: версия %d dirty=%v, ждали %d чистую", v, dirty, closedMigrationVersion)
+	// up возвращает базу на верх цепочки, а не на 40: миграции сверху
+	// (000041 и дальше) шаг вниз снял вместе с 000040.
+	if v, dirty := version(); v != top || dirty {
+		t.Fatalf("итог: версия %d dirty=%v, ждали %d чистую", v, dirty, top)
 	}
 }

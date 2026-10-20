@@ -1,0 +1,11 @@
+.agenda-editor { margin-top: 2rem; }
+.agenda-section { border: 1px solid var(--color-border); padding: 0.75rem; margin-bottom: 1rem; }
+.agenda-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.agenda-row input { flex: 1 1 16rem; }
+.agenda-entries, .agenda-targets { list-style: none; padding-left: 1rem; }
+.agenda-entry { margin: 0.5rem 0; }
+.agenda-target { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.25rem 0; }
+.agenda-target > p { flex-basis: 100%; margin: 0; }
+.agenda-work-title { font-style: italic; }
+.agenda-error { color: var(--color-error-ink); }
+.agenda-save { display: flex; gap: 1rem; align-items: center; margin-top: 1rem; }

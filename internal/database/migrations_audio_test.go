@@ -51,7 +51,7 @@ func TestAudioMigrationRoundTrip(t *testing.T) {
 	}
 
 	up()
-	openAllClosed(ctx, t, pool)
+	clearDownRefusals(ctx, t, pool)
 	if got := tables(); got != 3 {
 		t.Fatalf("после up таблиц %d, ждали 3", got)
 	}

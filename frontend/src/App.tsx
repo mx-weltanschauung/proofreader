@@ -72,6 +72,16 @@ const AuthorDetail = lazy(() =>
 const JournalDetail = lazy(() =>
   import('./pages/JournalDetail').then((m) => ({ default: m.JournalDetail })),
 );
+const OrganizationDetail = lazy(() =>
+  import('./pages/OrganizationDetail').then((m) => ({ default: m.OrganizationDetail })),
+);
+const EventEdit = lazy(() => import('./pages/EventEdit').then((m) => ({ default: m.EventEdit })));
+const OrganizationEdit = lazy(() =>
+  import('./pages/OrganizationEdit').then((m) => ({ default: m.OrganizationEdit })),
+);
+const EventDetail = lazy(() =>
+  import('./pages/EventDetail').then((m) => ({ default: m.EventDetail })),
+);
 const Search = lazy(() => import('./pages/Search').then((m) => ({ default: m.Search })));
 const ConceptList = lazy(() =>
   import('./pages/ConceptList').then((m) => ({ default: m.ConceptList })),
@@ -310,6 +320,24 @@ function App() {
                 />
                 <Route path="/editions/:id" element={<EditionDetail />} />
                 <Route path="/journals/:slug" element={<JournalDetail />} />
+                <Route
+                  path="/organizations/:slug/edit"
+                  element={
+                    <RequireRole roles={['administrator', 'editor']}>
+                      <OrganizationEdit />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/organizations/:slug/:eventSlug/edit"
+                  element={
+                    <RequireRole roles={['administrator', 'editor']}>
+                      <EventEdit />
+                    </RequireRole>
+                  }
+                />
+                <Route path="/organizations/:slug" element={<OrganizationDetail />} />
+                <Route path="/organizations/:slug/:eventSlug" element={<EventDetail />} />
                 <Route path="/authors/:slug" element={<AuthorDetail />} />
                 <Route path="/concepts" element={<ConceptList />} />
                 <Route path="/concepts/:slug" element={<ConceptView />} />

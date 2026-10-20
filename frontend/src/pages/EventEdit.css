@@ -1,0 +1,17 @@
+.event-edit {
+  max-width: 52rem;
+  margin: 0 auto;
+}
+.event-edit-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.event-edit-header label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.event-edit-error {
+  color: var(--color-error-ink);
+}

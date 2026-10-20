@@ -5,6 +5,13 @@ import type {
   ArticleCredit,
   CreditInput,
   JournalDetail,
+  EventOrganizationDetail,
+  EventDetail,
+  ChapterEventLink,
+  EventOrganization,
+  EventKind,
+  EventRecord,
+  AgendaInput,
   JournalSummary,
   Person,
   PersonDetail,
@@ -480,6 +487,52 @@ export const journalsApi = {
   get: (slug: string) => api.get<JournalDetail>(`/journals/${encodeURIComponent(slug)}`),
   setClosed: (id: number, closed: boolean) =>
     api.put<ClosedResult>(`/journals/${id}/closed`, { closed }),
+};
+
+export const eventsApi = {
+  organization: (slug: string) =>
+    api.get<EventOrganizationDetail>(`/organizations/${encodeURIComponent(slug)}`),
+  event: (orgSlug: string, eventSlug: string) =>
+    api.get<EventDetail>(
+      `/organizations/${encodeURIComponent(orgSlug)}/${encodeURIComponent(eventSlug)}`,
+    ),
+  chapterEvents: (workId: number, chapterId: number) =>
+    api.get<ChapterEventLink[]>(`/works/${workId}/chapters/${chapterId}/events`),
+
+  updateOrganization: (
+    id: number,
+    data: { title: string; description: string; position: number },
+  ) => api.put<EventOrganization>(`/organizations/${id}`, data),
+  createKind: (orgId: number, data: { title: string; position: number }) =>
+    api.post<EventKind>(`/organizations/${orgId}/kinds`, data),
+  updateKind: (id: number, data: { title: string; position: number }) =>
+    api.put<EventKind>(`/event-kinds/${id}`, data),
+  deleteKind: (id: number) => api.delete(`/event-kinds/${id}`),
+  createEvent: (
+    kindId: number,
+    data: {
+      slug: string;
+      title: string;
+      dates: string;
+      place: string;
+      description: string;
+      position: number;
+    },
+  ) => api.post<EventRecord>(`/event-kinds/${kindId}/events`, data),
+  updateEvent: (
+    id: number,
+    data: {
+      kind_id: number;
+      title: string;
+      dates: string;
+      place: string;
+      description: string;
+      position: number;
+    },
+  ) => api.put<EventRecord>(`/events/${id}`, data),
+  deleteEvent: (id: number) => api.delete(`/events/${id}`),
+  replaceAgenda: (eventId: number, data: AgendaInput) =>
+    api.put<EventDetail>(`/events/${eventId}/agenda`, data),
 };
 
 export const personsApi = {

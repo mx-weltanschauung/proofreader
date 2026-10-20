@@ -377,6 +377,8 @@ export interface Shelf {
   loose_works: ShelfWork[];
   /** Необязательно: бэкенд старше журналов поля не шлёт. */
   journals?: JournalSummary[];
+  /** Необязательно: бэкенд старше событий поля не шлёт. */
+  organizations?: EventOrganizationSummary[];
 }
 
 /**
@@ -1149,4 +1151,121 @@ export interface RecordingUpload {
   key: string;
   url: string;
   content_type: string;
+}
+
+/** Строка организации на главной (`Shelf.organizations`). */
+export interface EventOrganizationSummary {
+  id: number;
+  slug: string;
+  title: string;
+  events_total: number;
+}
+
+export interface EventOrganization {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  position: number;
+}
+
+export interface EventSummary {
+  id: number;
+  slug: string;
+  title: string;
+  dates: string;
+  materials_total: number;
+}
+
+export interface EventKindEvents {
+  id: number;
+  organization_id: number;
+  title: string;
+  position: number;
+  events: EventSummary[];
+}
+
+/** Поля организации лежат в корне ответа, виды — в `kinds`. */
+export interface EventOrganizationDetail extends EventOrganization {
+  kinds: EventKindEvents[];
+}
+
+export interface EventTarget {
+  kind: 'chapter' | 'work';
+  work_id: number | null;
+  chapter_id: number | null;
+  label: string;
+  title: string;
+  work_title: string;
+  broken: boolean;
+  /** Заполняется только для сотрудника. */
+  closed: boolean;
+}
+
+export interface EventEntry {
+  label: string;
+  targets: EventTarget[];
+}
+
+export interface EventSection {
+  /** Хранимая позиция с нуля: якорь `section-{position+1}` не сдвигается. */
+  position: number;
+  title: string;
+  entries: EventEntry[];
+}
+
+export interface EventDetail {
+  id: number;
+  kind_id: number;
+  slug: string;
+  title: string;
+  dates: string;
+  place: string;
+  description: string;
+  position: number;
+  organization: EventOrganization;
+  kind_title: string;
+  sections: EventSection[];
+}
+
+export interface ChapterEventLink {
+  organization_slug: string;
+  organization_title: string;
+  event_slug: string;
+  event_title: string;
+  section_title: string;
+  section_position: number;
+}
+
+export interface EventKind {
+  id: number;
+  organization_id: number;
+  title: string;
+  position: number;
+}
+
+/** Событие как его отдают ответы записи (без повестки). */
+export interface EventRecord {
+  id: number;
+  kind_id: number;
+  slug: string;
+  title: string;
+  dates: string;
+  place: string;
+  description: string;
+  position: number;
+}
+
+/** Тело `PUT /events/{id}/agenda`. */
+export interface AgendaTargetInput {
+  kind: 'chapter' | 'work';
+  work_id: number;
+  chapter_id?: number;
+  label: string;
+}
+export interface AgendaInput {
+  sections: {
+    title: string;
+    entries: { label: string; targets: AgendaTargetInput[] }[];
+  }[];
 }

@@ -64,7 +64,7 @@ func TestSearchMigrationRoundTrip(t *testing.T) {
 	}
 
 	up()
-	openAllClosed(ctx, t, pool)
+	clearDownRefusals(ctx, t, pool)
 	if !hasColumn() || !hasIndex("idx_pages_search") || !hasConfig() || hasIndex("idx_pages_content") {
 		t.Fatalf("after up: column=%v search=%v config=%v old=%v",
 			hasColumn(), hasIndex("idx_pages_search"), hasConfig(), hasIndex("idx_pages_content"))

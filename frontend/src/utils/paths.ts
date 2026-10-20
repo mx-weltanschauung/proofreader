@@ -27,6 +27,22 @@ export function journalPath(journal: { slug: string }): string {
   return `/journals/${journal.slug}`;
 }
 
+export function organizationPath(org: { slug: string }): string {
+  return `/organizations/${org.slug}`;
+}
+
+export function organizationEditPath(orgSlug: string): string {
+  return `/organizations/${orgSlug}/edit`;
+}
+
+export function eventPath(orgSlug: string, eventSlug: string): string {
+  return `/organizations/${orgSlug}/${eventSlug}`;
+}
+
+export function eventEditPath(orgSlug: string, eventSlug: string): string {
+  return `${eventPath(orgSlug, eventSlug)}/edit`;
+}
+
 export function authorPath(person: { slug: string }): string {
   return `/authors/${person.slug}`;
 }

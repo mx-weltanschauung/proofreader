@@ -48,6 +48,7 @@ import { jumpToAnchor, markAddress } from '../utils/anchorNav';
 import { plural } from '../utils/volumeLabel';
 import { missingPageMessage, parsePrintedPage, resolvePageJump } from '../utils/pageJump';
 import { printedFolio } from '../utils/folio';
+import { ChapterEvents } from '../components/ChapterEvents';
 
 export const ChapterView: React.FC = () => {
   // workParam/chapterParam — сырые сегменты адреса (несут слаг); workId и
@@ -550,6 +551,9 @@ export const ChapterView: React.FC = () => {
               return badge ? <div className="chapter-type-badge">{badge}</div> : null;
             })()}
             <h1>{chapter.title}</h1>
+            {workId != null && chapterId != null && (
+              <ChapterEvents workId={workId} chapterId={chapterId} />
+            )}
             <div className="chapter-meta">
               <span>
                 Страницы {chapter.start_page}—{chapter.end_page}
