@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { eventsApi } from '../services/api';
 import type { EventDetail as Detail, EventTarget } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { apiErrorMessage } from '../utils/apiError';
 import { chapterPath, eventEditPath, organizationPath, workPath } from '../utils/paths';
+import { jumpToAnchor } from '../utils/anchorNav';
 import { useAuth, canEdit } from '../hooks/useAuth';
 import { ClosedBadge } from '../components/ClosedBadge';
 import './EventDetail.css';
@@ -48,6 +49,7 @@ export function EventDetail() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
+  const { hash } = useLocation();
   useDocumentTitle(event?.title);
 
   useEffect(() => {
@@ -69,6 +71,12 @@ export function EventDetail() {
       alive = false;
     };
   }, [slug, eventSlug]);
+
+  // Пункты появляются после ответа API, и браузер к якорю из адреса уже не
+  // вернётся: прыгаем сами, когда заголовки встали в документ.
+  useEffect(() => {
+    if (event && hash) jumpToAnchor(decodeURIComponent(hash.slice(1)));
+  }, [event, hash]);
 
   if (isLoading) return <div className="event-state">Загрузка…</div>;
   if (error || !event) {
@@ -99,7 +107,7 @@ export function EventDetail() {
       </header>
       {event.sections.map((section) => (
         <section key={section.position} className="event-section">
-          <h2 id={`section-${section.position + 1}`} className="event-section-title">
+          <h2 id={`section-${section.position + 1}`} tabIndex={-1} className="event-section-title">
             {section.title}
           </h2>
           <ul className="event-entries">

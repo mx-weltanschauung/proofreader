@@ -65,9 +65,9 @@ const DETAIL: Detail = {
   ],
 };
 
-function renderPage() {
+function renderPage(path = '/organizations/org-a/e1') {
   return render(
-    <MemoryRouter initialEntries={['/organizations/org-a/e1']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/organizations/:slug/:eventSlug" element={<EventDetail />} />
       </Routes>
@@ -126,5 +126,15 @@ describe('EventDetail', () => {
       'href',
       '/organizations/org-a/e1/edit',
     );
+  });
+
+  it('адрес с #section-2 после загрузки прокручивает к этому пункту', async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    vi.spyOn(eventsApi, 'event').mockImplementation(() => ok(DETAIL));
+    const { container } = renderPage('/organizations/org-a/e1#section-2');
+    await screen.findByRole('heading', { level: 1, name: 'I съезд' });
+    await vi.waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(scroll.mock.contexts[0]).toBe(container.querySelector('h2#section-2'));
   });
 });
