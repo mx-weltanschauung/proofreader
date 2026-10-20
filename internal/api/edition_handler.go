@@ -39,6 +39,8 @@ type EditionRequest struct {
 	// подпись полки различает «45 из 55» и просто «45 томов». Ноль здесь
 	// значил бы «в собрании ноль томов».
 	VolumesPlanned *int `json:"volumes_planned"`
+	// Closed — завести издание сразу закрытым; Update поле не читает.
+	Closed bool `json:"closed,omitempty"`
 }
 
 // List retrieves all editions
@@ -115,6 +117,7 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		URLSlug:        req.URLSlug,
 		Description:    req.Description,
 		VolumesPlanned: req.VolumesPlanned,
+		Closed:         req.Closed,
 	}
 
 	ctx := context.Background()

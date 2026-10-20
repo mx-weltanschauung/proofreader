@@ -348,6 +348,7 @@ func main() {
 	).WithMCP(mcpHandler).
 		WithOPDS(opdsHandler).
 		WithClosed(closedRepo).
+		WithClosedWriter(api.NewClosedHandler(closedRepo, servingCache)).
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
 		WithSite(api.NewSiteHandler(cfg.Site)).

@@ -329,6 +329,7 @@ type fakeWorkRepo struct {
 	created     *models.Work
 	createErr   error
 	role        string
+	closed      bool
 	list        []*models.Work
 }
 
@@ -337,7 +338,7 @@ func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int6
 }
 
 func (f *fakeWorkRepo) GetByID(_ context.Context, id int64) (*models.Work, error) {
-	return &models.Work{ID: id, Role: f.role}, nil
+	return &models.Work{ID: id, Role: f.role, Closed: f.closed}, nil
 }
 func (f *fakeWorkRepo) Create(_ context.Context, w *models.Work) error {
 	f.created = w

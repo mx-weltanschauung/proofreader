@@ -44,6 +44,7 @@ type Router struct {
 	// serveWithRecover), как у озвучки.
 	highlightHandler      *HighlightHandler
 	journalHandler        *JournalHandler
+	closedHandler         *ClosedHandler
 	personHandler         *PersonHandler
 	indexHandler          *IndexHandler
 	collectionHandler     *CollectionHandler
@@ -181,6 +182,13 @@ func (rt *Router) WithStaticArchive(h *StaticArchiveHandler) *Router {
 // WithAudio: маршруты регистрируются всегда, чтобы их видел сторож ролей.
 func (rt *Router) WithJournals(j *JournalHandler, p *PersonHandler) *Router {
 	rt.journalHandler, rt.personHandler = j, p
+	return rt
+}
+
+// WithClosedWriter подключает запись признака «закрыт». nil допустим, как у
+// WithAudio: маршруты регистрируются всегда, чтобы их видел сторож ролей.
+func (rt *Router) WithClosedWriter(h *ClosedHandler) *Router {
+	rt.closedHandler = h
 	return rt
 }
 
@@ -377,6 +385,9 @@ func (rt *Router) Setup() *mux.Router {
 	// Edition management (Editor and Admin only)
 	staff.HandleFunc("/editions", rt.editionHandler.Create).Methods("POST")
 	staff.HandleFunc("/editions/{id}", rt.editionHandler.Update).Methods("PUT")
+	staff.HandleFunc("/editions/{id}/closed", rt.closedHandler.Edition).Methods("PUT")
+	staff.HandleFunc("/works/{id}/closed", rt.closedHandler.Work).Methods("PUT")
+	staff.HandleFunc("/journals/{id}/closed", rt.closedHandler.Journal).Methods("PUT")
 	staff.HandleFunc("/editions/{id}", rt.editionHandler.Delete).Methods("DELETE")
 	staff.HandleFunc("/editions/{id}/highlights", rt.highlightHandler.Replace).Methods("PUT")
 

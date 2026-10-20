@@ -91,6 +91,9 @@ type CreateWorkRequest struct {
 	Language        string            `json:"language"`
 	Country         string            `json:"country"`
 	Status          models.WorkStatus `json:"status"`
+	// Closed — завести работу сразу закрытой (публикатор, закрытое издание).
+	// Update поле не читает: признак меняет только ClosedHandler.
+	Closed bool `json:"closed,omitempty"`
 }
 
 // UpdateWorkRequest represents a request to update a work.
@@ -188,6 +191,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		FilePath: "", // Will be set during file upload
 		Status:   req.Status,
 		OwnerID:  claims.UserID,
+		Closed:   req.Closed,
 	}
 
 	ctx := context.Background()
