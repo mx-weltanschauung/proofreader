@@ -116,12 +116,12 @@ func TestShelfOrganizationsHideAllClosed(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/shelf", nil)
 		rec := httptest.NewRecorder()
 		withClaims(claims, build().Get)(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("код %d: %s", rec.Code, rec.Body)
+		}
 		var s models.Shelf
 		if err := json.Unmarshal(rec.Body.Bytes(), &s); err != nil {
 			t.Fatal(err)
-		}
-		if rec.Code == 200 && !json.Valid(rec.Body.Bytes()) {
-			t.Fatal("не json")
 		}
 		return s
 	}
