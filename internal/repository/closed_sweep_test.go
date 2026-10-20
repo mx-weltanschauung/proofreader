@@ -55,11 +55,13 @@ type closedSweep struct {
 	chapters                        map[int64]int64 // работа → глава
 	pages                           map[int64]int64 // работа → первая полоса
 	journalSlug, person             string
+	openJournal, openPerson         string
 	closedConcept, openConcept      string
 	refs                            []int64
 	staffItems, readerItems         []int64
 	cuts                            []int64
 	track, openTrack, recording     int64
+	openRecording                   int64
 	suggestion                      int64
 	category                        int64
 }
@@ -148,6 +150,21 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 	f.person = "ivanov"
 	exec(`INSERT INTO article_credits (chapter_id, position, role, printed, person_id)
 		VALUES ($1, 1, 'author', 'И. Иванов', $2)`, f.chapters[f.issue], person)
+
+	// Открытый журнал рядом: его номер, статья и подписанный под ней человек
+	// анониму отдаются — иначе маршруты журнала и человека в обходе ничего
+	// бы не отдали вовсе.
+	f.openJournal, f.openPerson = "otkrytyi", "petrov"
+	openJournal := one(`INSERT INTO journals (slug, title) VALUES ($1, 'Открытый журнал') RETURNING id`, f.openJournal)
+	openIssue := work(models.IssueTitle("Открытый журнал", 1928, "1"), nil, nil, models.WorkRoleJournalIssue, nil, false)
+	exec(`INSERT INTO journal_issues (journal_id, year, number_from, number_to, label, work_id)
+		VALUES ($1, 1928, 1, 1, '1', $2)`, openJournal, openIssue)
+	exec(`INSERT INTO pages (work_id, page_number, content_markdown) VALUES ($1, 1, 'Открытая статья.')`, openIssue)
+	openArticle := one(`INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page, article_kind)
+		VALUES ($1, 'Открытая статья', 'chapter', 1, 1, 1, 'статья') RETURNING id`, openIssue)
+	openPerson := one(`INSERT INTO persons (name, sort_key, slug) VALUES ('Петров П. П.', 'петров', $1) RETURNING id`, f.openPerson)
+	exec(`INSERT INTO article_credits (chapter_id, position, role, printed, person_id)
+		VALUES ($1, 1, 'author', 'П. Петров', $2)`, openArticle, openPerson)
 
 	f.category = one(`INSERT INTO categories (name, slug, description) VALUES ('Раздел', 'razdel', '') RETURNING id`)
 	exec(`INSERT INTO work_categories (work_id, category_id) VALUES ($1, $2), ($3, $2)`, f.self, f.category, f.open)
@@ -245,6 +262,10 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 			bytes, duration_ms)
 		VALUES ($1::bigint, $2, 1, 'Чтец', 'works/' || $1::bigint || '/rec/1.ogg', 'audio/ogg', 10, 1000) RETURNING id`,
 		f.self, f.chapters[f.self])
+	f.openRecording = one(`INSERT INTO audio_recordings (work_id, chapter_id, position, reader, s3_key, content_type,
+			bytes, duration_ms)
+		VALUES ($1::bigint, $2, 1, 'Чтец', 'works/' || $1::bigint || '/rec/1.ogg', 'audio/ogg', 10, 1000) RETURNING id`,
+		f.open, f.chapters[f.open])
 
 	// Правка читателя на полосе, которую потом закрыли.
 	f.suggestion = one(`INSERT INTO page_suggestions (page_id, base_markdown, proposed_markdown, user_id)
@@ -327,13 +348,13 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		"by-number/{pageNumber}": {"1"},
 		"versions/{versionId}":   {"1"},
 		"editions/{id}":          ids(f.openEd, f.closedEd),
-		"journals/{slug}":        {f.journalSlug},
-		"persons/{slug}":         {f.person},
+		"journals/{slug}":        {f.journalSlug, f.openJournal},
+		"persons/{slug}":         {f.person, f.openPerson},
 		"categories/{id}":        ids(f.category),
 		"concepts/{slug}":        {f.closedConcept, f.openConcept},
 		"references/{refId}":     ids(f.refs...),
 		"audio/{id}":             ids(f.track, f.openTrack),
-		"rec/{id}":               ids(f.recording),
+		"rec/{id}":               ids(f.recording, f.openRecording),
 		"suggestions/{id}":       ids(f.suggestion),
 		"documents/{slug}":       {"razbor"},
 		"documents/{nickname}":   {f.readerNick},
@@ -369,6 +390,43 @@ func closedSweepQueries(f *closedSweep) map[string][]string {
 		"/api/works/{id}/audio":                       {"", "format=m3u"},
 		"/api/works/{workId}/reading":                 {"", "from=1&count=50"},
 		"/api/readers":                                {"q=" + f.readerNick},
+	}
+}
+
+// closedSweepSilent — маршруты GET, которым позволено не отдать анониму и
+// читателю ничего (ни 2xx, ни 3xx), с доводом. Остальные молчащие роняют
+// тест: молчание значит, что маршрут в обходе не показал ни одного ответа с
+// данными, и утечка в них прошла бы незамеченной.
+func closedSweepSilent() map[string]string {
+	const admin = "только администратор: анониму 401, читателю 403"
+	const staff = "только сотрудник: анониму 401, читателю 403"
+	return map[string]string{
+		"/api/admin/stats/crawlers":                   admin,
+		"/api/admin/stats/devices":                    admin,
+		"/api/admin/stats/health":                     admin,
+		"/api/admin/stats/referrers":                  admin,
+		"/api/admin/stats/searches":                   admin,
+		"/api/admin/stats/top":                        admin,
+		"/api/admin/stats/traffic":                    admin,
+		"/api/cache/stats":                            admin,
+		"/api/export":                                 admin,
+		"/api/feedback":                               admin,
+		"/api/feedback/unread-count":                  admin,
+		"/api/readers":                                admin,
+		"/api/readers/{nickname}/collections":         admin,
+		"/api/users":                                  admin,
+		"/api/audio/queue":                            staff,
+		"/api/documents/review":                       staff,
+		"/api/suggestions":                            staff,
+		"/api/suggestions/{id}":                       staff,
+		"/api/works/{id}/apparatus":                   staff,
+		"/api/works/{workId}/pages/{pageId}/versions": staff,
+		"/api/works/{workId}/pages/{pageId}/versions/{versionId}": staff,
+		"/api/static-archive":          "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
+		"/api/static-archive/download": "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
+		"/mcp":                         "GET отвечает 405 по устройству; MCP проверяет sweepMCP",
+		"/og/":                         "голый префикс — 404; карточки обходит sweepTokenless",
+		"/sitemap-":                    "голый префикс — 404; куски карты обходит sweepTokenless от /sitemap.xml",
 	}
 }
 
@@ -487,13 +545,28 @@ func sweepDo(t *testing.T, h http.Handler, path, token string) sweepResponse {
 	return sweepResponse{code: rec.Code, text: text, loc: rec.Header().Get("Location")}
 }
 
+// percentRun — подряд идущие %XX: один закодированный знак UTF-8 занимает
+// несколько.
+var percentRun = regexp.MustCompile(`(?:%[0-9A-Fa-f]{2})+`)
+
+// percentDecoded раскодирует %XX кусками, а не телом целиком: одиночный «%»
+// в тексте («50%») ломал бы url.QueryUnescape всего тела, и раскодированная
+// проверка молча пропускалась бы. Кусок, который не раскодируется, остаётся
+// как есть.
+func percentDecoded(text string) string {
+	return percentRun.ReplaceAllStringFunc(text, func(run string) string {
+		if dec, err := url.PathUnescape(run); err == nil {
+			return dec
+		}
+		return run
+	})
+}
+
 // leakIn — что именно в ответе выдаёт закрытое: маркер в любом виде или ключ
 // скана либо звука закрытой работы.
 func leakIn(f *closedSweep, text string) string {
 	norm := strings.NewReplacer(`\u0001`, "", `\u0002`, "", "\x01", "", "\x02", "").Replace(text)
-	if dec, err := url.QueryUnescape(norm); err == nil {
-		norm += "\n" + dec
-	}
+	norm += "\n" + percentDecoded(norm)
 	if m := closedLeak.FindString(norm); m != "" {
 		return fmt.Sprintf("маркер %q", m)
 	}
@@ -554,10 +627,28 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 		staffSees = append(staffSees, "/api/works/"+itoa(w), "/api/works/"+itoa(w)+"/pages",
 			"/api/works/"+itoa(w)+"/chapters/"+itoa(f.chapters[w])+"/pages")
 	}
+	// Прямые адреса, на которые аноним получает 404, сотруднику обязаны
+	// отдавать закрытое: неверный id фикстуры иначе дал бы 404 всем, и
+	// проверка анонима прошла бы впустую.
+	staffSees = append(staffSees,
+		"/api/editions/"+itoa(f.closedEd),
+		"/api/persons/"+f.person,
+		"/api/concepts/"+f.closedConcept,
+	)
 	for _, path := range staffSees {
 		res := sweepDo(t, router, path, f.editorTok)
 		if res.code != http.StatusOK || leakIn(f, res.text) == "" {
 			t.Errorf("сотрудник: %s (%d) не видит закрытого — фикстура ничего не доказывает", path, res.code)
+		}
+	}
+	// Звук закрытого сотруднику — редирект на подписанную ссылку своего ключа.
+	for path, key := range map[string]string{
+		"/api/audio/" + itoa(f.track) + ".opus": "s3.invalid/works/" + itoa(f.self) + "/r/",
+		"/api/audio/rec/" + itoa(f.recording):   "s3.invalid/works/" + itoa(f.self) + "/rec/",
+	} {
+		res := sweepDo(t, router, path, f.editorTok)
+		if res.code != http.StatusFound || !strings.Contains(res.loc, key) {
+			t.Errorf("сотрудник: %s (%d, %q) — ждали 302 на %s", path, res.code, res.loc, key)
 		}
 	}
 	for _, w := range f.closedWorks() {
@@ -571,7 +662,7 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 	vars := closedSweepVars(f)
 	queries := closedSweepQueries(f)
 	direct := closedDirectValues(f)
-	var routes []string
+	var routes, prefixes []string
 	if err := router.Walk(func(r *mux.Route, _ *mux.Router, _ []*mux.Route) error {
 		tpl, err := r.GetPathTemplate()
 		if err != nil {
@@ -584,6 +675,12 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 		for _, m := range methods {
 			if m == http.MethodGet {
 				routes = append(routes, tpl)
+				// PathPrefix: регулярка без «$» — канал под своим префиксом
+				// (краулер, карта сайта, карточки, OPDS). Его голый адрес
+				// идёт в обход по ссылкам.
+				if re, err := r.GetPathRegexp(); err == nil && !strings.HasSuffix(re, "$") {
+					prefixes = append(prefixes, tpl)
+				}
 			}
 		}
 		return nil
@@ -626,6 +723,24 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 			silent = append(silent, tpl)
 		}
 	}
+	// Маршрут, не отдавший ничего, проверен только на отказ: данных он не
+	// показал, и утечку в них обход увидеть не мог. Молчать вправе только
+	// названные в closedSweepSilent; новому молчащему — запрос в
+	// closedSweepQueries или довод в списке.
+	allowed := closedSweepSilent()
+	silentSet := map[string]bool{}
+	for _, tpl := range silent {
+		silentSet[tpl] = true
+		if _, ok := allowed[tpl]; !ok {
+			t.Errorf("маршрут %s ничего не отдал анониму и читателю: заведи ему запрос в closedSweepQueries "+
+				"(или данные в фикстуре) либо объясни молчание в closedSweepSilent", tpl)
+		}
+	}
+	for tpl := range allowed {
+		if !silentSet[tpl] {
+			t.Errorf("маршрут %s в closedSweepSilent, но не молчит или его нет — убери из списка", tpl)
+		}
+	}
 	t.Logf("обход роутера: маршрутов GET %d, запросов %d, из них отдано (2xx/3xx) — %d", len(routes), requests, served)
 	t.Logf("маршруты, не отдавшие ничего анониму и читателю (сотруднические, закрытые целиком, без данных): %s",
 		strings.Join(silent, " "))
@@ -633,7 +748,7 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 		t.Errorf("обход подозрительно мал или глух: маршрутов %d, отдано %d из %d", len(routes), served, requests)
 	}
 
-	sweepTokenless(t, router, f)
+	sweepTokenless(t, router, f, prefixes)
 	sweepMCP(t, router, f)
 }
 
@@ -641,7 +756,7 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 // отказом, а обход по ссылкам от главной краулера, llms.txt, карты сайта и
 // корня OPDS не встречает закрытого ни в одном ответе и ни разу не приводит
 // на адрес закрытого (ссылка на него — уже утечка).
-func sweepTokenless(t *testing.T, router http.Handler, f *closedSweep) {
+func sweepTokenless(t *testing.T, router http.Handler, f *closedSweep, prefixes []string) {
 	t.Helper()
 	gone := map[string]int{}
 	for _, w := range f.closedWorks() {
@@ -676,6 +791,19 @@ func sweepTokenless(t *testing.T, router http.Handler, f *closedSweep) {
 		"/seo/documents/razbor", "/seo/documents/" + f.readerNick + "/razbor",
 		"/robots.txt", "/sitemap.xml", "/opds", "/opds/search?q=" + url.QueryEscape("ЗАКРЫТО"),
 		"/opds/search?q=" + url.QueryEscape("сокровенном")}
+	// Каждый канал-префикс роутера — хотя бы голым адресом: новый канал
+	// попадает в обход сам, без правки списка выше.
+	seeds = append(seeds, prefixes...)
+	// ownChannel — адрес, который бэкенд обслуживает сам (канал-префикс,
+	// API, служебные файлы), а не страница читальни под /seo.
+	ownChannel := func(raw string) bool {
+		for _, p := range append([]string{"/robots.txt", "/sitemap.xml", "/api/"}, prefixes...) {
+			if strings.HasPrefix(raw, p) {
+				return true
+			}
+		}
+		return false
+	}
 	link := regexp.MustCompile(`(?:href|src)="([^"]+)"|<loc>([^<]+)</loc>|\]\((` + regexp.QuoteMeta(sweepBase) + `[^)\s]*)\)`)
 	seen := map[string]bool{}
 	type visit struct {
@@ -722,11 +850,10 @@ func sweepTokenless(t *testing.T, router http.Handler, f *closedSweep) {
 			switch {
 			case raw == "" || raw == "/":
 				raw = "/seo"
-			case strings.HasPrefix(raw, "/seo"), strings.HasPrefix(raw, "/sitemap"), strings.HasPrefix(raw, "/robots.txt"),
-				strings.HasPrefix(raw, "/og/"), strings.HasPrefix(raw, "/opds"), strings.HasPrefix(raw, "/api/"):
 			case strings.HasPrefix(raw, "/mcp"):
 				return
-			default:
+			case !ownChannel(raw):
+				// Адрес читальни: бэкенд знает его страницей краулера.
 				raw = "/seo" + raw
 			}
 			if !seen[raw] {
@@ -807,5 +934,18 @@ func sweepMCP(t *testing.T, router http.Handler, f *closedSweep) {
 	}
 	if opened == 0 {
 		t.Error("MCP ни разу не отдал открытого — проверка ничего не значит")
+	}
+}
+
+// TestLeakInDecodesAroundStrayPercent — одиночный «%» в теле не отключает
+// проверку закодированного маркера: раскодирование идёт кусками %XX.
+func TestLeakInDecodesAroundStrayPercent(t *testing.T) {
+	f := &closedSweep{}
+	body := "скидка 50% на всё, ссылка /works/1-" + url.QueryEscape(closedMarker)
+	if leakIn(f, body) == "" {
+		t.Errorf("закодированный маркер рядом с «50%%» не найден: %s", body)
+	}
+	if leak := leakIn(f, "скидка 50% и %zz, ничего закрытого"); leak != "" {
+		t.Errorf("ложная находка: %s", leak)
 	}
 }
