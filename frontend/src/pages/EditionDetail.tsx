@@ -157,6 +157,7 @@ export const EditionDetail: React.FC = () => {
         {edition.closed && <ClosedBadge />}
         {editable && (
           <ClosedToggle
+            kind="edition"
             closed={!!edition.closed}
             onToggle={async (next) => {
               try {

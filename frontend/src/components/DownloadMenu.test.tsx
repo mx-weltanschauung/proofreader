@@ -149,7 +149,8 @@ describe('DownloadMenu', () => {
       expect(String(url)).toContain('/api/works/47/download?format=epub');
       expect(new Headers((init as RequestInit).headers).get('Authorization')).toBe('Bearer tok');
       expect(saved).toEqual(['tom.epub']);
-      expect(revokeUrl).toHaveBeenCalledWith('blob:x');
+      expect(revokeUrl).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(revokeUrl).toHaveBeenCalledWith('blob:x'), { timeout: 3000 });
     });
 
     it('на отказ сервера не сохраняет тело ошибки, а говорит об ошибке', async () => {

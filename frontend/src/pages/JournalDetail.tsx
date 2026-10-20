@@ -63,6 +63,7 @@ export function JournalDetail() {
         </h1>
         {canEdit(user) && (
           <ClosedToggle
+            kind="journal"
             closed={!!journal.closed}
             onToggle={async (next) => {
               try {

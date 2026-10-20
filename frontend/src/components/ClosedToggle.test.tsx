@@ -17,6 +17,22 @@ describe('ClosedToggle', () => {
     expect(onToggle).toHaveBeenCalledWith(true);
   });
 
+  it.each([
+    [
+      'edition',
+      'Закрытое собрание увидят только редакторы. Если оно есть в выложенном статическом архиве, пересоберите и выложите архив.',
+    ],
+    [
+      'journal',
+      'Закрытый журнал увидят только редакторы. Если он есть в выложенном статическом архиве, пересоберите и выложите архив.',
+    ],
+  ] as const)('для %s спрашивает своим текстом', async (kind, text) => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<ClosedToggle closed={false} kind={kind} onToggle={vi.fn()} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(confirm).toHaveBeenCalledWith(text);
+  });
+
   it('не зовёт onToggle при отказе', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false);
     const onToggle = vi.fn().mockResolvedValue(undefined);

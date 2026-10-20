@@ -128,8 +128,11 @@ export function DownloadMenu({
       const link = document.createElement('a');
       link.href = objectUrl;
       link.download = filenameFrom(response.headers.get('Content-Disposition'), fallbackName);
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(objectUrl);
+      link.remove();
+      // Часть браузеров начинает скачивание после возврата из click().
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     } catch {
       setFailed(true);
     }
