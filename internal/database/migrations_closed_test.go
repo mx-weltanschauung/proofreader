@@ -14,6 +14,31 @@ import (
 
 const closedMigrationVersion = 40
 
+// openAllClosed снимает признак «закрыт» со всех работ, изданий и журналов.
+// Зовётся в каждом круговом тесте миграций сразу после up(), до любого шага
+// вниз: репозиторные тесты чистят базу в начале, а не в конце, и их закрытые
+// строки лежат тут до следующего прогона — а шаг вниз 000040 при закрытом
+// отказывает, оставляя базу «39, dirty», и чужой круговой тест (звук,
+// журналы, читатели, поиск) падал бы на отказе, к нему не относящемся. База
+// одноразовая по уговору PROOFREADER_TEST_DB_URL, открывать в ней можно всё.
+// Столбца closed может не быть (база ниже 40) — такая таблица пропускается.
+func openAllClosed(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	for _, table := range []string{"works", "editions", "journals"} {
+		var has bool
+		if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = $1 AND column_name = 'closed')`, table).Scan(&has); err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			continue
+		}
+		if _, err := pool.Exec(ctx, `UPDATE `+table+` SET closed = false WHERE closed`); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestClosedMigrationDownRefuses: шаг вниз 000040 при закрытой работе,
 // издании или журнале ОТКАЗЫВАЕТ (снос столбцов открыл бы их всем) и ничего
 // не меняет; когда закрытого нет — проходит, повторный up — тоже.
@@ -62,15 +87,9 @@ func TestClosedMigrationDownRefuses(t *testing.T) {
 	if got := columns(); got != 3 {
 		t.Fatalf("после up столбцов closed %d, ждали 3", got)
 	}
-	// Репозиторные тесты чистят базу в начале, а не в конце: их закрытые
-	// издание и журнал лежат тут до следующего прогона и держали бы отказ
-	// за этот тест. База одноразовая по уговору PROOFREADER_TEST_DB_URL —
-	// открываем чужое закрытое, иначе каждая проверка ниже ничего не говорит.
-	for _, table := range []string{"works", "editions", "journals"} {
-		if _, err := pool.Exec(ctx, `UPDATE `+table+` SET closed = false WHERE closed`); err != nil {
-			t.Fatal(err)
-		}
-	}
+	// Чужое закрытое держало бы отказ за этот тест — открываем его, иначе
+	// каждая проверка ниже ничего не говорит.
+	openAllClosed(ctx, t, pool)
 
 	var ownerID, workID, editionID, journalID int64
 	if err := pool.QueryRow(ctx, `SELECT id FROM users ORDER BY id LIMIT 1`).Scan(&ownerID); err != nil {
