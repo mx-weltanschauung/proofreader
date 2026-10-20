@@ -431,6 +431,9 @@ export interface EditionPayload {
   url_slug: string;
   description: string;
   volume_numbering?: VolumeNumbering;
+  // PUT пишет поле как пришло, отсутствие — тоже: пустота стирает план
+  // собрания («45 из 55»). Поэтому форма шлёт его всегда.
+  volumes_planned: number | null;
 }
 
 export const editionsApi = {

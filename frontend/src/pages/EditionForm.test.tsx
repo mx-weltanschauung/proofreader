@@ -71,6 +71,7 @@ describe('EditionForm', () => {
       url_slug: '',
       description: '',
       volume_numbering: 'printed',
+      volumes_planned: null,
     });
     // Именно созданное собрание (id из ответа сервера), а не /editions
     // вообще — этого экрана в приложении больше нет.
@@ -117,10 +118,50 @@ describe('EditionForm', () => {
       url_slug: '',
       description: 'Второе издание',
       volume_numbering: 'printed',
+      volumes_planned: null,
     });
     // Правка возвращает на страницу собрания, а не на /editions — этого
     // экрана в приложении больше нет.
     expect(await screen.findByText(`страница собрания ${EDITION.id}`)).toBeInTheDocument();
+  });
+
+  // Регрессия: форма не знала о volumes_planned, а PUT /editions пишет поле
+  // как пришло — любое сохранение формы стирало план собрания («45 из 55»).
+  it('в режиме правки возвращает план собрания, пришедший с сервера', async () => {
+    vi.spyOn(editionsApi, 'get').mockImplementation(() => ok({ ...EDITION, volumes_planned: 55 }));
+    const update = vi.spyOn(editionsApi, 'update').mockImplementation(() => ok(EDITION));
+
+    renderAt('/editions/1/edit');
+
+    await waitFor(() => expect(screen.getByLabelText('Томов по плану')).toHaveValue(55));
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    expect(update).toHaveBeenCalledWith(1, expect.objectContaining({ volumes_planned: 55 }));
+  });
+
+  it('набранный план уезжает числом, стёртый — пустотой', async () => {
+    const create = vi.spyOn(editionsApi, 'create').mockImplementation(() => ok(EDITION));
+
+    renderAt('/editions/new');
+
+    await userEvent.type(screen.getByLabelText(/Название/), 'Сочинения');
+    await userEvent.type(screen.getByLabelText('Томов по плану'), '30');
+    await userEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ volumes_planned: 30 }));
+  });
+
+  it.each(['0', '2.5'])('не шлёт план %s', async (value) => {
+    const create = vi.spyOn(editionsApi, 'create').mockImplementation(() => ok(EDITION));
+
+    renderAt('/editions/new');
+
+    await userEvent.type(screen.getByLabelText(/Название/), 'Сочинения');
+    await userEvent.type(screen.getByLabelText('Томов по плану'), value);
+    await userEvent.click(screen.getByRole('button', { name: 'Создать' }));
+
+    expect(screen.getByLabelText('Томов по плану')).toBeInvalid();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('в режиме правки не подсказывает слаг при изменении названия', async () => {
@@ -153,6 +194,7 @@ describe('EditionForm', () => {
       url_slug: 'mae',
       description: '',
       volume_numbering: 'printed',
+      volumes_planned: null,
     });
   });
 
@@ -176,6 +218,7 @@ describe('EditionForm', () => {
       url_slug: 'mae-classic',
       description: 'Маркс и Энгельс',
       volume_numbering: 'printed',
+      volumes_planned: null,
     });
   });
 

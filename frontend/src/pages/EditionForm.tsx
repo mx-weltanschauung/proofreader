@@ -33,6 +33,10 @@ export const EditionForm: React.FC = () => {
   // читателю он не печатается (utils/shownVolume.ts). Флажок, а не выбор из
   // двух: второе значение — обычная печатная нумерация.
   const [orderOnly, setOrderOnly] = useState(false);
+  // План собрания строкой поля ввода: пусто — плана нет. Форма обязана
+  // загрузить его и отослать обратно: PUT /editions пишет поле как пришло, и
+  // форма, не знавшая о нём, стирала план при любом сохранении.
+  const [volumesPlanned, setVolumesPlanned] = useState('');
   // Подсказка слага живёт только до первой ручной правки: иначе набор
   // названия затирал бы осознанно выбранный слаг.
   const [slugTouched, setSlugTouched] = useState(false);
@@ -51,6 +55,7 @@ export const EditionForm: React.FC = () => {
         setUrlSlug(response.data.url_slug ?? '');
         setDescription(response.data.description);
         setOrderOnly(response.data.volume_numbering === 'order');
+        setVolumesPlanned(response.data.volumes_planned?.toString() ?? '');
         // Существующий слаг менять подсказкой нельзя ни при каких правках.
         setSlugTouched(true);
       } catch (err: unknown) {
@@ -78,6 +83,10 @@ export const EditionForm: React.FC = () => {
       return;
     }
 
+    // Дробь и ноль до сюда не доходят: их не пропускает само поле (min; шаг
+    // числового поля по умолчанию — 1).
+    const planned = volumesPlanned.trim() === '' ? null : Number(volumesPlanned);
+
     setError('');
     setIsSaving(true);
 
@@ -87,6 +96,7 @@ export const EditionForm: React.FC = () => {
       url_slug: urlSlug.trim(),
       description,
       volume_numbering: orderOnly ? ('order' as const) : ('printed' as const),
+      volumes_planned: planned,
     };
 
     try {
@@ -197,6 +207,21 @@ export const EditionForm: React.FC = () => {
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
             />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="edition-volumes-planned">Томов по плану</label>
+            <input
+              id="edition-volumes-planned"
+              type="number"
+              min={1}
+              value={volumesPlanned}
+              onChange={(e) => setVolumesPlanned(e.target.value)}
+            />
+            <p className="form-help-text">
+              Сколько томов в собрании всего, включая ещё не залитые: полка пишет «45 из 55». Пусто
+              — плана нет.
+            </p>
           </div>
 
           <div className="form-group">
