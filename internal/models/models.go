@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // UserRole represents user roles in the system
 type UserRole string
@@ -833,3 +836,13 @@ type HighlightInput struct {
 	ChapterID int64  `json:"chapter_id"`
 	Label     string `json:"label"`
 }
+
+// BlankCutset — знаки, которые «пустой» текст статьи указателя может состоять
+// только из: ровно набор strings.TrimSpace (unicode.IsSpace). Один набор на Go
+// и на SQL (btrim с этим набором в visibleArticleSQL): со своим пробелом у
+// каждой стороны текст из одного «\n» был бы пуст для одной и текстом для
+// другой — понятие попадало бы в список, а отвечало 410.
+const BlankCutset = " \t\n\v\f\r\u0085                 　"
+
+// IsBlankArticleText — у статьи нет своего текста.
+func IsBlankArticleText(s string) bool { return strings.Trim(s, BlankCutset) == "" }

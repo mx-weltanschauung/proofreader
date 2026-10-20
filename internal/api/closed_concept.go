@@ -2,12 +2,12 @@ package api
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"net/http"
-	"strings"
 
 	"proofreader/internal/models"
 	"proofreader/internal/repository"
+	"proofreader/internal/seo"
 )
 
 // Закрытое в предметном указателе. Понятие каталога составлено из статей
@@ -88,7 +88,7 @@ func visibleConcept(c *models.IndexConcept, closedEditions map[int64]bool, close
 			}
 			if len(kept) < len(a.References) {
 				removed = true
-				if len(kept) == 0 && strings.TrimSpace(a.ArticleMarkdown) == "" {
+				if len(kept) == 0 && models.IsBlankArticleText(a.ArticleMarkdown) {
 					continue
 				}
 			}
@@ -155,62 +155,19 @@ func (v closedView) filter(ctx context.Context, idx volumeMapper, c *models.Inde
 	return out, ok, nil
 }
 
-// hidden — скрыто ли понятие с этим слагом; нет такого понятия — не скрыто
-// (отсылка в никуда остаётся как была).
-func (v closedView) hidden(ctx context.Context, idx conceptLookup, slug string, cache map[string]bool) (bool, error) {
-	if v.none() || slug == "" {
-		return false, nil
-	}
-	if h, ok := cache[slug]; ok {
-		return h, nil
-	}
-	c, err := idx.GetConceptBySlug(ctx, slug)
-	if err != nil || c == nil {
-		cache[slug] = false
-		return false, nil
-	}
-	_, ok, err := v.filter(ctx, idx, c)
-	if err != nil {
-		return false, err
-	}
-	cache[slug] = !ok
-	return !ok, nil
+// hiddenStore — какие из слагов скрыты закрытым (IndexRepository.HiddenConceptSlugs).
+type hiddenStore interface {
+	HiddenConceptSlugs(ctx context.Context, slugs []string) (map[string]bool, error)
 }
 
-// filterLinks убирает отсылки на скрытые понятия: заглавие и слаг цели — тот
-// же рассказ о закрытом.
-func (v closedView) filterLinks(ctx context.Context, idx conceptLookup, links []repository.LinkWithTarget, cache map[string]bool) ([]repository.LinkWithTarget, error) {
-	if v.none() {
-		return links, nil
+// hiddenSlugs — какие из слагов скрыты, ОДНИМ запросом на пачку. Когда для
+// читателя ничего не закрыто (сотрудник, нет хранилища, нет закрытого), в базу
+// не ходит. Ошибка не читается как «не скрыто»: отвечает 500.
+func (v closedView) hiddenSlugs(ctx context.Context, idx hiddenStore, slugs []string) (map[string]bool, error) {
+	if v.none() || len(slugs) == 0 {
+		return map[string]bool{}, nil
 	}
-	out := make([]repository.LinkWithTarget, 0, len(links))
-	for _, l := range links {
-		h, err := v.hidden(ctx, idx, l.TargetSlug, cache)
-		if err != nil {
-			return nil, err
-		}
-		if !h {
-			out = append(out, l)
-		}
-	}
-	return out, nil
-}
-
-func (v closedView) filterIncoming(ctx context.Context, idx conceptLookup, links []repository.IncomingLink, cache map[string]bool) ([]repository.IncomingLink, error) {
-	if v.none() {
-		return links, nil
-	}
-	out := make([]repository.IncomingLink, 0, len(links))
-	for _, l := range links {
-		h, err := v.hidden(ctx, idx, l.Slug, cache)
-		if err != nil {
-			return nil, err
-		}
-		if !h {
-			out = append(out, l)
-		}
-	}
-	return out, nil
+	return idx.HiddenConceptSlugs(ctx, slugs)
 }
 
 // TokenlessIndex — указатель для каналов без токена: текст понятия по .md и
@@ -224,6 +181,7 @@ type TokenlessIndex struct {
 
 type tokenlessInner interface {
 	conceptLookup
+	hiddenStore
 	ArticleLinks(ctx context.Context, articleID int64) ([]repository.LinkWithTarget, error)
 	ListConcepts(ctx context.Context, query, letter string, limit, offset int, includeClosed bool) ([]*models.IndexConcept, error)
 }
@@ -256,9 +214,9 @@ func (t *TokenlessIndex) GetConceptBySlug(ctx context.Context, slug string) (*mo
 	return out, nil
 }
 
-// errConceptHidden — тот же текст, что у репозитория: isNotFound (internal/seo)
-// узнаёт отсутствие по суффиксу «not found».
-var errConceptHidden = errors.New("concept not found")
+// errConceptHidden заворачивает seo.ErrNotFound: isNotFound (internal/seo)
+// узнаёт отсутствие по цепочке, а не по тексту — страница отвечает 410.
+var errConceptHidden = fmt.Errorf("concept %w", seo.ErrNotFound)
 
 func (t *TokenlessIndex) VolumeMap(ctx context.Context, editionID int64) ([]models.VolumeLocation, error) {
 	return t.index.VolumeMap(ctx, editionID)
@@ -272,12 +230,24 @@ func (t *TokenlessIndex) ListConcepts(ctx context.Context, query, letter string,
 // ArticleLinks — без отсылок на скрытые понятия.
 func (t *TokenlessIndex) ArticleLinks(ctx context.Context, articleID int64) ([]repository.LinkWithTarget, error) {
 	links, err := t.index.ArticleLinks(ctx, articleID)
+	if err != nil || len(links) == 0 {
+		return links, err
+	}
+	// Закрытое здесь скрыто всегда, поэтому вид закрытого не читается:
+	// один запрос о скрытых слагах отвечает и за «ничего не закрыто».
+	slugs := make([]string, 0, len(links))
+	for _, l := range links {
+		slugs = append(slugs, l.TargetSlug)
+	}
+	hidden, err := t.index.HiddenConceptSlugs(ctx, slugs)
 	if err != nil {
 		return nil, err
 	}
-	v, err := t.view(ctx)
-	if err != nil {
-		return nil, err
+	out := make([]repository.LinkWithTarget, 0, len(links))
+	for _, l := range links {
+		if !hidden[l.TargetSlug] {
+			out = append(out, l)
+		}
 	}
-	return v.filterLinks(ctx, t.index, links, map[string]bool{})
+	return out, nil
 }

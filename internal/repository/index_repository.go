@@ -768,7 +768,7 @@ func visibleArticleSQL(art string) string {
 	  AND (` + art + `.work_id IS NULL OR ` + art + `.work_id NOT IN (SELECT id FROM closed_works))
 	  AND (
 	    NOT EXISTS (SELECT 1 FROM index_references vr WHERE vr.article_id = ` + art + `.id)
-	    OR btrim(` + art + `.article_markdown) <> ''
+	    OR btrim(` + art + `.article_markdown, '` + models.BlankCutset + `') <> ''
 	    OR EXISTS (SELECT 1 FROM index_references vr
 	               WHERE vr.article_id = ` + art + `.id AND NOT ` + closedReferenceSQL("vr", art) + `)
 	  ))`
@@ -780,6 +780,37 @@ var visibleConceptCond = `(
 	  NOT EXISTS (SELECT 1 FROM index_concept_articles va WHERE va.concept_id = c.id)
 	  OR EXISTS (SELECT 1 FROM index_concept_articles va WHERE va.concept_id = c.id AND ` + visibleArticleSQL("va") + `)
 	)`
+
+// hiddenConceptSlugsQuery — какие из слагов ($1) скрыты от не-сотрудника: понятие
+// есть, статьи у него есть и ни одна не видна. Правило то же, что у списка
+// (visibleConceptCond), — один запрос на пачку слагов вместо понятия и карты
+// томов на каждый.
+var hiddenConceptSlugsQuery = `
+	SELECT c.slug FROM index_concepts c
+	WHERE c.slug = ANY($1::text[]) AND NOT ` + visibleConceptCond
+
+// HiddenConceptSlugs отвечает, какие из слагов скрыты закрытым. Неизвестный
+// слаг не скрыт (отсылка в никуда остаётся как была). Ошибка базы — ошибка:
+// «не удалось узнать» нельзя читать как «не скрыто».
+func (r *IndexRepository) HiddenConceptSlugs(ctx context.Context, slugs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(slugs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, hiddenConceptSlugsQuery, slugs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find hidden concepts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, fmt.Errorf("failed to scan hidden concept: %w", err)
+		}
+		out[slug] = true
+	}
+	return out, rows.Err()
+}
 
 var listConceptsQuery = `
 	SELECT c.id, c.title, c.slug, c.sort_key, c.title_key,

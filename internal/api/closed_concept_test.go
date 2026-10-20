@@ -3,8 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"proofreader/internal/seo"
 	"strings"
 	"testing"
 
@@ -144,6 +146,7 @@ func TestGetConceptHidesClosedAddressesAndLinks(t *testing.T) {
 	h, store := closedConceptHandler(c, &fakeClosedStore{
 		works: map[int64]string{50: models.ClosedByWork}, editions: map[int64]bool{2: true}})
 	store.conceptsBySlug = map[string]*models.IndexConcept{"trud": c, "skrytoe": hiddenTarget}
+	store.hiddenSlugs = map[string]bool{"skrytoe": true}
 	store.links = []repository.LinkWithTarget{{TargetSlug: "skrytoe"}, {TargetSlug: "trud"}}
 	store.incoming = []repository.IncomingLink{{Slug: "skrytoe", Title: "Скрытое"}, {Slug: "trud", Title: "Труд"}}
 
@@ -243,8 +246,8 @@ func TestTokenlessIndexHidesClosedAlways(t *testing.T) {
 	// Все статьи закрыты — отвечает как отсутствующее (seo.isNotFound по суффиксу).
 	c2 := &models.IndexConcept{ID: 2, Slug: "g", Articles: []*models.IndexArticle{{ID: 1, EditionID: 2, ArticleMarkdown: "x"}}}
 	store.concept = c2
-	if _, err := idx.GetConceptBySlug(context.Background(), "g"); err == nil || !strings.HasSuffix(err.Error(), "not found") {
-		t.Errorf("скрытое понятие должно отвечать «not found», а не %v", err)
+	if _, err := idx.GetConceptBySlug(context.Background(), "g"); err == nil || !seo.IsNotFound(err) {
+		t.Errorf("скрытое понятие должно распознаваться seo.IsNotFound, а не %v", err)
 	}
 }
 
@@ -256,6 +259,7 @@ func TestPageConceptsDropsHiddenConceptTitle(t *testing.T) {
 		concept:          open,
 		conceptsBySlug:   map[string]*models.IndexConcept{"skrytoe": hidden, "trud": open},
 		volumesByEdition: closedConceptVols,
+		hiddenSlugs:      map[string]bool{"skrytoe": true},
 		backlinks: []models.ConceptBacklink{
 			{Slug: "skrytoe", Title: "Скрытое"}, {Slug: "trud", Title: "Труд"},
 		},
@@ -277,5 +281,104 @@ func TestPageConceptsDropsHiddenConceptTitle(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), "Труд") {
 			t.Errorf("видимое понятие пропало: %s", rec.Body.String())
 		}
+	}
+}
+
+// Число обращений к указателю на PageConcepts с N обратными ссылками: скрытость
+// узнаётся ОДНИМ запросом, а не понятием и картой томов на каждую ссылку.
+func TestPageConceptsBacklinkLookupDoesNotFanOut(t *testing.T) {
+	const n = 10
+	open := closedConceptFixture()
+	by := map[string]*models.IndexConcept{}
+	var backlinks []models.ConceptBacklink
+	for i := 0; i < n; i++ {
+		slug := "s" + strings.Repeat("x", i)
+		by[slug] = &models.IndexConcept{ID: int64(100 + i), Slug: slug, Articles: []*models.IndexArticle{{ID: int64(100 + i), EditionID: 1, ArticleMarkdown: "t", References: []*models.IndexReference{{ID: 1, VolumeNumber: 4, PageStart: 1, PageEnd: 1}}}}}
+		backlinks = append(backlinks, models.ConceptBacklink{Slug: slug, Title: slug})
+	}
+	store := &fakeIndexStore{concept: open, conceptsBySlug: by, volumesByEdition: closedConceptVols, backlinks: backlinks}
+	vol, ed := 4, int64(1)
+	h := NewIndexHandler(store, &fakeWorkGetter{work: &models.Work{ID: 40, EditionID: &ed, VolumeNumber: &vol}}, &fakeEditionStore{},
+		&fakePageGetter{page: &models.Page{ID: 5, WorkID: 40, PageNumber: 3}},
+		&fakeChapterTrees{}, newFakeFragmentStore(), markdown.NewRenderer()).
+		WithClosed(&fakeClosedStore{editions: map[int64]bool{2: true}})
+	req := conceptReq("/api/works/40/pages/5/concepts", "", false)
+	req = mux.SetURLVars(req, map[string]string{"workId": "40", "pageId": "5"})
+	rec := httptest.NewRecorder()
+	h.PageConcepts(rec, req)
+	t.Logf("N=%d: GetConceptBySlug=%d VolumeMap=%d HiddenConceptSlugs=%d", n, store.getCalls, store.volumeCalls, store.hiddenCalls)
+	if store.getCalls != 0 || store.volumeCalls != 0 || store.hiddenCalls != 1 {
+		t.Errorf("ждали 0 понятий, 0 карт томов и 1 запрос скрытых")
+	}
+}
+
+func TestBlankArticleTextAgreesWithTrimSpace(t *testing.T) {
+	for _, s := range []string{"", " ", "\n", "\t\r\n", " ", " 　", "\u0085", "\v\f"} {
+		if !models.IsBlankArticleText(s) || strings.TrimSpace(s) != "" {
+			t.Errorf("%q должен быть пустым и для IsBlankArticleText, и для TrimSpace", s)
+		}
+	}
+	if models.IsBlankArticleText(" а ") {
+		t.Error("текст с буквой не пуст")
+	}
+	// Статья из одного «\n» с адресами в закрытом томе — пустая оболочка и в Go.
+	c := &models.IndexConcept{ID: 2, Slug: "x", Articles: []*models.IndexArticle{
+		{ID: 5, EditionID: 1, ArticleMarkdown: "\n", References: []*models.IndexReference{{ID: 1, VolumeNumber: 5, PageStart: 1, PageEnd: 1}}},
+	}}
+	if _, ok := visibleConcept(c, nil, ClosedSet{50: true}, closedConceptVols); ok {
+		t.Error("статья из одного перевода строки считается текстом")
+	}
+}
+
+func TestHiddenLookupErrorIsNotFailOpen(t *testing.T) {
+	hidden := &models.IndexConcept{ID: 7, Slug: "skrytoe", Articles: []*models.IndexArticle{{ID: 70, EditionID: 2, ArticleMarkdown: "x"}}}
+	open := closedConceptFixture()
+	store := &fakeIndexStore{concept: open, volumesByEdition: closedConceptVols,
+		conceptsBySlug: map[string]*models.IndexConcept{"skrytoe": hidden},
+		hiddenErr:      errors.New("база недоступна"),
+		backlinks:      []models.ConceptBacklink{{Slug: "skrytoe", Title: "Скрытое"}},
+		links:          []repository.LinkWithTarget{{TargetSlug: "skrytoe"}},
+	}
+	vol, ed := 4, int64(1)
+	h := NewIndexHandler(store, &fakeWorkGetter{work: &models.Work{ID: 40, EditionID: &ed, VolumeNumber: &vol}}, &fakeEditionStore{},
+		&fakePageGetter{page: &models.Page{ID: 5, WorkID: 40, PageNumber: 3}},
+		&fakeChapterTrees{}, newFakeFragmentStore(), markdown.NewRenderer()).
+		WithClosed(&fakeClosedStore{editions: map[int64]bool{2: true}})
+
+	req := conceptReq("/api/works/40/pages/5/concepts", "", false)
+	req = mux.SetURLVars(req, map[string]string{"workId": "40", "pageId": "5"})
+	rec := httptest.NewRecorder()
+	h.PageConcepts(rec, req)
+	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "Скрытое") {
+		t.Errorf("PageConcepts: код %d, тело %q — ждали 500 без заглавия", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	h.GetConcept(rec, conceptReq("/api/concepts/trud", "trud", false))
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("GetConcept: код %d, ждали 500", rec.Code)
+	}
+	// Для токенless-канала ошибка тоже ошибка, а не пропущенная отсылка.
+	idx := NewTokenlessIndex(store, &fakeClosedStore{editions: map[int64]bool{2: true}})
+	if _, err := idx.ArticleLinks(context.Background(), 1); err == nil {
+		t.Error("TokenlessIndex.ArticleLinks проглотил ошибку")
+	}
+}
+
+func TestTokenlessArticleLinksOneQuery(t *testing.T) {
+	store := &fakeIndexStore{hiddenSlugs: map[string]bool{"skrytoe": true},
+		links: []repository.LinkWithTarget{{TargetSlug: "skrytoe"}, {TargetSlug: "a"}, {TargetSlug: "b"}}}
+	idx := NewTokenlessIndex(store, &fakeClosedStore{})
+	got, err := idx.ArticleLinks(context.Background(), 1)
+	if err != nil || len(got) != 2 {
+		t.Fatalf("ссылок %d, ошибка %v; ждали 2", len(got), err)
+	}
+	if store.hiddenCalls != 1 || store.getCalls != 0 || store.volumeCalls != 0 {
+		t.Errorf("запросов: скрытых %d, понятий %d, карт %d; ждали 1/0/0", store.hiddenCalls, store.getCalls, store.volumeCalls)
+	}
+}
+
+func TestHiddenConceptIsGoneForSEOCrawler(t *testing.T) {
+	if !errors.Is(errConceptHidden, seo.ErrNotFound) || !seo.IsNotFound(errConceptHidden) {
+		t.Fatalf("errConceptHidden не распознаётся как отсутствие: %v", errConceptHidden)
 	}
 }

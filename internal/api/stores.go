@@ -182,6 +182,8 @@ type IndexStore interface {
 	VolumeMap(ctx context.Context, editionID int64) ([]models.VolumeLocation, error)
 	Backlinks(ctx context.Context, editionID int64, volumeNumber int, volumePart *string, printedPage int) ([]models.ConceptBacklink, error)
 	TakenSlugs(ctx context.Context) (map[string]bool, error)
+	// HiddenConceptSlugs — какие из слагов скрыты закрытым, одним запросом.
+	HiddenConceptSlugs(ctx context.Context, slugs []string) (map[string]bool, error)
 }
 
 // FragmentStore is the slice of the fragment repository the handlers use.

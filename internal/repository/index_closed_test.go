@@ -3,7 +3,10 @@ package repository
 import (
 	"context"
 	"reflect"
+	"sort"
 	"testing"
+
+	"proofreader/internal/models"
 )
 
 // Закрытое в указателе: понятия, статьи и адреса закрытых изданий и томов.
@@ -14,6 +17,7 @@ import (
 //	b: одна статья, изд. 2                     → скрыто целиком
 //	c: статья изд. 1 без текста, адрес в т. 5  → пустая оболочка, скрыто
 //	d: статья изд. 1 без текста, адрес в т. 4  → видно
+//	f: статья изд. 1, текст — одни пробельные знаки (\n, \t, NBSP), адрес в т. 5 → скрыто
 //	e: статья изд. 1, её работа-указатель (11) закрыта → скрыто
 func seedClosedIndex(t *testing.T) (*IndexRepository, *SEORepository) {
 	t.Helper()
@@ -26,17 +30,18 @@ func seedClosedIndex(t *testing.T) (*IndexRepository, *SEORepository) {
 		  (11, 'Том 5', 'А', 'f', 1, 'volume', 1, 5, true),
 		  (20, 'Том 1', 'А', 'f', 1, 'volume', 2, 1, false);
 		INSERT INTO index_concepts (id, title, slug, sort_key, title_key) VALUES
-		  (1, 'А', 'a', 'a', 'a'), (2, 'Б', 'b', 'b', 'b'), (3, 'В', 'c', 'c', 'c'), (4, 'Г', 'd', 'd', 'd'), (5, 'Д', 'e', 'e', 'e');
+		  (1, 'А', 'a', 'a', 'a'), (2, 'Б', 'b', 'b', 'b'), (3, 'В', 'c', 'c', 'c'), (4, 'Г', 'd', 'd', 'd'), (5, 'Д', 'e', 'e', 'e'), (6, 'Е', 'f', 'f', 'f');
 		INSERT INTO index_concept_articles (id, concept_id, edition_id, work_id, title, title_key, kind, article_markdown) VALUES
 		  (1, 1, 1, NULL, 'А', 'a', 'article', 'текст'),
 		  (2, 1, 2, NULL, 'А', 'a', 'article', 'закрытая'),
 		  (3, 2, 2, NULL, 'Б', 'b', 'article', 'закрытая'),
 		  (4, 3, 1, NULL, 'В', 'c', 'article', ''),
 		  (5, 4, 1, NULL, 'Г', 'd', 'article', ''),
-		  (6, 5, 1, 11, 'Д', 'e', 'article', 'работа-указатель закрыта');
+		  (6, 5, 1, 11, 'Д', 'e', 'article', 'работа-указатель закрыта'),
+		  (7, 6, 1, NULL, 'Е', 'f', 'article', E' \n\t\u00a0');
 		INSERT INTO index_references (article_id, volume_number, page_start, page_end, order_number) VALUES
 		  (1, 4, 1, 1, 1), (1, 5, 2, 2, 2), (2, 1, 3, 3, 1), (3, 1, 3, 3, 1),
-		  (4, 5, 2, 2, 1), (5, 4, 1, 1, 1)`); err != nil {
+		  (4, 5, 2, 2, 1), (5, 4, 1, 1, 1), (7, 5, 2, 2, 1)`); err != nil {
 		t.Fatalf("подготовка данных: %v", err)
 	}
 	return NewIndexRepository(pool), repo
@@ -60,7 +65,7 @@ func TestListConceptsHidesClosedUnlessIncluded(t *testing.T) {
 	if got, want := slugsOf(t, idx, false), []string{"a", "d"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("для не-сотрудника %v, ждали %v", got, want)
 	}
-	if got, want := slugsOf(t, idx, true), []string{"a", "b", "c", "d", "e"}; !reflect.DeepEqual(got, want) {
+	if got, want := slugsOf(t, idx, true), []string{"a", "b", "c", "d", "e", "f"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("для сотрудника %v, ждали %v", got, want)
 	}
 }
@@ -102,5 +107,49 @@ func TestSEOConceptsAndShelfHideClosedAlways(t *testing.T) {
 	// «a»: из трёх адресов виден один (т. 4); адреса закрытых т. 5 и изд. 2 не считаются.
 	if want := map[string]int{"a": 1, "d": 1}; !reflect.DeepEqual(got, want) {
 		t.Errorf("ConceptShelf: %v, ждали %v", got, want)
+	}
+}
+
+func TestHiddenConceptSlugsAgreesWithList(t *testing.T) {
+	idx, _ := seedClosedIndex(t)
+	got, err := idx.HiddenConceptSlugs(context.Background(), []string{"a", "b", "c", "d", "e", "f", "net-takogo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"b": true, "c": true, "e": true, "f": true}; !reflect.DeepEqual(got, want) {
+		t.Errorf("скрыто %v, ждали %v", got, want)
+	}
+	if got, _ := idx.HiddenConceptSlugs(context.Background(), nil); len(got) != 0 {
+		t.Errorf("пустой список слагов: %v", got)
+	}
+}
+
+// Поиск называет понятие тем же правилом, что список: пустая оболочка с
+// адресами в закрытом томе (c) и текст из одних пробельных знаков (f) в
+// выдачу анониму не идут.
+func TestSearchConceptsUseTheIndexVisibilityRule(t *testing.T) {
+	seedClosedIndex(t)
+	pool := testPool(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `UPDATE index_concepts SET title = 'Зазеркалье ' || slug`); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewSearchRepository(pool)
+	for includeClosed, want := range map[bool][]string{
+		false: {"a", "d"},
+		true:  {"a", "b", "c", "d", "e", "f"},
+	} {
+		res, err := repo.Search(ctx, models.SearchQuery{Text: "зазеркалье", IncludeClosed: includeClosed})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, c := range res.Concepts {
+			got = append(got, c.Slug)
+		}
+		sort.Strings(got)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("IncludeClosed=%v: поиск назвал %v, ждали %v", includeClosed, got, want)
+		}
 	}
 }

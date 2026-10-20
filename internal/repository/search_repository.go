@@ -217,9 +217,11 @@ var searchConceptsQuery = `
 	    LEFT JOIN works p ON p.id = w.parent_work_id
 	    WHERE a.concept_id = ic.id
 	    ` + scopeConditionFor(`coalesce(w.edition_id, p.edition_id, a.edition_id)`, "$5") + `
-	    -- Статья без работы (внешний указатель) держится собранием: закрытое
-	    -- собрание прячет и такое понятие, иначе его заглавие уходило бы анониму.
-	    AND ($5 OR NOT EXISTS (SELECT 1 FROM editions ae WHERE ae.id = a.edition_id AND ae.closed))
+	    -- Видимость статьи — то же правило, что у списка понятий и страницы
+	    -- (visibleArticleSQL): собрание, работа-указатель, адреса в закрытых
+	    -- томах и пустая оболочка без текста. Свой вариант правила разошёлся бы
+	    -- с ними: поиск называл бы понятие, чья страница отвечает 404.
+	    AND ($5 OR ` + visibleArticleSQL("a") + `)
 	  )
 	ORDER BY ts_rank(to_tsvector('ru', ic.title), q.tsq) DESC, ic.sort_key, ic.id
 	LIMIT $4
