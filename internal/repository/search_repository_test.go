@@ -840,3 +840,43 @@ func TestSearchShowsClosedWhenIncluded(t *testing.T) {
 		t.Fatalf("полос %d, всего %d, фасет %d", len(pr.Pages), pr.Total, len(pr.Chapters))
 	}
 }
+
+// Поисковая транзакция несёт свои настройки: без jit = off запрос томов
+// вдвое дороже, без force_custom_plan с шестого исполнения на соединении
+// уходит в общий план (замер — search_repository.go, searchSettings).
+// Наружу они не утекают: соединение пула возвращается с прежними.
+func TestSearchTransactionSettings(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	repo := NewSearchRepository(pool)
+	tx, err := repo.begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{
+		"statement_timeout": searchStatementTimeout,
+		"jit":               "off",
+		"plan_cache_mode":   "force_custom_plan",
+	} {
+		var got string
+		if err := tx.QueryRow(ctx, "SELECT current_setting('"+name+"')").Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("%s = %q внутри поиска, ждали %q", name, got, want)
+		}
+	}
+	_ = tx.Rollback(ctx)
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	var mode string
+	if err := conn.QueryRow(ctx, "SELECT current_setting('plan_cache_mode')").Scan(&mode); err != nil {
+		t.Fatal(err)
+	}
+	if mode == "force_custom_plan" {
+		t.Error("plan_cache_mode утёк из поисковой транзакции в соединение пула")
+	}
+}

@@ -51,16 +51,35 @@ func NewSearchRepository(pool *pgxpool.Pool) *SearchRepository {
 	return &SearchRepository{pool: pool}
 }
 
-// begin открывает транзакцию с локальным statement_timeout: SET LOCAL живёт
-// только внутри неё и не трогает соединение пула.
+// searchSettings — SET LOCAL поисковой транзакции; живут только внутри неё
+// и соединение пула не трогают.
+//
+// jit = off: цена запроса томов выше jit_above_cost, и компиляция выражений
+// съедала больше, чем экономила. force_custom_plan: pgx кэширует именованные
+// операторы, и с шестого исполнения на соединении Postgres переходит на общий
+// план — websearch_to_tsquery($1) там не сворачивается в константу, оценка
+// совпадений слепа. Замер на копии корпуса (20.10.2026, «революция», 570
+// работ): тома 1,5 с с jit против 0,73 с без него, но без force_custom_plan
+// выигрыш живёт пять исполнений, дальше общий план — 2,0—2,2 с; обе
+// настройки вместе — 0,73 с ровно. Главы, понятия, полосы тома — без
+// изменений. Числа — отчёт final-fix-report закрытых работ.
+var searchSettings = []string{
+	"statement_timeout = '" + searchStatementTimeout + "'",
+	"jit = off",
+	"plan_cache_mode = force_custom_plan",
+}
+
+// begin открывает транзакцию с локальными настройками поиска (searchSettings).
 func (r *SearchRepository) begin(ctx context.Context) (pgx.Tx, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin search transaction: %w", err)
 	}
-	if _, err := tx.Exec(ctx, "SET LOCAL statement_timeout = '"+searchStatementTimeout+"'"); err != nil {
-		_ = tx.Rollback(ctx)
-		return nil, fmt.Errorf("failed to set statement_timeout: %w", err)
+	for _, setting := range searchSettings {
+		if _, err := tx.Exec(ctx, "SET LOCAL "+setting); err != nil {
+			_ = tx.Rollback(ctx)
+			return nil, fmt.Errorf("failed to set %s: %w", setting, err)
+		}
 	}
 	return tx, nil
 }
