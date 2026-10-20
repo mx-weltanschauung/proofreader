@@ -23,6 +23,10 @@ type fakePersons struct {
 	merged    [2]int64
 	replErr   error
 	createErr error
+	// detail — что отдаёт Detail; detailClosed — все его статьи в закрытом.
+	detail        *models.PersonDetail
+	detailClosed  bool
+	includeClosed bool
 }
 
 func (f *fakePersons) Create(_ context.Context, p *models.Person) error {
@@ -36,8 +40,12 @@ func (f *fakePersons) Update(context.Context, *models.Person) error { return nil
 func (f *fakePersons) GetByID(_ context.Context, id int64) (*models.Person, error) {
 	return &models.Person{ID: id}, nil
 }
-func (f *fakePersons) Detail(_ context.Context, slug string) (*models.PersonDetail, error) {
-	return nil, repository.ErrPersonNotFound
+func (f *fakePersons) Detail(_ context.Context, slug string, includeClosed bool) (*models.PersonDetail, error) {
+	f.includeClosed = includeClosed
+	if f.detail == nil || (f.detailClosed && !includeClosed) {
+		return nil, repository.ErrPersonNotFound
+	}
+	return f.detail, nil
 }
 func (f *fakePersons) Search(context.Context, string, int) ([]models.Person, error) {
 	return []models.Person{}, nil

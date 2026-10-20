@@ -94,7 +94,7 @@ func TestPersonDetailListsArticles(t *testing.T) {
 	p := &models.Person{Name: "Гр. Баммель"}
 	_ = f.persons.Create(ctx, p)
 	_ = f.persons.ReplaceCredits(ctx, f.article.ID, []models.CreditInput{{Role: "author", Printed: "Гр. Баммель", PersonID: &p.ID}})
-	d, err := f.persons.Detail(ctx, p.Slug)
+	d, err := f.persons.Detail(ctx, p.Slug, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestPersonDetailListsArticles(t *testing.T) {
 		d.Articles[0].Year != 1928 || d.Articles[0].JournalSlug != "cr-detail" || d.Articles[0].ArticleKind != "статья" {
 		t.Fatalf("статьи: %+v", d.Articles)
 	}
-	if _, err := f.persons.Detail(ctx, "net-takogo"); !errors.Is(err, ErrPersonNotFound) {
+	if _, err := f.persons.Detail(ctx, "net-takogo", true); !errors.Is(err, ErrPersonNotFound) {
 		t.Fatalf("неизвестный: %v", err)
 	}
 }
@@ -122,7 +122,7 @@ func TestPersonMergeMovesCredits(t *testing.T) {
 	if c := m[f.article.ID]; len(c) != 1 || c[0].PersonID == nil || *c[0].PersonID != keep.ID {
 		t.Fatalf("подпись не переехала: %+v", c)
 	}
-	if _, err := f.persons.Detail(ctx, gone.Slug); !errors.Is(err, ErrPersonNotFound) {
+	if _, err := f.persons.Detail(ctx, gone.Slug, true); !errors.Is(err, ErrPersonNotFound) {
 		t.Fatalf("слитый остался: %v", err)
 	}
 	if err := f.persons.Merge(ctx, keep.ID, keep.ID); !errors.Is(err, ErrMergeSelf) {
@@ -139,7 +139,7 @@ func TestPersonSurvivesIssueDeletion(t *testing.T) {
 	if err := NewWorkRepository(testPool(t)).Delete(ctx, f.work.ID); err != nil {
 		t.Fatal(err)
 	}
-	d, err := f.persons.Detail(ctx, p.Slug)
+	d, err := f.persons.Detail(ctx, p.Slug, true)
 	if err != nil || len(d.Articles) != 0 {
 		t.Fatalf("человек после удаления номера: %+v, %v", d, err)
 	}

@@ -199,9 +199,10 @@ func main() {
 	documentCutHandler := api.NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, pageRepo, markdownRenderer)
 	userHandler := api.NewUserHandler(userRepo, authService)
 	exportHandler := api.NewExportHandler(workRepo, chapterRepo, pageRepo)
+	closedRepo := repository.NewClosedRepository(db.Pool)
 	editionHandler := api.NewEditionHandler(editionRepo)
-	shelfHandler := api.NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo)
-	highlightHandler := api.NewHighlightHandler(editionRepo)
+	shelfHandler := api.NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo)
+	highlightHandler := api.NewHighlightHandler(editionRepo).WithClosed(closedRepo)
 	searchRepo := repository.NewSearchRepository(db.Pool)
 	searchHandler := api.NewSearchHandler(searchRepo)
 
@@ -228,7 +229,6 @@ func main() {
 	)
 	downloadHandler := api.NewDownloadHandler(downloadSource).
 		WithAudio(api.NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, chapterRepo, cfg.Server.PublicBaseURL))
-	closedRepo := repository.NewClosedRepository(db.Pool)
 	audioHandler := api.NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, chapterRepo, audioStore, closedRepo)
 	seoRepo := repository.NewSEORepository(db.Pool)
 	seoHandler := seo.NewHandler(&seo.Source{

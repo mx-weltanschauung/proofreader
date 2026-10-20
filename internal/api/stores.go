@@ -148,7 +148,7 @@ type ShelfEditions interface {
 
 // ShelfJournals — журналы для полки главной.
 type ShelfJournals interface {
-	List(ctx context.Context) ([]models.JournalSummary, error)
+	List(ctx context.Context, includeClosed bool) ([]models.JournalSummary, error)
 }
 
 // JournalIssueLookup — журнальные координаты работы-номера.
@@ -259,9 +259,9 @@ type SearchStore interface {
 
 // JournalStore — журналы и номера (repository.JournalRepository).
 type JournalStore interface {
-	List(ctx context.Context) ([]models.JournalSummary, error)
+	List(ctx context.Context, includeClosed bool) ([]models.JournalSummary, error)
 	GetByID(ctx context.Context, id int64) (*models.Journal, error)
-	Detail(ctx context.Context, slug string) (*models.JournalDetail, error)
+	Detail(ctx context.Context, slug string, includeClosed bool) (*models.JournalDetail, error)
 	Create(ctx context.Context, j *models.Journal) error
 	Update(ctx context.Context, j *models.Journal) error
 	CreateIssue(ctx context.Context, issue *models.JournalIssue, work *models.Work) error
@@ -274,7 +274,7 @@ type PersonStore interface {
 	Create(ctx context.Context, p *models.Person) error
 	Update(ctx context.Context, p *models.Person) error
 	GetByID(ctx context.Context, id int64) (*models.Person, error)
-	Detail(ctx context.Context, slug string) (*models.PersonDetail, error)
+	Detail(ctx context.Context, slug string, includeClosed bool) (*models.PersonDetail, error)
 	Search(ctx context.Context, q string, limit int) ([]models.Person, error)
 	Merge(ctx context.Context, intoID, fromID int64) error
 }

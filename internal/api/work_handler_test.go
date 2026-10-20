@@ -329,10 +329,11 @@ type fakeWorkRepo struct {
 	created     *models.Work
 	createErr   error
 	role        string
+	list        []*models.Work
 }
 
 func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int64) ([]*models.Work, error) {
-	return nil, nil
+	return f.list, nil
 }
 
 func (f *fakeWorkRepo) GetByID(_ context.Context, id int64) (*models.Work, error) {

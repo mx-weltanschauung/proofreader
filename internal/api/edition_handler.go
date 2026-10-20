@@ -55,6 +55,15 @@ func (h *EditionHandler) List(w http.ResponseWriter, r *http.Request) {
 	if editions == nil {
 		editions = []*models.Edition{}
 	}
+	if !isStaffRequest(r) {
+		open := make([]*models.Edition, 0, len(editions))
+		for _, e := range editions {
+			if !e.Closed {
+				open = append(open, e)
+			}
+		}
+		editions = open
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(editions)
@@ -73,7 +82,7 @@ func (h *EditionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// the same way it does in ChapterHandler.Get — any error here means "not
 	// found", not a distinguishable server fault.
 	edition, err := h.editionStore.GetByID(context.Background(), id)
-	if err != nil || edition == nil {
+	if err != nil || edition == nil || (edition.Closed && !isStaffRequest(r)) {
 		http.Error(w, "Edition not found", http.StatusNotFound)
 		return
 	}
@@ -196,10 +205,28 @@ func (h *EditionHandler) ListWorks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
+	staff := isStaffRequest(r)
+	if !staff {
+		// Закрытое издание закрывает всё внутри: его тома не-сотруднику
+		// не отдаются, а само издание «не найдено».
+		if edition, err := h.editionStore.GetByID(ctx, id); err == nil && edition != nil && edition.Closed {
+			http.Error(w, "Edition not found", http.StatusNotFound)
+			return
+		}
+	}
 	works, err := h.editionStore.ListWorkSummaries(ctx, id)
 	if err != nil {
 		http.Error(w, "Failed to retrieve works", http.StatusInternalServerError)
 		return
+	}
+	if !staff {
+		open := make([]*models.VolumeSummary, 0, len(works))
+		for _, wk := range works {
+			if wk.ClosedBy == "" {
+				open = append(open, wk)
+			}
+		}
+		works = open
 	}
 
 	w.Header().Set("Content-Type", "application/json")

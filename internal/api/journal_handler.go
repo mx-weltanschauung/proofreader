@@ -54,7 +54,7 @@ func journalPathID(r *http.Request) (int64, bool) {
 
 // List — журналы со сводкой. Публично.
 func (h *JournalHandler) List(w http.ResponseWriter, r *http.Request) {
-	list, err := h.store.List(r.Context())
+	list, err := h.store.List(r.Context(), isStaffRequest(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать журналы")
 		return
@@ -64,7 +64,7 @@ func (h *JournalHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get — журнал и номера по годам. Публично.
 func (h *JournalHandler) Get(w http.ResponseWriter, r *http.Request) {
-	d, err := h.store.Detail(r.Context(), mux.Vars(r)["slug"])
+	d, err := h.store.Detail(r.Context(), mux.Vars(r)["slug"], isStaffRequest(r))
 	if errors.Is(err, repository.ErrJournalNotFound) {
 		writeError(w, http.StatusNotFound, "Журнал не найден")
 		return

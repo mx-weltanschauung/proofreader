@@ -21,6 +21,14 @@ type ShelfHandler struct {
 	editions ShelfEditions
 	works    ShelfWorks
 	journals ShelfJournals
+	closed   ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: свободные тома, закрытые
+// у них самих, не-сотрудник на полке не видит. nil — ничего не скрывается.
+func (h *ShelfHandler) WithClosed(c ClosedStore) *ShelfHandler {
+	h.closed = c
+	return h
 }
 
 // WithJournals подключает журналы; без них полка отдаёт пустой массив.
@@ -57,6 +65,39 @@ func (h *ShelfHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	staff := isStaffRequest(r)
+	if !staff {
+		// Закрытое издание уезжает с полки вместе с томами; закрытый том —
+		// из своего издания. Сводка тома несёт ClosedBy сама.
+		openEditions := make([]*models.Edition, 0, len(editions))
+		for _, e := range editions {
+			if !e.Closed {
+				openEditions = append(openEditions, e)
+			}
+		}
+		editions = openEditions
+		openSummaries := make([]*models.VolumeSummary, 0, len(summaries))
+		for _, s := range summaries {
+			if s.ClosedBy == "" {
+				openSummaries = append(openSummaries, s)
+			}
+		}
+		summaries = openSummaries
+		// У ShelfWork признака нет — сверка по множеству закрытых id.
+		closed, err := closedSetFor(r, h.closed)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать полку")
+			return
+		}
+		openLoose := make([]models.ShelfWork, 0, len(loose))
+		for _, wk := range loose {
+			if !closed.Has(wk.ID) {
+				openLoose = append(openLoose, wk)
+			}
+		}
+		loose = openLoose
+	}
+
 	shelf := models.Shelf{
 		Editions:   groupByEdition(editions, summaries),
 		LooseWorks: loose,
@@ -68,7 +109,7 @@ func (h *ShelfHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	shelf.Journals = []models.JournalSummary{}
 	if h.journals != nil {
-		list, err := h.journals.List(ctx)
+		list, err := h.journals.List(ctx, staff)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать журналы")
 			return

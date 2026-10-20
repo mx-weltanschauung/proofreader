@@ -364,3 +364,150 @@ func TestUpdateLeavesClosedAlone(t *testing.T) {
 		t.Errorf("Update журнала открыл его: %+v", got)
 	}
 }
+
+func issuesOf(d *models.JournalDetail) int {
+	n := 0
+	for _, y := range d.Years {
+		n += len(y.Issues)
+	}
+	return n
+}
+
+func TestJournalClosedHiddenUnlessIncluded(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	journals := NewJournalRepository(pool)
+	closed := NewClosedRepository(pool)
+	j := newJournal(t, journals, "cl-list")
+	newIssue(t, journals, j, 1925, 1, 1)
+	if _, err := closed.SetJournalClosed(ctx, j.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := journals.Detail(ctx, j.Slug, false); !errors.Is(err, ErrJournalNotFound) {
+		t.Fatalf("Detail(false) закрытого журнала: %v, ждали ErrJournalNotFound", err)
+	}
+	d, err := journals.Detail(ctx, j.Slug, true)
+	if err != nil || issuesOf(d) != 1 || !d.Journal.Closed {
+		t.Fatalf("Detail(true): %+v, %v", d, err)
+	}
+	has := func(include bool) bool {
+		list, err := journals.List(ctx, include)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range list {
+			if s.ID == j.ID {
+				return true
+			}
+		}
+		return false
+	}
+	if has(false) {
+		t.Error("List(false) отдал закрытый журнал")
+	}
+	if !has(true) {
+		t.Error("List(true) потерял закрытый журнал")
+	}
+}
+
+func TestJournalClosedIssueLeavesCountsAndYears(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	journals := NewJournalRepository(pool)
+	closed := NewClosedRepository(pool)
+	j := newJournal(t, journals, "cl-issue")
+	newIssue(t, journals, j, 1925, 1, 1)
+	_, w2 := newIssue(t, journals, j, 1926, 1, 1)
+	if _, err := closed.SetWorkClosed(ctx, w2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := journals.Detail(ctx, j.Slug, false)
+	if err != nil || issuesOf(d) != 1 || len(d.Years) != 1 || d.Years[0].Year != 1925 {
+		t.Fatalf("Detail(false): %+v, %v", d, err)
+	}
+	if d, _ = journals.Detail(ctx, j.Slug, true); issuesOf(d) != 2 {
+		t.Fatalf("Detail(true): номеров %d, ждали 2", issuesOf(d))
+	}
+	summary := func(include bool) models.JournalSummary {
+		list, err := journals.List(ctx, include)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range list {
+			if s.ID == j.ID {
+				return s
+			}
+		}
+		t.Fatalf("журнал %d не в списке (include=%v)", j.ID, include)
+		return models.JournalSummary{}
+	}
+	if s := summary(false); s.IssuesTotal != 1 || *s.YearFrom != 1925 || *s.YearTo != 1925 {
+		t.Errorf("List(false): %+v", s)
+	}
+	if s := summary(true); s.IssuesTotal != 2 || *s.YearTo != 1926 {
+		t.Errorf("List(true): %+v", s)
+	}
+}
+
+func TestPersonDetailDropsClosedArticles(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	journals := NewJournalRepository(pool)
+	persons := NewPersonRepository(pool)
+	chapters := NewChapterRepository(pool)
+	closed := NewClosedRepository(pool)
+
+	j := newJournal(t, journals, "cl-person")
+	_, w1 := newIssue(t, journals, j, 1925, 1, 1)
+	_, w2 := newIssue(t, journals, j, 1926, 1, 1)
+	p := &models.Person{Name: "Закрытый Автор"}
+	if err := persons.Create(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	kind := "статья"
+	for _, w := range []*models.Work{w1, w2} {
+		ch := &models.Chapter{WorkID: w.ID, Title: "Статья", Type: "chapter", OrderNumber: 1,
+			StartPage: 1, EndPage: 2, ArticleKind: &kind}
+		if err := chapters.Create(ctx, ch); err != nil {
+			t.Fatal(err)
+		}
+		if err := persons.ReplaceCredits(ctx, ch.ID, []models.CreditInput{{Role: "author", Printed: "З. А.", PersonID: &p.ID}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := closed.SetWorkClosed(ctx, w2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	d, err := persons.Detail(ctx, p.Slug, false)
+	if err != nil || len(d.Articles) != 1 || d.Articles[0].WorkID != w1.ID {
+		t.Fatalf("наполовину закрыт, Detail(false): %+v, %v", d, err)
+	}
+	if d, err = persons.Detail(ctx, p.Slug, true); err != nil || len(d.Articles) != 2 {
+		t.Fatalf("Detail(true): %+v, %v", d, err)
+	}
+
+	if _, err := closed.SetWorkClosed(ctx, w1.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := persons.Detail(ctx, p.Slug, false); !errors.Is(err, ErrPersonNotFound) {
+		t.Fatalf("всё закрыто, Detail(false): %v, ждали ErrPersonNotFound", err)
+	}
+	if d, err = persons.Detail(ctx, p.Slug, true); err != nil || len(d.Articles) != 2 {
+		t.Fatalf("всё закрыто, Detail(true): %+v, %v", d, err)
+	}
+}
+
+func TestPersonWithoutCreditsIsNotHidden(t *testing.T) {
+	ctx := context.Background()
+	persons := NewPersonRepository(testPool(t))
+	p := &models.Person{Name: "Без Статей"}
+	if err := persons.Create(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := persons.Detail(ctx, p.Slug, false); err != nil || len(d.Articles) != 0 {
+		t.Fatalf("человек без статей: %+v, %v", d, err)
+	}
+}

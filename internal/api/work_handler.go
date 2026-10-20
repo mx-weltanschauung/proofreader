@@ -142,9 +142,16 @@ func (h *WorkHandler) List(w http.ResponseWriter, r *http.Request) {
 		works = []*models.Work{}
 	}
 
-	resp := make([]workResponse, len(works))
-	for i, wk := range works {
-		resp[i] = newWorkResponse(r.Context(), wk, h.store, h.presignTTL)
+	// Закрытое (само, по родителю, изданию или журналу) не-сотруднику не
+	// показывается. Страница от этого может выйти короче limit: сдвиг offset
+	// остаётся по строкам базы, поэтому постраничный обход ничего не теряет.
+	staff := isStaffRequest(r)
+	resp := make([]workResponse, 0, len(works))
+	for _, wk := range works {
+		if !staff && wk.ClosedBy != "" {
+			continue
+		}
+		resp = append(resp, newWorkResponse(r.Context(), wk, h.store, h.presignTTL))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
