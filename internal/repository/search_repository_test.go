@@ -747,3 +747,91 @@ func TestSearchPagesFacetMatchesPageAttribution(t *testing.T) {
 		t.Fatalf("фасет разошёлся с подписью полосы: %+v", res.Chapters)
 	}
 }
+
+// seedClosedSearchFixture — закрытый том с передним листом, том закрытого
+// собрания и открытый том; во всех одно и то же редкое слово «зазеркалье»
+// (в заглавии главы, в понятии и в тексте полос).
+func seedClosedSearchFixture(t *testing.T) {
+	t.Helper()
+	pool := testPool(t)
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO editions (id, title, slug, closed) VALUES (61, 'Открытое', 'op', false), (62, 'Закрытое', 'cl', true);
+		INSERT INTO works (id, title, author, file_path, owner_id, role, parent_work_id, edition_id, closed)
+		VALUES
+		  (70, 'Закрытый том',  'А', 'f', 1, 'volume',       NULL, 61,   true),
+		  (71, 'Его передний',  'А', 'f', 1, 'front_matter', 70,   NULL, false),
+		  (72, 'Том закрытого собрания', 'А', 'f', 1, 'volume', NULL, 62, false),
+		  (73, 'Открытый том',  'А', 'f', 1, 'volume',       NULL, 61,   false);
+		INSERT INTO chapters (id, work_id, title, type, order_number, start_page, end_page, is_apparatus)
+		VALUES (700, 70, 'Зазеркалье', 'chapter', 1, 1, 1, false),
+		       (730, 73, 'Открытое', 'chapter', 1, 1, 1, false);
+		INSERT INTO pages (work_id, page_number, content_markdown) VALUES
+		  (70, 1, 'зазеркалье закрытого'), (71, 1, 'зазеркалье переднего'),
+		  (72, 1, 'зазеркалье собрания'),  (73, 1, 'ничего');
+		WITH c AS (INSERT INTO index_concepts (title, slug, sort_key, title_key)
+		           VALUES ('Зазеркалье', 'zazerkale', 'зазеркалье', 'зазеркалье') RETURNING id)
+		INSERT INTO index_concept_articles (concept_id, edition_id, work_id, title, title_key, kind)
+		SELECT id, 61, 70, 'Зазеркалье', 'зазеркалье', 'article' FROM c`); err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+}
+
+func TestSearchHidesClosedByDefault(t *testing.T) {
+	seedClosedSearchFixture(t)
+	repo := NewSearchRepository(testPool(t))
+	ctx := context.Background()
+
+	res, err := repo.Search(ctx, models.SearchQuery{Text: "зазеркалье"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Volumes) != 0 || len(res.Chapters) != 0 || len(res.Concepts) != 0 || res.TotalHits != 0 {
+		t.Fatalf("закрытое видно: томов %d, глав %d, понятий %d, total %d",
+			len(res.Volumes), len(res.Chapters), len(res.Concepts), res.TotalHits)
+	}
+	// Область по тому и по собранию закрытого не раскрывает: ни передний
+	// лист закрытого тома, ни том закрытого собрания.
+	for _, q := range []models.SearchQuery{
+		{Text: "зазеркалье", WorkIDs: []int64{70}},
+		{Text: "зазеркалье", EditionIDs: []int64{62}},
+	} {
+		res, err := repo.Search(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Volumes) != 0 || res.TotalHits != 0 {
+			t.Fatalf("область %+v раскрыла закрытое: %d томов", q, len(res.Volumes))
+		}
+	}
+	for _, id := range []int64{70, 71, 72} {
+		pr, err := repo.SearchPages(ctx, models.SearchQuery{Text: "зазеркалье"}, id, nil, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pr.Pages) != 0 || pr.Total != 0 || len(pr.Chapters) != 0 {
+			t.Fatalf("том %d: полос %d, всего %d, фасет %d", id, len(pr.Pages), pr.Total, len(pr.Chapters))
+		}
+	}
+}
+
+func TestSearchShowsClosedWhenIncluded(t *testing.T) {
+	seedClosedSearchFixture(t)
+	repo := NewSearchRepository(testPool(t))
+	ctx := context.Background()
+
+	res, err := repo.Search(ctx, models.SearchQuery{Text: "зазеркалье", IncludeClosed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Volumes) != 3 || len(res.Chapters) != 1 || len(res.Concepts) != 1 || res.TotalHits != 3 {
+		t.Fatalf("томов %d, глав %d, понятий %d, total %d",
+			len(res.Volumes), len(res.Chapters), len(res.Concepts), res.TotalHits)
+	}
+	pr, err := repo.SearchPages(ctx, models.SearchQuery{Text: "зазеркалье", IncludeClosed: true}, 70, nil, 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pr.Pages) != 1 || pr.Total != 1 || len(pr.Chapters) != 1 {
+		t.Fatalf("полос %d, всего %d, фасет %d", len(pr.Pages), pr.Total, len(pr.Chapters))
+	}
+}
