@@ -228,7 +228,8 @@ func main() {
 	)
 	downloadHandler := api.NewDownloadHandler(downloadSource).
 		WithAudio(api.NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, chapterRepo, cfg.Server.PublicBaseURL))
-	audioHandler := api.NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, chapterRepo, audioStore)
+	closedRepo := repository.NewClosedRepository(db.Pool)
+	audioHandler := api.NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, chapterRepo, audioStore, closedRepo)
 	seoRepo := repository.NewSEORepository(db.Pool)
 	seoHandler := seo.NewHandler(&seo.Source{
 		Works:       workRepo,
@@ -343,7 +344,7 @@ func main() {
 		authService,
 	).WithMCP(mcpHandler).
 		WithOPDS(opdsHandler).
-		WithClosed(repository.NewClosedRepository(db.Pool)).
+		WithClosed(closedRepo).
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
 		WithSite(api.NewSiteHandler(cfg.Site)).

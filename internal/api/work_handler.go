@@ -224,7 +224,12 @@ func (h *WorkHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("work %d: failed to list child works: %v", id, err)
 	}
+	staff := isStaffRequest(r)
 	for _, kid := range kids {
+		// Закрытая служебная работа не-сотруднику не перечисляется.
+		if kid.ClosedBy != "" && !staff {
+			continue
+		}
 		resp.Children = append(resp.Children, newWorkResponse(r.Context(), kid, h.store, h.presignTTL))
 	}
 

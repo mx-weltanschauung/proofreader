@@ -211,6 +211,15 @@ func (h *ChapterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(chapter)
 }
 
+// chapterInPathWork — принадлежит ли глава работе из пути. Путь
+// /works/{workId}/chapters/{id} обязан называть работу главы: иначе
+// closedGate, проверивший workId, пропустил бы главу закрытого тома по адресу
+// открытого, а файл кэша, прогретый сотрудником, отдался бы по чужому ключу.
+func chapterInPathWork(r *http.Request, chapter *models.Chapter) bool {
+	workID, err := strconv.ParseInt(mux.Vars(r)["workId"], 10, 64)
+	return err == nil && chapter != nil && chapter.WorkID == workID
+}
+
 // Get retrieves a chapter by ID
 func (h *ChapterHandler) Get(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -222,7 +231,7 @@ func (h *ChapterHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 	chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
-	if err != nil {
+	if err != nil || !chapterInPathWork(r, chapter) {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
 		return
 	}
@@ -419,7 +428,7 @@ func (h *ChapterHandler) ListPages(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 	chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
-	if err != nil {
+	if err != nil || !chapterInPathWork(r, chapter) {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
 		return
 	}

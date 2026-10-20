@@ -143,7 +143,7 @@ func newAudioTestHandler() (*AudioHandler, *fakeAudio, *storage.MemoryStorage) {
 		5: {ID: 5, WorkID: 47, Title: "Глава первая", StartPage: 10, EndPage: 20},
 		6: {ID: 6, WorkID: 48, Title: "чужая", StartPage: 1, EndPage: 2},
 	}}
-	return NewAudioHandler(f, f, f, ch, mem), f, mem
+	return NewAudioHandler(f, f, f, ch, mem, nil), f, mem
 }
 
 func audioRequest(method, url string, body any, vars map[string]string) *http.Request {
