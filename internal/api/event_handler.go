@@ -24,6 +24,7 @@ func NewEventHandler(store EventStore, closed ClosedStore) *EventHandler {
 func (h *EventHandler) fail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, repository.ErrEventOrgNotFound),
+		errors.Is(err, repository.ErrEventKindNotFound),
 		errors.Is(err, repository.ErrEventNotFound),
 		errors.Is(err, repository.ErrChapterNotInWork):
 		writeError(w, http.StatusNotFound, "Не найдено")
