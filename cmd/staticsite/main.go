@@ -96,7 +96,7 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	pages := repository.NewPageRepository(pool)
 	editions := repository.NewEditionRepository(pool)
 	collections := repository.NewCollectionRepository(pool)
-	index := repository.NewIndexRepository(pool)
+	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), repository.NewClosedRepository(pool))
 	renderer := markdown.NewRenderer()
 
 	books := api.NewDownloadSource(works, chapters, pages, editions, collections, renderer, *base).WithChapterAnchors()

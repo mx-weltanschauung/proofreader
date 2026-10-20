@@ -176,6 +176,7 @@ func (r *SEORepository) Concepts(ctx context.Context) ([]CatalogRow, error) {
 		WHERE EXISTS (
 		    SELECT 1 FROM index_concept_articles a
 		    WHERE a.concept_id = c.id AND a.kind = 'article'
+		      AND `+visibleArticleSQL("a")+`
 		)
 		ORDER BY c.slug`, func(rows pgx.Rows) (CatalogRow, error) {
 		var row CatalogRow
@@ -191,6 +192,9 @@ type ConceptShelfRow struct {
 	Places int
 }
 
+// Concepts и ConceptShelf отдают каналам без токена только видимое: закрытое
+// скрыто всегда (visibleArticleSQL), число адресов считает одни видимые.
+//
 // ConceptShelf — понятия-статьи по алфавиту с числом адресов, одним
 // запросом: витрина печатает все ~2400 строк, и счёт по понятию стоил бы
 // столько же запросов.
@@ -198,8 +202,8 @@ func (r *SEORepository) ConceptShelf(ctx context.Context) ([]ConceptShelfRow, er
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.slug, c.title, c.sort_key, count(ref.id)
 		FROM index_concepts c
-		JOIN index_concept_articles a ON a.concept_id = c.id
-		LEFT JOIN index_references ref ON ref.article_id = a.id
+		JOIN index_concept_articles a ON a.concept_id = c.id AND `+visibleArticleSQL("a")+`
+		LEFT JOIN index_references ref ON ref.article_id = a.id AND NOT `+closedReferenceSQL("ref", "a")+`
 		GROUP BY c.id
 		HAVING bool_or(a.kind = 'article')
 		ORDER BY c.sort_key, c.slug`)

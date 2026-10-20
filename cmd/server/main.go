@@ -221,7 +221,10 @@ func main() {
 		func() float64 { return float64(statsRecorder.Dropped()) })
 	appMetrics.RegisterCounterFunc("stats_write_errors_total", "Сбои записи посещаемости.",
 		func() float64 { return float64(statsRecorder.WriteErrors()) })
-	indexHandler := api.NewIndexHandler(indexRepo, workRepo, editionRepo, pageRepo, chapterRepo, fragmentRepo, markdownRenderer)
+	// Каналы без токена (.md и MCP, краулер, карточки) видят указатель без
+	// закрытого всегда — сотрудника на них нет.
+	tokenlessIndex := api.NewTokenlessIndex(indexRepo, closedRepo)
+	indexHandler := api.NewIndexHandler(indexRepo, workRepo, editionRepo, pageRepo, chapterRepo, fragmentRepo, markdownRenderer).WithClosed(closedRepo)
 	collectionHandler := api.NewCollectionHandler(collectionRepo, pageRepo, markdownRenderer, rangeCache, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders)
 	downloadSource := api.NewDownloadSource(
 		workRepo, chapterRepo, pageRepo, editionRepo, collectionRepo,
@@ -236,12 +239,12 @@ func main() {
 		Chapters:    chapterRepo,
 		Pages:       pageRepo,
 		Editions:    editionRepo,
-		Concepts:    indexRepo,
+		Concepts:    tokenlessIndex,
 		Collections: api.NewSEOCollectionSource(collectionRepo),
 		Documents: api.NewSEODocumentSource(
 			documentRepo, documentCutRepo, workRepo, markdownRenderer),
 		Books:        api.NewSEOBookSource(downloadSource),
-		ConceptBooks: api.NewConceptBookSource(indexRepo, pageRepo, chapterRepo, cfg.Server.PublicBaseURL),
+		ConceptBooks: api.NewConceptBookSource(tokenlessIndex, pageRepo, chapterRepo, cfg.Server.PublicBaseURL),
 		Catalog:      seoRepo,
 		Renderer:     markdownRenderer,
 		// Тот же адрес, что печатает титульный лист выгрузок: два источника

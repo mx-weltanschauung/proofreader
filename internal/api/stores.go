@@ -176,7 +176,9 @@ type IndexStore interface {
 	GetConceptBySlug(ctx context.Context, slug string) (*models.IndexConcept, error)
 	ArticleLinks(ctx context.Context, articleID int64) ([]repository.LinkWithTarget, error)
 	IncomingLinks(ctx context.Context, conceptID int64) ([]repository.IncomingLink, error)
-	ListConcepts(ctx context.Context, query, letter string, limit, offset int) ([]*models.IndexConcept, error)
+	// includeClosed — показывать ли понятия и места закрытых изданий и работ
+	// (только сотруднику): ложь прячет их в самом запросе.
+	ListConcepts(ctx context.Context, query, letter string, limit, offset int, includeClosed bool) ([]*models.IndexConcept, error)
 	VolumeMap(ctx context.Context, editionID int64) ([]models.VolumeLocation, error)
 	Backlinks(ctx context.Context, editionID int64, volumeNumber int, volumePart *string, printedPage int) ([]models.ConceptBacklink, error)
 	TakenSlugs(ctx context.Context) (map[string]bool, error)

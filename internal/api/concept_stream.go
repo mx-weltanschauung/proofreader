@@ -187,8 +187,14 @@ func (h *IndexHandler) Fragments(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
 	// Отсутствующий slug приходит из репозитория ошибкой — как в GetConcept.
-	c, err := h.index.GetConceptBySlug(ctx, slug)
-	if err != nil || c == nil {
+	// Закрытые адреса и статьи уже сняты: поток, его total и разворот полосы
+	// считаются по оставшимся.
+	c, _, found, err := h.conceptFor(r, slug)
+	if err != nil {
+		http.Error(w, "Failed to resolve volume map", http.StatusInternalServerError)
+		return
+	}
+	if !found {
 		http.Error(w, "Concept not found", http.StatusNotFound)
 		return
 	}
@@ -907,8 +913,14 @@ func (h *IndexHandler) ExpandPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	c, err := h.index.GetConceptBySlug(ctx, vars["slug"])
-	if err != nil || c == nil {
+	// Адрес в закрытый том снят вместе с понятием-копией: разворот его полосы
+	// отвечает «адреса нет» (404), как на адрес, которого не было.
+	c, _, found, err := h.conceptFor(r, vars["slug"])
+	if err != nil {
+		http.Error(w, "Failed to resolve volume map", http.StatusInternalServerError)
+		return
+	}
+	if !found {
 		http.Error(w, "Concept not found", http.StatusNotFound)
 		return
 	}

@@ -16,8 +16,10 @@ import (
 // fakeClosedStore — закрытые работы заданы множеством; calls считает обращения.
 type fakeClosedStore struct {
 	works map[int64]string
-	err   error
-	calls int
+	// editions — закрытые издания (ClosedEditionIDs).
+	editions map[int64]bool
+	err      error
+	calls    int
 }
 
 func (f *fakeClosedStore) ClosedBy(_ context.Context, id int64) (string, error) {
@@ -36,7 +38,11 @@ func (f *fakeClosedStore) ClosedIDs(context.Context) (map[int64]bool, error) {
 
 func (f *fakeClosedStore) ClosedEditionIDs(context.Context) (map[int64]bool, error) {
 	f.calls++
-	return map[int64]bool{}, f.err
+	out := map[int64]bool{}
+	for id := range f.editions {
+		out[id] = true
+	}
+	return out, f.err
 }
 
 // gateRouter — один маршрут тома за OptionalAuth и closedGate, в том же
