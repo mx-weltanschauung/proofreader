@@ -193,13 +193,13 @@ func main() {
 	chapterHandler := api.NewChapterHandler(chapterRepo, pageRepo, markdownRenderer, rangeCache).
 		WithRecordings(audioRecordingRepo).
 		WithCredits(personRepo)
+	closedRepo := repository.NewClosedRepository(db.Pool)
 	readingHandler := api.NewReadingHandler(pageRepo, markdownRenderer)
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же
 	// набор источников, что у чтения разбора, плюс свой рендер без подрезки.
-	documentCutHandler := api.NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, pageRepo, markdownRenderer)
+	documentCutHandler := api.NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, pageRepo, markdownRenderer).WithClosed(closedRepo)
 	userHandler := api.NewUserHandler(userRepo, authService)
 	exportHandler := api.NewExportHandler(workRepo, chapterRepo, pageRepo)
-	closedRepo := repository.NewClosedRepository(db.Pool)
 	editionHandler := api.NewEditionHandler(editionRepo)
 	shelfHandler := api.NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo)
 	highlightHandler := api.NewHighlightHandler(editionRepo).WithClosed(closedRepo)
@@ -225,12 +225,12 @@ func main() {
 	// закрытого всегда — сотрудника на них нет.
 	tokenlessIndex := api.NewTokenlessIndex(indexRepo, closedRepo)
 	indexHandler := api.NewIndexHandler(indexRepo, workRepo, editionRepo, pageRepo, chapterRepo, fragmentRepo, markdownRenderer).WithClosed(closedRepo)
-	collectionHandler := api.NewCollectionHandler(collectionRepo, pageRepo, markdownRenderer, rangeCache, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders)
+	collectionHandler := api.NewCollectionHandler(collectionRepo, pageRepo, markdownRenderer, rangeCache, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders).WithClosed(closedRepo)
 	downloadSource := api.NewDownloadSource(
 		workRepo, chapterRepo, pageRepo, editionRepo, collectionRepo,
 		markdownRenderer, cfg.Server.PublicBaseURL,
 	)
-	downloadHandler := api.NewDownloadHandler(downloadSource).
+	downloadHandler := api.NewDownloadHandler(downloadSource).WithClosed(closedRepo).
 		WithAudio(api.NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, chapterRepo, cfg.Server.PublicBaseURL))
 	audioHandler := api.NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, chapterRepo, audioStore, closedRepo)
 	seoRepo := repository.NewSEORepository(db.Pool)
@@ -240,9 +240,9 @@ func main() {
 		Pages:       pageRepo,
 		Editions:    editionRepo,
 		Concepts:    tokenlessIndex,
-		Collections: api.NewSEOCollectionSource(collectionRepo),
+		Collections: api.NewSEOCollectionSource(collectionRepo).WithClosed(closedRepo),
 		Documents: api.NewSEODocumentSource(
-			documentRepo, documentCutRepo, workRepo, markdownRenderer),
+			documentRepo, documentCutRepo, workRepo, markdownRenderer).WithClosed(closedRepo),
 		Books:        api.NewSEOBookSource(downloadSource),
 		ConceptBooks: api.NewConceptBookSource(tokenlessIndex, pageRepo, chapterRepo, cfg.Server.PublicBaseURL),
 		Catalog:      seoRepo,
@@ -268,7 +268,7 @@ func main() {
 	// остальными обработчиками разбора выше: снятие с публикации и удаление
 	// обязаны сбросить краулерскую половину servingCache (см. DropCrawler), а
 	// она собирается только после seoHandler.
-	documentHandler := api.NewDocumentHandler(documentRepo, markdownRenderer, documentCutRepo, workRepo, servingCache)
+	documentHandler := api.NewDocumentHandler(documentRepo, markdownRenderer, documentCutRepo, workRepo, servingCache).WithClosed(closedRepo)
 	// Модерация разбора: отправка автором, очередь редактору, приём и отказ.
 	// jwtSecret и trustProxy — рельс предела частоты, тот же, что у подборок.
 	documentReviewHandler := api.NewDocumentReviewHandler(

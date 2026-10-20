@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,6 +26,7 @@ type fakeCollectionStore struct {
 	rows        []repository.ItemRow
 	chapters    []*models.Chapter
 	item        *models.CollectionItem
+	chapterWork map[int64]int64
 
 	addedKind      string
 	addedChapterID *int64
@@ -188,6 +190,13 @@ func (f *fakeCollectionStore) ItemRows(ctx context.Context, collectionID int64) 
 
 func (f *fakeCollectionStore) ChaptersForWorks(ctx context.Context, ids []int64) ([]*models.Chapter, error) {
 	return f.chapters, nil
+}
+
+func (f *fakeCollectionStore) ChapterWorkID(ctx context.Context, chapterID int64) (int64, error) {
+	if w, ok := f.chapterWork[chapterID]; ok {
+		return w, nil
+	}
+	return 0, errors.New("chapter not found")
 }
 
 func (f *fakeCollectionStore) ItemByID(ctx context.Context, collectionID, itemID int64) (*models.CollectionItem, error) {

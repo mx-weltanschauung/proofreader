@@ -45,7 +45,7 @@ func TestBuildCollectionTOCPrintedPages(t *testing.T) {
 			OrderNumber: 1, StartPage: 276, EndPage: 280},
 	}
 
-	entries := buildCollectionTOC(rows, chapters)
+	entries := buildCollectionTOC(rows, chapters, nil)
 
 	if len(entries) != 1 {
 		t.Fatalf("строк оглавления %d, ожидалась 1", len(entries))
@@ -92,7 +92,7 @@ func TestBuildCollectionTOCKeepsItemOrder(t *testing.T) {
 		{ID: 200, WorkID: 42, Title: "Диалектика идеального", OrderNumber: 1, StartPage: 8, EndPage: 77},
 	}
 
-	entries := buildCollectionTOC(rows, chapters)
+	entries := buildCollectionTOC(rows, chapters, nil)
 
 	if len(entries) != 2 {
 		t.Fatalf("строк %d, ожидалось 2", len(entries))
@@ -111,7 +111,7 @@ func TestBuildCollectionTOCBrokenItem(t *testing.T) {
 	row.ChapterStartPage = nil
 	row.ChapterEndPage = nil
 
-	entries := buildCollectionTOC([]repository.ItemRow{row}, nil)
+	entries := buildCollectionTOC([]repository.ItemRow{row}, nil, nil)
 
 	e := entries[0]
 	if !e.Broken {
@@ -147,7 +147,7 @@ func TestBuildCollectionTOCWorkItem(t *testing.T) {
 		{ID: 302, WorkID: 42, Title: "Очерк второй", OrderNumber: 2, StartPage: 41, EndPage: 90},
 	}
 
-	entries := buildCollectionTOC([]repository.ItemRow{row}, chapters)
+	entries := buildCollectionTOC([]repository.ItemRow{row}, chapters, nil)
 
 	e := entries[0]
 	if e.Title != "Диалектическая логика" {
@@ -177,7 +177,7 @@ func TestBuildCollectionTOCWorkItemBroken(t *testing.T) {
 		},
 	}
 
-	entries := buildCollectionTOC([]repository.ItemRow{row}, nil)
+	entries := buildCollectionTOC([]repository.ItemRow{row}, nil, nil)
 
 	e := entries[0]
 	if !e.Broken {
@@ -198,7 +198,7 @@ func TestBuildCollectionTOCAuthorOverride(t *testing.T) {
 		{ID: 100, WorkID: 41, Title: "Людвиг Фейербах", OrderNumber: 1, StartPage: 265, EndPage: 313},
 	}
 
-	e := buildCollectionTOC([]repository.ItemRow{row}, chapters)[0]
+	e := buildCollectionTOC([]repository.ItemRow{row}, chapters, nil)[0]
 
 	if e.Author != "Ф. Энгельс" {
 		t.Errorf("автор %q, ожидалось переопределение", e.Author)
@@ -233,7 +233,7 @@ func TestBuildCollectionTOCNodesCarryChapterID(t *testing.T) {
 			OrderNumber: 1, StartPage: 266, EndPage: 270},
 	}
 
-	entries := buildCollectionTOC(rows, chapters)
+	entries := buildCollectionTOC(rows, chapters, nil)
 
 	if len(entries) != 1 || len(entries[0].Children) != 1 {
 		t.Fatalf("оглавление собралось не так: строк %d", len(entries))

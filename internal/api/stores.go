@@ -233,6 +233,9 @@ type CollectionStore interface {
 	ItemByID(ctx context.Context, collectionID, itemID int64) (*models.CollectionItem, error)
 	ItemRows(ctx context.Context, collectionID int64) ([]repository.ItemRow, error)
 	ChaptersForWorks(ctx context.Context, workIDs []int64) ([]*models.Chapter, error)
+	// ChapterWorkID — том главы; нужен, чтобы закрытую главу не добавили в
+	// подборку не-сотрудником.
+	ChapterWorkID(ctx context.Context, chapterID int64) (int64, error)
 }
 
 // PageSuggestionStore is the slice of the suggestion repository the handler

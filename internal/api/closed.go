@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +24,21 @@ func closedSetFor(r *http.Request, store ClosedStore) (ClosedSet, error) {
 		return nil, nil
 	}
 	ids, err := store.ClosedIDs(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	return ClosedSet(ids), nil
+}
+
+// fullClosedSet — полное множество закрытых работ для каналов без токена
+// (краулер, статическая копия): сотрудника там нет, поэтому множество
+// отдаётся всегда, а не по запросу. nil-хранилище — nil-множество: ничего не
+// закрыто (экземпляр без закрытых работ).
+func fullClosedSet(ctx context.Context, store ClosedStore) (ClosedSet, error) {
+	if store == nil {
+		return nil, nil
+	}
+	ids, err := store.ClosedIDs(ctx)
 	if err != nil {
 		return nil, err
 	}

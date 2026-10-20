@@ -95,7 +95,7 @@ func TestAssembleKeepsAuthorNotesApartFromCorpus(t *testing.T) {
 	html := assembleDocument(markdown.NewRenderer(), body,
 		[]*models.DocumentCut{cut},
 		map[int64][]*models.Page{7: pages},
-		map[int64]int{1: 0})
+		map[int64]int{1: 0}, nil)
 
 	// Плейсхолдер не должен пережить сборку ни в открытой форме, ни висячим
 	// закрывающим тегом, ни пустым <p></p> на его месте (Ruling из контекста
@@ -140,7 +140,7 @@ func TestAssembleShowsStaleCutWithoutText(t *testing.T) {
 	}
 	pages := []*models.Page{cutPage(10, 4, "совершенно другой текст полосы")}
 	html := assembleDocument(markdown.NewRenderer(), "<cut id=\"7\">",
-		[]*models.DocumentCut{cut}, map[int64][]*models.Page{7: pages}, map[int64]int{1: 0})
+		[]*models.DocumentCut{cut}, map[int64][]*models.Page{7: pages}, map[int64]int{1: 0}, nil)
 
 	if strings.Contains(html, "другой текст") {
 		t.Fatalf("отвязавшаяся вклейка показала текст по уехавшим смещениям: %s", html)
@@ -227,7 +227,7 @@ func TestAssembleShowsBrokenCutWithoutLink(t *testing.T) {
 		Status: models.CutStatusOK, SourceTitle: "Ленин. Что делать? // ПСС, т. 6, с. 236",
 	}
 	html := assembleDocument(markdown.NewRenderer(), "<cut id=\"7\">",
-		[]*models.DocumentCut{cut}, map[int64][]*models.Page{}, map[int64]int{})
+		[]*models.DocumentCut{cut}, map[int64][]*models.Page{}, map[int64]int{}, nil)
 
 	if !strings.Contains(html, "document-cut--broken") || !strings.Contains(html, "Что делать?") {
 		t.Fatalf("битая вклейка не показана снимком: %s", html)
@@ -275,7 +275,7 @@ func TestAssembleGivesEachCutItsOwnFootnoteNamespace(t *testing.T) {
 	html := assembleDocument(markdown.NewRenderer(), body,
 		[]*models.DocumentCut{cut1, cut2},
 		map[int64][]*models.Page{1: pages1, 2: pages2},
-		map[int64]int{1: 0, 2: 0})
+		map[int64]int{1: 0, 2: 0}, nil)
 
 	fnrefRe := regexp.MustCompile(`id="fnref:([^"]+)"`)
 	matches := fnrefRe.FindAllStringSubmatch(html, -1)

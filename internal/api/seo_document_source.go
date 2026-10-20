@@ -22,6 +22,14 @@ type SEODocumentSource struct {
 	cuts      DocumentCutStore
 	works     WorkStore
 	renderer  *markdown.Renderer
+	closed    ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: краулер без токена, поэтому
+// вклейки закрытых работ всегда собираются как недоступные.
+func (a *SEODocumentSource) WithClosed(c ClosedStore) *SEODocumentSource {
+	a.closed = c
+	return a
 }
 
 func NewSEODocumentSource(
@@ -83,7 +91,11 @@ func (a *SEODocumentSource) Page(
 		return nil, err
 	}
 
-	body, cutCount, err := assembleDocumentFor(ctx, a.renderer, a.cuts, a.works, document)
+	closed, err := fullClosedSet(ctx, a.closed)
+	if err != nil {
+		return nil, fmt.Errorf("закрытые работы: %w", err)
+	}
+	body, cutCount, err := assembleDocumentFor(ctx, a.renderer, a.cuts, a.works, document, closed)
 	if err != nil {
 		return nil, fmt.Errorf("сборка разбора %q: %w", slug, err)
 	}

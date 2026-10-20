@@ -22,7 +22,15 @@ type DocumentHandler struct {
 	// cache — краулерская половина ServingCache (см. ServingCache.DropCrawler):
 	// удаление разбора — тот же случай, что снятие с публикации, только без
 	// возврата назад. nil означает «кэшей нет», как и у DocumentReviewHandler.
-	cache *ServingCache
+	cache  *ServingCache
+	closed ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: вклейки закрытых работ
+// собираются недоступными не-сотруднику. nil — ничего не скрывается.
+func (h *DocumentHandler) WithClosed(c ClosedStore) *DocumentHandler {
+	h.closed = c
+	return h
 }
 
 // pageRepo раньше здесь был нужен асинхронному рендеру документа (снесён
@@ -375,7 +383,12 @@ func (h *DocumentHandler) View(w http.ResponseWriter, r *http.Request) {
 	// зовёт ещё и страница краулера, а две копии сборки разошлись бы молча —
 	// и та из них, что обходит assembleDocument, обошла бы вместе с ним
 	// недоверенный рендерер авторского текста.
-	htmlContent, _, err := assembleDocumentFor(ctx, h.renderer, h.cuts, h.works, shown)
+	closed, err := closedSetFor(r, h.closed)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось собрать разбор")
+		return
+	}
+	htmlContent, _, err := assembleDocumentFor(ctx, h.renderer, h.cuts, h.works, shown, closed)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось собрать разбор")
 		return

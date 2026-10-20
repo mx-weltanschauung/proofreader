@@ -84,7 +84,7 @@ func TestAssembleStripsRawHTMLFromAuthorBody(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := assembleDocument(markdown.NewRenderer(), tc.body,
-				nil, map[int64][]*models.Page{}, map[int64]int{})
+				nil, map[int64][]*models.Page{}, map[int64]int{}, nil)
 
 			if bad := unsafeMarkupIn(got); len(bad) > 0 {
 				t.Errorf("исполняемое уехало клиенту: %v\n%s", bad, got)
@@ -109,7 +109,7 @@ func TestAuthorMarkdownKeepsHarmlessMarkup(t *testing.T) {
 		"Сноска автора[^1].\n\n[^1]: тело сноски\n"
 
 	got := assembleDocument(markdown.NewRenderer(), body,
-		nil, map[int64][]*models.Page{}, map[int64]int{})
+		nil, map[int64][]*models.Page{}, map[int64]int{}, nil)
 
 	for _, want := range []string{
 		"<em>курсив</em>", "<strong>жирный</strong>",
@@ -200,7 +200,7 @@ func TestAssembleSplicesCutByteForByteBesideStrippedAuthorHTML(t *testing.T) {
 	got := assembleDocument(markdown.NewRenderer(), body,
 		[]*models.DocumentCut{cut},
 		map[int64][]*models.Page{7: pages},
-		map[int64]int{1: 232})
+		map[int64]int{1: 232}, nil)
 
 	want := renderCutTrimmed(markdown.NewRenderer(), cut, pages, 1, 232)
 	if !strings.Contains(got, want) {
@@ -243,7 +243,7 @@ func TestCutOutputUnaffectedByAuthorHTMLSuppression(t *testing.T) {
 	assembled := assembleDocument(markdown.NewRenderer(), "<cut id=\"3\">",
 		[]*models.DocumentCut{cut},
 		map[int64][]*models.Page{3: pages},
-		map[int64]int{1: 232})
+		map[int64]int{1: 232}, nil)
 	if !strings.Contains(assembled, solo) {
 		t.Fatalf("сборка отдала вклейку не побайтово.\nодиночный рендер:\n%s\n\nсборка:\n%s", solo, assembled)
 	}

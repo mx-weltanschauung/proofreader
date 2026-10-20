@@ -27,6 +27,14 @@ const downloadWriteDeadline = 10 * time.Minute
 type DownloadHandler struct {
 	source *DownloadSource
 	audio  *AudioPlaylist
+	closed ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: выгрузка подборки не
+// называет элементы закрытых работ. nil — ничего не скрывается.
+func (h *DownloadHandler) WithClosed(c ClosedStore) *DownloadHandler {
+	h.closed = c
+	return h
 }
 
 // WithAudio включает ?format=m3u. Плейлист — не book.Writer: он читает
@@ -117,8 +125,14 @@ func (h *DownloadHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	closed, err := closedSetFor(r, h.closed)
+	if err != nil {
+		http.Error(w, "Не удалось собрать файл", http.StatusInternalServerError)
+		return
+	}
+
 	h.serve(w, r, "collection-"+asciiSlug(slug), func(ctx context.Context) (*book.Book, error) {
-		return h.source.Collection(ctx, nickname, slug)
+		return h.source.Collection(ctx, nickname, slug, closed)
 	})
 }
 

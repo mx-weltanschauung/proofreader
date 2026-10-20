@@ -96,14 +96,15 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	pages := repository.NewPageRepository(pool)
 	editions := repository.NewEditionRepository(pool)
 	collections := repository.NewCollectionRepository(pool)
-	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), repository.NewClosedRepository(pool))
+	closedRepo := repository.NewClosedRepository(pool)
+	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), closedRepo)
 	renderer := markdown.NewRenderer()
 
 	books := api.NewDownloadSource(works, chapters, pages, editions, collections, renderer, *base).WithChapterAnchors()
 	documents := api.NewSEODocumentSource(
-		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), works, renderer)
+		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), works, renderer).WithClosed(closedRepo)
 	src := api.NewStaticSource(editions, works, books, pages, index, repository.NewSEORepository(pool),
-		collections, documents, renderer)
+		collections, documents, renderer).WithClosed(closedRepo)
 
 	g := &staticsite.Generator{Src: src, Out: *out, BaseURL: *base, BuildDate: *date, EditionID: *edition,
 		Exclude: pol.exclude, Only: pol.only, Apparatus: pol.apparatus, Logf: log.Printf}

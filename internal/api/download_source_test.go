@@ -631,7 +631,7 @@ func downloadCollectionFixture() *DownloadSource {
 }
 
 func TestDownloadCollectionBuildsSectionPerItem(t *testing.T) {
-	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi")
+	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -652,7 +652,7 @@ func TestDownloadCollectionBuildsSectionPerItem(t *testing.T) {
 
 // Битый элемент нельзя терять молча: он перечисляется на титуле.
 func TestDownloadCollectionReportsMissingItems(t *testing.T) {
-	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi")
+	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -665,7 +665,7 @@ func TestDownloadCollectionReportsMissingItems(t *testing.T) {
 // У подборки нет ни издания, ни единого диапазона: строка «Источник:»
 // выродилась бы в огрызок.
 func TestDownloadCollectionHasNoEditionOrRange(t *testing.T) {
-	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi")
+	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -681,7 +681,7 @@ func TestDownloadCollectionHasNoEditionOrRange(t *testing.T) {
 // Смещение печатной нумерации у каждого элемента своё — оно берётся из
 // работы-источника, а не из первого попавшегося тома.
 func TestDownloadCollectionUsesPerItemPageOffset(t *testing.T) {
-	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi")
+	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -742,7 +742,7 @@ func downloadCollectionTwoOffsetsFixture() *DownloadSource {
 }
 
 func TestDownloadCollectionUsesPerItemPageOffsetAcrossWorks(t *testing.T) {
-	b, err := downloadCollectionTwoOffsetsFixture().Collection(context.Background(), "", "offsets")
+	b, err := downloadCollectionTwoOffsetsFixture().Collection(context.Background(), "", "offsets", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -815,7 +815,7 @@ func downloadCollectionOutOfPageOrderFixture() *DownloadSource {
 // бессмысленно, поэтому сортировка по странице — не альтернативная, а просто
 // неверная реализация.
 func TestDownloadCollectionPreservesItemOrderIndependentOfPageOrder(t *testing.T) {
-	b, err := downloadCollectionOutOfPageOrderFixture().Collection(context.Background(), "", "order")
+	b, err := downloadCollectionOutOfPageOrderFixture().Collection(context.Background(), "", "order", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -841,7 +841,7 @@ func TestDownloadCollectionPreservesItemOrderIndependentOfPageOrder(t *testing.T
 
 // Автор секции показывает, откуда взят текст: у подборки авторы разные.
 func TestDownloadCollectionCarriesItemAuthor(t *testing.T) {
-	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi")
+	b, err := downloadCollectionFixture().Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -856,7 +856,7 @@ func TestDownloadCollectionOverrideWinsOverSnapshot(t *testing.T) {
 	store := src.collections.(*fakeCollectionStoreForDownload)
 	store.rows[0].Item.AuthorOverride = "Ф. Энгельс"
 
-	b, err := src.Collection(context.Background(), "", "moi")
+	b, err := src.Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -916,7 +916,7 @@ func TestDownloadCollectionNotFound(t *testing.T) {
 	src := downloadCollectionFixture()
 	src.collections.(*fakeCollectionStoreForDownload).collection = nil
 
-	if _, err := src.Collection(context.Background(), "", "нет-такого"); !errors.Is(err, ErrNotFound) {
+	if _, err := src.Collection(context.Background(), "", "нет-такого", nil); !errors.Is(err, ErrNotFound) {
 		t.Errorf("err = %v, хотел ErrNotFound", err)
 	}
 }
@@ -977,7 +977,7 @@ func footnoteCollisionSource() *DownloadSource {
 // починки. После неё якоря различаются, и ссылка каждой секции ведёт в
 // примечания именно своей секции, а не соседней.
 func TestDownloadCollectionDisambiguatesFootnoteAnchorsAcrossSections(t *testing.T) {
-	b, err := footnoteCollisionSource().Collection(context.Background(), "", "collide")
+	b, err := footnoteCollisionSource().Collection(context.Background(), "", "collide", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -1018,7 +1018,7 @@ func TestDownloadCollectionDisambiguatesFootnoteAnchorsAcrossSections(t *testing
 // одинаковых определения "[^…]:" в одно, теряя второе примечание молча
 // (предупреждение "Duplicate note reference" в лог не попадает в файл).
 func TestDownloadCollectionMarkdownWriterHasNoDuplicateFootnoteDefinitions(t *testing.T) {
-	b, err := footnoteCollisionSource().Collection(context.Background(), "", "collide")
+	b, err := footnoteCollisionSource().Collection(context.Background(), "", "collide", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -1054,7 +1054,7 @@ func TestDownloadCollectionMarkdownWriterHasNoDuplicateFootnoteDefinitions(t *te
 // примечаний выжили под разными id, у каждой — своё (и только своё) тело, и
 // каждая ссылка type="note" в тексте ведёт именно на свою.
 func TestDownloadCollectionFB2WriterHasNoDuplicateFootnoteDefinitions(t *testing.T) {
-	b, err := footnoteCollisionSource().Collection(context.Background(), "", "collide")
+	b, err := footnoteCollisionSource().Collection(context.Background(), "", "collide", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -1180,7 +1180,7 @@ func TestChapterCacheKeyReflectsChapterUpdatedAt(t *testing.T) {
 }
 
 func TestCollectionCacheKeyReflectsItemUpdatedAt(t *testing.T) {
-	base, err := downloadCollectionFixture().Collection(context.Background(), "", "moi")
+	base, err := downloadCollectionFixture().Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -1188,7 +1188,7 @@ func TestCollectionCacheKeyReflectsItemUpdatedAt(t *testing.T) {
 	src := downloadCollectionFixture()
 	store := src.collections.(*fakeCollectionStoreForDownload)
 	store.rows[0].Item.UpdatedAt = cacheKeyRenamedAt // как после переупорядочивания пунктов
-	got, err := src.Collection(context.Background(), "", "moi")
+	got, err := src.Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -1205,7 +1205,7 @@ func TestCollectionCacheKeyReflectsItemUpdatedAt(t *testing.T) {
 // Правка самой подборки (не пункта) тоже обязана менять CacheKey — например
 // переименование подборки.
 func TestCollectionCacheKeyReflectsCollectionUpdatedAt(t *testing.T) {
-	base, err := downloadCollectionFixture().Collection(context.Background(), "", "moi")
+	base, err := downloadCollectionFixture().Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}
@@ -1213,7 +1213,7 @@ func TestCollectionCacheKeyReflectsCollectionUpdatedAt(t *testing.T) {
 	src := downloadCollectionFixture()
 	store := src.collections.(*fakeCollectionStoreForDownload)
 	store.collection.UpdatedAt = cacheKeyRenamedAt
-	got, err := src.Collection(context.Background(), "", "moi")
+	got, err := src.Collection(context.Background(), "", "moi", nil)
 	if err != nil {
 		t.Fatalf("Collection() error = %v", err)
 	}

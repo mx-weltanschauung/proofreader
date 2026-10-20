@@ -695,9 +695,13 @@ type CollectionEntry struct {
 	Author         string `json:"author"`
 	// Broken — источник удалён: строка показывается снимком заголовка, а
 	// чтение элемента отвечает 410.
-	Broken   bool                `json:"broken"`
-	Source   *CollectionSource   `json:"source,omitempty"`
-	Children []CollectionTocNode `json:"children,omitempty"`
+	Broken bool `json:"broken"`
+	// Unavailable — источник закрыт: строка без заглавия, автора и источника,
+	// чтение элемента отвечает 410. От Broken отличается тем, что снимка
+	// заглавия нет вовсе: он выдал бы название закрытой работы.
+	Unavailable bool                `json:"unavailable,omitempty"`
+	Source      *CollectionSource   `json:"source,omitempty"`
+	Children    []CollectionTocNode `json:"children,omitempty"`
 }
 
 // ResolvedAuthor — автор строки оглавления: переопределение, если задано,
