@@ -28,7 +28,7 @@ const workColumns = `id, title, author, publication_date, language, country,
 	file_path, status, edition_id, volume_number, volume_part, page_offset,
 	parent_work_id, role, numbering_style, precedes_volume, shelf_label, description,
 	owner_id, created_at, updated_at,
-	slug_edition, slug_volume, slug_part, edition_title`
+	slug_edition, slug_volume, slug_part, edition_title, closed, closed_by`
 
 // workSlugColumns — три ингредиента слага, добираемые к строке работы:
 // адресный слаг собрания (с откатом на editions.slug), номер и часть тома.
@@ -64,7 +64,8 @@ const workEditionTitleColumn = `
 // запросов («WHERE parent_work_id = $1», «ORDER BY created_at DESC») работают
 // без правок; простой подзапрос Postgres разворачивает, так что фильтр по id
 // по-прежнему уходит внутрь.
-const worksWithSlug = `(SELECT works.*, ` + workSlugColumns + `,` + workEditionTitleColumn + ` FROM works) works`
+const worksWithSlug = `(SELECT works.*, ` + workSlugColumns + `,` + workEditionTitleColumn + `,
+	work_closed_by(works.id) AS closed_by FROM works) works`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -82,7 +83,7 @@ func scanWork(row rowScanner) (*models.Work, error) {
 		&w.ParentWorkID, &w.Role, &w.NumberingStyle, &w.PrecedesVolume,
 		&w.ShelfLabel, &w.Description,
 		&w.OwnerID, &w.CreatedAt, &w.UpdatedAt,
-		&slugEdition, &slugVolume, &slugPart, &w.EditionTitle,
+		&slugEdition, &slugVolume, &slugPart, &w.EditionTitle, &w.Closed, &w.ClosedBy,
 	)
 	if err != nil {
 		return nil, err
@@ -119,14 +120,14 @@ func prepareWorkInsert(work *models.Work) ([]string, []any) {
 	}
 	cols := []string{"title", "author", "publication_date", "language", "country", "file_path",
 		"status", "edition_id", "volume_number", "volume_part", "page_offset", "parent_work_id",
-		"role", "numbering_style", "precedes_volume", "shelf_label", "description", "owner_id"}
+		"role", "numbering_style", "precedes_volume", "shelf_label", "description", "owner_id", "closed"}
 	args := []any{
 		work.Title, work.Author, work.PublicationDate, work.Language,
 		work.Country, work.FilePath, work.Status,
 		work.EditionID, work.VolumeNumber, work.VolumePart, work.PageOffset,
 		work.ParentWorkID, work.Role, work.NumberingStyle, work.PrecedesVolume,
 		work.ShelfLabel, work.Description,
-		work.OwnerID,
+		work.OwnerID, work.Closed,
 	}
 	return cols, args
 }

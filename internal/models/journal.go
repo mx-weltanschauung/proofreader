@@ -38,13 +38,16 @@ type ArticleCredit struct {
 
 // Journal — журнал («Под знаменем марксизма»).
 type Journal struct {
-	ID          int64     `json:"id"`
-	Slug        string    `json:"slug"`
-	Title       string    `json:"title"`
-	Subtitle    string    `json:"subtitle"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          int64  `json:"id"`
+	Slug        string `json:"slug"`
+	Title       string `json:"title"`
+	Subtitle    string `json:"subtitle"`
+	Description string `json:"description"`
+	// Closed — журнал закрыт: его номера видят только сотрудники. Общий
+	// Update колонку не пишет, меняет её ClosedRepository.SetJournalClosed.
+	Closed    bool      `json:"closed"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // JournalIssue — номер журнала; полосы и статьи — у работы WorkID.

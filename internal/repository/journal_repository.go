@@ -28,11 +28,11 @@ func NewJournalRepository(pool *pgxpool.Pool) *JournalRepository {
 	return &JournalRepository{pool: pool}
 }
 
-const journalColumns = `id, slug, title, subtitle, description, created_at, updated_at`
+const journalColumns = `id, slug, title, subtitle, description, closed, created_at, updated_at`
 
 func scanJournal(row pgx.Row) (*models.Journal, error) {
 	var j models.Journal
-	if err := row.Scan(&j.ID, &j.Slug, &j.Title, &j.Subtitle, &j.Description, &j.CreatedAt, &j.UpdatedAt); err != nil {
+	if err := row.Scan(&j.ID, &j.Slug, &j.Title, &j.Subtitle, &j.Description, &j.Closed, &j.CreatedAt, &j.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrJournalNotFound
 		}
@@ -47,8 +47,8 @@ func isUnique(err error, constraint string) bool {
 }
 
 func (r *JournalRepository) Create(ctx context.Context, j *models.Journal) error {
-	cols := []string{"slug", "title", "subtitle", "description"}
-	args := []any{j.Slug, j.Title, j.Subtitle, j.Description}
+	cols := []string{"slug", "title", "subtitle", "description", "closed"}
+	args := []any{j.Slug, j.Title, j.Subtitle, j.Description, j.Closed}
 	err := insertRow(ctx, r.pool, "journals", j.ID, cols, args, &j.ID, &j.CreatedAt, &j.UpdatedAt)
 	if isUnique(err, "journals_slug_key") {
 		return fmt.Errorf("%w: %s", ErrJournalSlugTaken, j.Slug)

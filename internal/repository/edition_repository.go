@@ -24,8 +24,8 @@ func NewEditionRepository(pool *pgxpool.Pool) *EditionRepository {
 
 // Create creates a new edition
 func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition) error {
-	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned"}
-	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned}
+	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "closed"}
+	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned, edition.Closed}
 	if err := insertRow(ctx, r.pool, "editions", edition.ID, cols, args,
 		&edition.ID, &edition.CreatedAt, &edition.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create edition: %w", err)
@@ -36,7 +36,7 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition)
 // GetByID retrieves an edition by ID
 func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, closed, created_at, updated_at
 		FROM editions
 		WHERE id = $1
 	`
@@ -44,7 +44,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 	var edition models.Edition
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-		&edition.VolumesPlanned, &edition.CreatedAt, &edition.UpdatedAt,
+		&edition.VolumesPlanned, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
 	)
 
 	if err != nil {
@@ -60,7 +60,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 // List retrieves all editions
 func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, closed, created_at, updated_at
 		FROM editions
 		ORDER BY title
 	`
@@ -76,7 +76,7 @@ func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error)
 		var edition models.Edition
 		err := rows.Scan(
 			&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-			&edition.VolumesPlanned, &edition.CreatedAt, &edition.UpdatedAt,
+			&edition.VolumesPlanned, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan edition: %w", err)
@@ -236,6 +236,7 @@ const workSummariesQueryTemplate = `
 	       w.page_offset, w.role, w.precedes_volume, w.shelf_label,
 	       w.owner_id, w.created_at, w.updated_at,
 	       %[3]s,
+	       w.closed, work_closed_by(w.id),
 	       COALESCE(ps.pages_total, 0),
 	       COALESCE(ps.by_status, '{}'::jsonb),
 	       COALESCE(cs.chapters_total, 0),
@@ -316,7 +317,7 @@ func (r *EditionRepository) scanSummaries(
 			&s.FilePath, &s.Status, &s.EditionID, &s.VolumeNumber, &s.VolumePart,
 			&s.PageOffset, &s.Role, &s.PrecedesVolume, &s.ShelfLabel,
 			&s.OwnerID, &s.CreatedAt, &s.UpdatedAt,
-			&slugEdition, &slugVolume, &slugPart,
+			&slugEdition, &slugVolume, &slugPart, &s.Closed, &s.ClosedBy,
 			&s.PagesTotal, &s.PagesByStatus, &s.ChaptersTotal, &s.TopChapters,
 		)
 		if err != nil {

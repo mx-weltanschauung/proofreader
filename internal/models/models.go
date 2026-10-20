@@ -111,11 +111,26 @@ type Work struct {
 	ShelfLabel string `json:"shelf_label" db:"shelf_label"`
 	// Description — свободный текст о томе, заданный руками: почему в скане не
 	// хватает полос, откуда взят источник. Пустая строка — описания нет.
-	Description string    `json:"description" db:"description"`
-	OwnerID     int64     `json:"owner_id" db:"owner_id"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	Description string `json:"description" db:"description"`
+	OwnerID     int64  `json:"owner_id" db:"owner_id"`
+	// Closed — собственный признак «закрыт»: работу видят только сотрудники.
+	// Меняет его один путь — ClosedRepository.SetWorkClosed; общий Update
+	// колонку не пишет.
+	Closed bool `json:"closed" db:"closed"`
+	// ClosedBy — откуда действующая закрытость (ClosedBy*), пусто — открыта.
+	// Считается на чтении (work_closed_by), в базе не хранится.
+	ClosedBy  string    `json:"closed_by" db:"-"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
+
+// Причины действующей закрытости работы (Work.ClosedBy, work_closed_by).
+const (
+	ClosedByWork    = "work"
+	ClosedByParent  = "parent"
+	ClosedByEdition = "edition"
+	ClosedByJournal = "journal"
+)
 
 // TopChapter is one of a volume's largest top-level chapters - the works the
 // volume is known for. In a collected-works edition the volume titles are
@@ -335,9 +350,12 @@ type Edition struct {
 	// Сколько томов в собрании по плану издания; пусто — план неизвестен.
 	// Полка на главной пишет по нему «45 из 55»: сколько томов ещё не снято
 	// со сканов, из самих данных о работах не выводится никак.
-	VolumesPlanned *int      `json:"volumes_planned,omitempty" db:"volumes_planned"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	VolumesPlanned *int `json:"volumes_planned,omitempty" db:"volumes_planned"`
+	// Closed — издание закрыто: его тома видят только сотрудники. Общий
+	// Update колонку не пишет, меняет её ClosedRepository.SetEditionClosed.
+	Closed    bool      `json:"closed" db:"closed"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Index concept kinds and link kinds.
