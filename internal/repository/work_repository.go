@@ -65,7 +65,7 @@ const workEditionTitleColumn = `
 // без правок; простой подзапрос Postgres разворачивает, так что фильтр по id
 // по-прежнему уходит внутрь.
 const worksWithSlug = `(SELECT works.*, ` + workSlugColumns + `,` + workEditionTitleColumn + `,
-	work_closed_by(works.id) AS closed_by FROM works) works`
+	` + closedByCase + ` AS closed_by FROM works` + closedByJoins + `) works`
 
 type rowScanner interface {
 	Scan(dest ...any) error

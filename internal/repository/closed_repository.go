@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,6 +25,39 @@ type ClosedRepository struct {
 func NewClosedRepository(pool *pgxpool.Pool) *ClosedRepository {
 	return &ClosedRepository{pool: pool}
 }
+
+// closedByJoins и closedByCase — work_closed_by соединениями, а не вызовом
+// функции на строку: в списках (полка, сводки издания, worksWithSlug) вызов
+// стоил ~35 мкс на работу — главная из ~35 мс становилась ~55. Правило то же
+// и в том же порядке причин (work > parent > edition > journal); совпадение
+// с функцией на всех путях сторожит TestClosedBySetMatchesFunction.
+//
+// Работа зовётся works — как в worksWithSlug; запросам с алиасом w префикс
+// переписывается подстановкой (closedByJoinsW), тем же приёмом, что у
+// workSummariesSlugColumns. Алиасы cb_* соединения заводят сами; номер
+// журнала у работы один (journal_issues_work_id_key), строки не множатся.
+const closedByJoins = `
+	LEFT JOIN works cb_p ON cb_p.id = works.parent_work_id
+	LEFT JOIN editions cb_pe ON cb_pe.id = cb_p.edition_id
+	LEFT JOIN editions cb_e ON cb_e.id = works.edition_id
+	LEFT JOIN journal_issues cb_ji ON cb_ji.work_id = works.id
+	LEFT JOIN journals cb_j ON cb_j.id = cb_ji.journal_id`
+
+// closedByCase — причина закрытости над соединениями closedByJoins. NULL у
+// отсутствующего родителя, издания или журнала в WHEN — не истина, поэтому
+// coalesce не нужен.
+const closedByCase = `CASE
+	    WHEN works.closed THEN 'work'
+	    WHEN cb_p.closed OR cb_pe.closed THEN 'parent'
+	    WHEN cb_e.closed THEN 'edition'
+	    WHEN cb_j.closed THEN 'journal'
+	    ELSE ''
+	END`
+
+var (
+	closedByJoinsW = strings.ReplaceAll(closedByJoins, "works.", "w.")
+	closedByCaseW  = strings.ReplaceAll(closedByCase, "works.", "w.")
+)
 
 // ClosedBy — причина действующей закрытости работы; пусто — открыта. Нет
 // такой работы — тоже пусто и без ошибки: закрытым то, чего нет, не бывает.

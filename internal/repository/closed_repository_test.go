@@ -532,3 +532,97 @@ func TestDeleteClosedEditionRefused(t *testing.T) {
 		t.Errorf("Delete несуществующего: %v, ждали «не найдено»", err)
 	}
 }
+
+// Причина закрытости соединениями (closedByJoins/closedByCase — полка,
+// сводки издания, worksWithSlug) обязана совпадать с work_closed_by на каждом
+// пути: функция — образец, списки считают то же без вызова на строку.
+func TestClosedBySetMatchesFunction(t *testing.T) {
+	ctx := context.Background()
+	f, closed := newClosedFixture(t)
+	pool := testPool(t)
+	works := NewWorkRepository(pool)
+	editions := NewEditionRepository(pool)
+
+	// Том открытого издания и его служебная: в сводки попадает и пустая причина.
+	inOpenEdition := newVolume(t, works, "в открытом издании")
+	if _, err := pool.Exec(ctx, `UPDATE works SET edition_id = $2 WHERE id = $1`, inOpenEdition.ID, f.openEdit.ID); err != nil {
+		t.Fatal(err)
+	}
+	childOfOpen := newChild(t, works, inOpenEdition, "служебная открытого")
+
+	all := []*models.Work{f.open, f.closedSelf, f.childOfClosed, f.inClosedEdition,
+		f.childInClosedEdition, f.inClosedJournal, f.closedSelfAndEdition, inOpenEdition, childOfOpen}
+	want := map[int64]string{}
+	for _, w := range all {
+		by, err := closed.ClosedBy(ctx, w.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[w.ID] = by
+	}
+
+	// Сами фрагменты — по всей таблице.
+	rows, err := pool.Query(ctx, `SELECT works.id, `+closedByCase+`, work_closed_by(works.id) FROM works`+closedByJoins)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for rows.Next() {
+		var id int64
+		var set, fn string
+		if err := rows.Scan(&id, &set, &fn); err != nil {
+			t.Fatal(err)
+		}
+		n++
+		if set != fn {
+			t.Errorf("работа %d: соединения %q, функция %q", id, set, fn)
+		}
+	}
+	if rows.Err() != nil || n < len(all) {
+		t.Fatalf("строк %d (ждали не меньше %d): %v", n, len(all), rows.Err())
+	}
+
+	// worksWithSlug — карточка работы и дети тома.
+	for _, w := range all {
+		got, err := works.GetByID(ctx, w.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ClosedBy != want[w.ID] {
+			t.Errorf("GetByID %d %q: ClosedBy %q, функция %q", w.ID, w.Title, got.ClosedBy, want[w.ID])
+		}
+	}
+	kids, err := works.ListChildren(ctx, f.inClosedEdition.ID)
+	if err != nil || len(kids) != 1 || kids[0].ClosedBy != models.ClosedByParent {
+		t.Errorf("ListChildren тома закрытого издания: %+v, %v", kids, err)
+	}
+
+	// Сводки полки и издания: в них только тома с изданием.
+	sums, err := editions.ListAllWorkSummaries(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, s := range sums {
+		if w, ok := want[s.ID]; ok {
+			seen++
+			if s.ClosedBy != w {
+				t.Errorf("сводка %d: ClosedBy %q, функция %q", s.ID, s.ClosedBy, w)
+			}
+		}
+	}
+	if seen != 3 {
+		t.Errorf("в сводках %d томов фикстуры, ждали 3 (два в закрытом издании, один в открытом)", seen)
+	}
+	for _, ed := range []int64{f.closedEdition.ID, f.openEdit.ID} {
+		one, err := editions.ListWorkSummaries(ctx, ed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range one {
+			if s.ClosedBy != want[s.ID] {
+				t.Errorf("сводка издания %d, том %d: ClosedBy %q, функция %q", ed, s.ID, s.ClosedBy, want[s.ID])
+			}
+		}
+	}
+}

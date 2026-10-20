@@ -250,7 +250,7 @@ const workSummariesQueryTemplate = `
 	       w.page_offset, w.role, w.precedes_volume, w.shelf_label,
 	       w.owner_id, w.created_at, w.updated_at,
 	       %[3]s,
-	       w.closed, work_closed_by(w.id),
+	       w.closed, %[4]s,
 	       COALESCE(ps.pages_total, 0),
 	       COALESCE(ps.by_status, '{}'::jsonb),
 	       COALESCE(cs.chapters_total, 0),
@@ -258,7 +258,7 @@ const workSummariesQueryTemplate = `
 	FROM works w
 	LEFT JOIN page_stats ps ON ps.work_id = w.id
 	LEFT JOIN chapter_stats cs ON cs.work_id = w.id
-	LEFT JOIN top_works tw ON tw.work_id = w.id
+	LEFT JOIN top_works tw ON tw.work_id = w.id%[5]s
 	WHERE %[1]s
 	-- (w.role <> 'edition_front_matter') — false у предваряющих работ, true у
 	-- томов; false < true, поэтому предисловия сортируются первыми без CASE.
@@ -284,11 +284,13 @@ var workSummariesSlugColumns = strings.ReplaceAll(workSlugColumns, "works.", "w.
 var (
 	listWorkSummariesQuery = fmt.Sprintf(
 		workSummariesQueryTemplate, "w.edition_id = $1", "", workSummariesSlugColumns,
+		closedByCaseW, closedByJoinsW,
 	)
 	// Общий вариант группируется по собранию первым ключом, чтобы читающий
 	// ответ мог резать его подряд, не собирая карту.
 	listAllWorkSummariesQuery = fmt.Sprintf(
 		workSummariesQueryTemplate, "w.edition_id IS NOT NULL", "w.edition_id,", workSummariesSlugColumns,
+		closedByCaseW, closedByJoinsW,
 	)
 )
 
