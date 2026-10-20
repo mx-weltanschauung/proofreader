@@ -201,13 +201,17 @@ func editionSlug(e *models.Edition) string {
 	return e.Slug
 }
 
+// volumeLabel — строка тома в списке собрания. Номер — показанный
+// (Work.ShownVolumeNumber): у собрания с условной нумерацией том назван
+// заглавием, как работа вне собрания.
 func volumeLabel(w *models.Work) string {
-	if w.VolumeNumber == nil {
+	number := w.ShownVolumeNumber()
+	if number == nil {
 		return OneLine(w.Title)
 	}
-	l := fmt.Sprintf("Том %d", *w.VolumeNumber)
-	if w.VolumePart != nil && *w.VolumePart != "" {
-		l += ", " + *w.VolumePart
+	l := fmt.Sprintf("Том %d", *number)
+	if part := w.ShownVolumePart(); part != nil && *part != "" {
+		l += ", " + *part
 	}
 	if s := OneLine(w.ShelfLabel); s != "" {
 		l += ". " + s

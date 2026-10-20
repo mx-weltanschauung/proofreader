@@ -446,6 +446,36 @@ describe('CiteButton', () => {
 
       expect(written['text/plain']).toMatch(/^> Текст пятой полосы\.\n\nКапитал \/\/ /);
     });
+
+    // Условная нумерация собрания: номер тома выдуман ради порядка полки, и
+    // «т. 19» отправил бы читателя искать несуществующую книгу. Печатная —
+    // номер на месте (та же фикстура, без признака).
+    it('условная нумерация: подпись без «т. N», печатная — с ним', async () => {
+      for (const [orderOnly, expectNumber] of [
+        [true, false],
+        [false, true],
+      ] as const) {
+        written = {};
+        const root = surface();
+        const { unmount } = renderButton(
+          { work: { ...work, volume_order_only: orderOnly } as unknown as Work },
+          { current: root },
+        );
+        selectWithin(root, 5);
+        await screen.findByRole('button', { name: 'Цитировать' });
+
+        fireEvent.click(screen.getByRole('button'));
+        await vi.waitFor(() => expect(Object.keys(written)).not.toHaveLength(0));
+
+        for (const face of ['text/plain', 'text/html']) {
+          expect(written[face].includes('т. 19'), `${face}, order=${orderOnly}`).toBe(expectNumber);
+        }
+        expect(written['text/plain']).toContain(
+          expectNumber ? 'Сочинения, 2-е изд., т. 19, с. 5.' : 'Сочинения, 2-е изд., с. 5.',
+        );
+        unmount();
+      }
+    });
   });
 
   it('журнальный номер: подпись статьи «Автор. Название // Журнал. Год. № N. С.»', async () => {

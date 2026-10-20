@@ -11,6 +11,7 @@ import {
   citationLinkHtml,
   citationLinkMarkdown,
   seamMarker,
+  signatureVolume,
 } from '../utils/citation';
 import { printedFolio } from '../utils/folio';
 import { issueOf } from '../utils/citationPlace';
@@ -159,8 +160,7 @@ export const CiteButton: React.FC<CiteButtonProps> = ({
       workTitle: workTitleFor(pages[0]),
       editionTitle: work.edition_title ?? '',
       volumeTitle: work.title,
-      volumeNumber: work.volume_number,
-      volumePart: work.volume_part,
+      ...signatureVolume(work),
       folios: ends.map((n) => printedFolio(n, work)),
       pageNumbers: ends,
       issue: issueOf(work),

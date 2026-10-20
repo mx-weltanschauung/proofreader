@@ -587,6 +587,10 @@ var itemRowsSlugColumns = strings.ReplaceAll(workSlugColumns, "works.", "w.")
 
 // ItemRows отдаёт состав вместе с источниками одним запросом.
 //
+// Номер и часть тома здесь — только для подписи источника («т. 21, с. 269»),
+// поэтому у собрания с условной нумерацией (volume_numbering = 'order') они
+// гаснут прямо в запросе: подпись тогда называет том заглавием.
+//
 // LEFT JOIN везде: у элемента с удалённой главой нет ни главы, ни, возможно,
 // работы, и он всё равно обязан попасть в оглавление — снимком заголовка.
 var itemRowsQuery = `
@@ -594,7 +598,9 @@ var itemRowsQuery = `
 	       ci.snapshot_title, ci.snapshot_author, ci.author_override, ci.order_number,
 	       ci.created_at, ci.updated_at,
 	       c.title, c.start_page, c.end_page,
-	       w.title, w.author, w.page_offset, w.volume_number, w.volume_part,
+	       w.title, w.author, w.page_offset,
+	       CASE WHEN e.volume_numbering = 'order' THEN NULL ELSE w.volume_number END,
+	       CASE WHEN e.volume_numbering = 'order' THEN NULL ELSE w.volume_part END,
 	       e.title,
 	       w.role, w.precedes_volume, ` + itemRowsSlugColumns + `
 	FROM collection_items ci

@@ -1,3 +1,5 @@
+import { shownVolumeNumber, shownVolumePart, type VolumeCoordinates } from './shownVolume';
+
 /**
  * Подпись цитаты и обе грани буфера обмена.
  *
@@ -38,6 +40,18 @@ export interface SignatureInput {
   pageNumbers: number[];
   /** Журнальные координаты: подпись идёт по-журнальному, без «т. N». */
   issue?: { journal: string; year: number; label: string };
+}
+
+/**
+ * Номер и часть тома для подписи — показываемые (`shownVolumeNumber`): у
+ * собрания с условной нумерацией номера в цитате нет, источник называется
+ * изданием и страницей. Обе кнопки, собирающие подпись из тома («Цитировать»
+ * и вклейка в разбор), берут их отсюда.
+ */
+export function signatureVolume(
+  work: VolumeCoordinates,
+): Pick<SignatureInput, 'volumeNumber' | 'volumePart'> {
+  return { volumeNumber: shownVolumeNumber(work), volumePart: shownVolumePart(work) };
 }
 
 /**

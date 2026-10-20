@@ -28,20 +28,41 @@ const workColumns = `id, title, author, publication_date, language, country,
 	file_path, status, edition_id, volume_number, volume_part, page_offset,
 	parent_work_id, role, numbering_style, precedes_volume, shelf_label, description,
 	owner_id, created_at, updated_at,
-	slug_edition, slug_volume, slug_part, edition_title`
+	slug_edition, slug_volume, slug_part, edition_title, volume_order_only`
+
+// workOrderOnlyExpr — истинно, если нумерация томов в собрании работы
+// условная (editions.volume_numbering = 'order', миграция 000039): номер тома
+// только ставит книгу на полку и читателю не печатается. Собрание у передних
+// листов — родителя, тем же правилом, что в workSlugColumns. Работа вне
+// собрания — ложь (EXISTS без строки).
+const workOrderOnlyExpr = `EXISTS (SELECT 1
+	          FROM editions e
+	          WHERE e.id = COALESCE(works.edition_id,
+	                (SELECT p.edition_id FROM works p WHERE p.id = works.parent_work_id))
+	            AND e.volume_numbering = 'order')`
 
 // workSlugColumns — три ингредиента слага, добираемые к строке работы:
 // адресный слаг собрания (с откатом на editions.slug), номер и часть тома.
 // У служебных передних листов берутся координаты родителя — своих у них нет.
+//
+// У собрания с условной нумерацией все три пусты: слаг вида «comintern-t24»
+// печатал бы в адресе выдуманный номер, поэтому такой том получает слаг из
+// заглавия (workSlugFrom откатывается на slug.Text). Пустой номер здесь же
+// гасит координату избранного (EditionHighlight берёт её из этих колонок).
+// Ключ адреса — ведущее число, так что старые ссылки со слагом-номером
+// продолжают открываться (301 на канон).
 const workSlugColumns = `
-	COALESCE((SELECT COALESCE(NULLIF(e.url_slug, ''), e.slug)
+	COALESCE((SELECT CASE WHEN e.volume_numbering = 'order' THEN ''
+	                      ELSE COALESCE(NULLIF(e.url_slug, ''), e.slug) END
 	          FROM editions e
 	          WHERE e.id = COALESCE(works.edition_id,
 	                (SELECT p.edition_id FROM works p WHERE p.id = works.parent_work_id))), '') AS slug_edition,
-	COALESCE(works.volume_number,
-	         (SELECT p.volume_number FROM works p WHERE p.id = works.parent_work_id)) AS slug_volume,
-	COALESCE(works.volume_part,
-	         (SELECT p.volume_part FROM works p WHERE p.id = works.parent_work_id)) AS slug_part`
+	CASE WHEN ` + workOrderOnlyExpr + ` THEN NULL
+	     ELSE COALESCE(works.volume_number,
+	         (SELECT p.volume_number FROM works p WHERE p.id = works.parent_work_id)) END AS slug_volume,
+	CASE WHEN ` + workOrderOnlyExpr + ` THEN NULL
+	     ELSE COALESCE(works.volume_part,
+	         (SELECT p.volume_part FROM works p WHERE p.id = works.parent_work_id)) END AS slug_part`
 
 // workEditionTitleColumn — название собрания работы, добираемое тем же
 // подзапросом, что и адресный слаг: у передних листов берётся издание
@@ -64,7 +85,8 @@ const workEditionTitleColumn = `
 // запросов («WHERE parent_work_id = $1», «ORDER BY created_at DESC») работают
 // без правок; простой подзапрос Postgres разворачивает, так что фильтр по id
 // по-прежнему уходит внутрь.
-const worksWithSlug = `(SELECT works.*, ` + workSlugColumns + `,` + workEditionTitleColumn + ` FROM works) works`
+const worksWithSlug = `(SELECT works.*, ` + workSlugColumns + `,` + workEditionTitleColumn + `,
+	` + workOrderOnlyExpr + ` AS volume_order_only FROM works) works`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -82,7 +104,7 @@ func scanWork(row rowScanner) (*models.Work, error) {
 		&w.ParentWorkID, &w.Role, &w.NumberingStyle, &w.PrecedesVolume,
 		&w.ShelfLabel, &w.Description,
 		&w.OwnerID, &w.CreatedAt, &w.UpdatedAt,
-		&slugEdition, &slugVolume, &slugPart, &w.EditionTitle,
+		&slugEdition, &slugVolume, &slugPart, &w.EditionTitle, &w.VolumeOrderOnly,
 	)
 	if err != nil {
 		return nil, err

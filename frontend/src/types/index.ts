@@ -185,6 +185,14 @@ export interface Work {
   edition_id?: number;
   /** Номер тома внутри собрания; NULL у справочного тома (например указателя). */
   volume_number?: number;
+  /**
+   * Номер тома условный: собрание ведёт нумерацию `order`
+   * (`Edition.volume_numbering`), и `volume_number` только ставит книгу по
+   * порядку на полке. Читателю такой номер не печатается нигде — подписи
+   * берут его через `shownVolumeNumber` (`utils/shownVolume.ts`). Редактору
+   * (`WorkEdit`) номер виден и правится как прежде.
+   */
+  volume_order_only?: boolean;
   /** Том, перед которым работа стоит на полке; только у edition_front_matter. */
   precedes_volume?: number;
   /** Полутом I/II/III — существует только у томов 25 и 26. */
@@ -212,9 +220,18 @@ export interface Edition {
    * со сканов, из самих данных о работах не выводится никак.
    */
   volumes_planned?: number;
+  /**
+   * Нумерация томов: `printed` — номер стоит на книге и печатается читателю;
+   * `order` — условная, номер только задаёт порядок полки. Старый сервер
+   * поля не присылает — это `printed`.
+   */
+  volume_numbering?: VolumeNumbering;
   created_at: string;
   updated_at: string;
 }
+
+/** Вид нумерации томов собрания (`editions.volume_numbering`). */
+export type VolumeNumbering = 'printed' | 'order';
 
 /** Узел поддерева глав в оглавлении подборки. */
 export interface CollectionTocNode {
@@ -234,6 +251,7 @@ export interface CollectionSource {
   work_slug?: string;
   work_title: string;
   edition_title?: string;
+  /** Номер тома для подписи; у собрания с условной нумерацией не приходит. */
   volume_number?: number;
   volume_part?: string;
   page_start: number;
@@ -316,6 +334,12 @@ export interface EditionHighlight {
   work_slug: string;
   volume_number: number | null;
   volume_part: string | null;
+  /**
+   * Номер тома условный (`Work.volume_order_only`). Сервер у такого пункта
+   * номер и так не присылает; поле ставит экран выбора, собирающий пункт
+   * из тома на клиенте.
+   */
+  volume_order_only?: boolean;
   label: string;
 }
 

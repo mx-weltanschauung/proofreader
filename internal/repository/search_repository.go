@@ -114,6 +114,16 @@ func (r *SearchRepository) Terms(ctx context.Context, q models.SearchQuery) ([]s
 // рукописной копией — см. workSummariesSlugColumns (edition_repository.go).
 var searchWorkSlugColumns = strings.ReplaceAll(workSlugColumns, "works.", "w.")
 
+// searchShownVolumeColumns — номер и часть тома для подписи («т. 24»). У
+// собрания с условной нумерацией (volume_numbering = 'order', миграция
+// 000039) обе пусты: номер только ставит книгу на полку, и в выдаче поиска
+// (и в MCP, который печатает ту же подпись) его быть не должно. Порядок
+// выдачи томов по-прежнему идёт по настоящему volume_number.
+const searchShownVolumeColumns = `CASE WHEN e.volume_numbering = 'order' THEN NULL
+	            ELSE coalesce(w.volume_number, p.volume_number) END,
+	       CASE WHEN e.volume_numbering = 'order' THEN NULL
+	            ELSE coalesce(w.volume_part, p.volume_part) END`
+
 // scopeConditionFor — область поиска одним выражением на все запросы выдачи.
 // $2 — собрания, $3 — тома; оба всегда bigint[], пустые означают «вся
 // читальня».
@@ -153,8 +163,7 @@ var searchChaptersQuery = `
 	WITH q AS (SELECT websearch_to_tsquery('ru', $1) AS tsq)
 	SELECT c.id, c.title, c.is_apparatus, w.id, w.title,
 	       coalesce(nullif(w.shelf_label, ''), p.shelf_label, ''),
-	       coalesce(w.volume_number, p.volume_number),
-	       coalesce(w.volume_part, p.volume_part),
+	       ` + searchShownVolumeColumns + `,
 	       coalesce(e.title, ''),
 	       w.role, w.precedes_volume, ` + searchWorkSlugColumns + `
 	FROM chapters c
@@ -221,8 +230,7 @@ var searchVolumesQuery = `
 	)
 	SELECT w.id, w.title, coalesce(w.author, ''),
 	       coalesce(nullif(w.shelf_label, ''), p.shelf_label, ''),
-	       coalesce(w.volume_number, p.volume_number),
-	       coalesce(w.volume_part, p.volume_part),
+	       ` + searchShownVolumeColumns + `,
 	       w.role, w.parent_work_id, w.numbering_style,
 	       coalesce(w.edition_id, p.edition_id), coalesce(e.title, ''),
 	       w.precedes_volume, ` + searchWorkSlugColumns + `,

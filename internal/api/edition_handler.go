@@ -39,6 +39,26 @@ type EditionRequest struct {
 	// подпись полки различает «45 из 55» и просто «45 томов». Ноль здесь
 	// значил бы «в собрании ноль томов».
 	VolumesPlanned *int `json:"volumes_planned"`
+	// VolumeNumbering — "printed" или "order" (models.VolumeNumbering*).
+	// Указатель: поле не пришло — при создании печатная нумерация, при правке
+	// прежнее значение. Иначе форма или скрипт, не знающие о поле, молча
+	// возвращали бы условной нумерации печатную — и выдуманный номер тома
+	// снова уезжал бы в цитату.
+	VolumeNumbering *string `json:"volume_numbering"`
+}
+
+// volumeNumberingOf — значение поля из тела запроса; пусто — не пришло.
+// Ошибка — значение вне перечня.
+func volumeNumberingOf(req EditionRequest) (string, error) {
+	if req.VolumeNumbering == nil {
+		return "", nil
+	}
+	v := *req.VolumeNumbering
+	if !models.ValidVolumeNumbering(v) {
+		return "", fmt.Errorf("volume_numbering must be %q or %q, got %q",
+			models.VolumeNumberingPrinted, models.VolumeNumberingOrder, v)
+	}
+	return v, nil
 }
 
 // List retrieves all editions
@@ -98,14 +118,23 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id must be positive", http.StatusBadRequest)
 		return
 	}
+	numbering, err := volumeNumberingOf(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if numbering == "" {
+		numbering = models.VolumeNumberingPrinted
+	}
 
 	edition := &models.Edition{
-		ID:             req.ID,
-		Title:          req.Title,
-		Slug:           req.Slug,
-		URLSlug:        req.URLSlug,
-		Description:    req.Description,
-		VolumesPlanned: req.VolumesPlanned,
+		ID:              req.ID,
+		Title:           req.Title,
+		Slug:            req.Slug,
+		URLSlug:         req.URLSlug,
+		Description:     req.Description,
+		VolumesPlanned:  req.VolumesPlanned,
+		VolumeNumbering: numbering,
 	}
 
 	ctx := context.Background()
@@ -142,6 +171,11 @@ func (h *EditionHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "title and slug are required", http.StatusBadRequest)
 		return
 	}
+	numbering, err := volumeNumberingOf(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	ctx := context.Background()
 	// Same "any error or nil means not found" rule as Get — kept in one place
@@ -158,6 +192,9 @@ func (h *EditionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	edition.URLSlug = req.URLSlug
 	edition.Description = req.Description
 	edition.VolumesPlanned = req.VolumesPlanned
+	if numbering != "" {
+		edition.VolumeNumbering = numbering
+	}
 
 	if err := h.editionStore.Update(ctx, edition); err != nil {
 		http.Error(w, "Failed to update edition", http.StatusInternalServerError)

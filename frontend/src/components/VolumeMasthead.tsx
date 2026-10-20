@@ -67,7 +67,7 @@ export const VolumeMasthead: React.FC<Props> = ({
       {!work.journal_issue && work.edition_id !== undefined && work.edition_id !== null && (
         <p className="vol-masthead-eyebrow">
           <Link to={editionPath({ id: work.edition_id, url_slug: edition?.url_slug })}>
-            {edition ? `${edition.title} · ${volumeCoordinates(work)}` : volumeCoordinates(work)}
+            {[edition?.title, volumeCoordinates(work)].filter(Boolean).join(' · ')}
           </Link>
         </p>
       )}

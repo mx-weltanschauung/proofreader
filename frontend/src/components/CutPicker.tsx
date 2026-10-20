@@ -8,7 +8,7 @@ import {
   documentsApi,
   type DocumentKey,
 } from '../services/api';
-import { citationSignature } from '../utils/citation';
+import { citationSignature, signatureVolume } from '../utils/citation';
 import { citationPlace, issueOf } from '../utils/citationPlace';
 import { printedFolio } from '../utils/folio';
 import { apiErrorMessage } from '../utils/apiError';
@@ -190,8 +190,7 @@ export const CutPicker: React.FC<CutPickerProps> = ({ documentKey, onInsert, onC
       workTitle: place.workTitle,
       editionTitle: work.edition_title ?? '',
       volumeTitle: work.title,
-      volumeNumber: work.volume_number,
-      volumePart: work.volume_part,
+      ...signatureVolume(work),
       folios: pageNumbers.map((n) => printedFolio(n, work)),
       pageNumbers,
       issue: issueOf(work),

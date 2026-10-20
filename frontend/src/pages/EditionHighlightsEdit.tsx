@@ -10,7 +10,7 @@ import { splitEditionVolumes } from '../utils/editionStats';
 import { highlightCoordinate, highlightLabel } from '../utils/highlightLabel';
 import { editionPath, numericId } from '../utils/paths';
 import { pickableChapters } from '../utils/pickableChapters';
-import { chapterLabel, spineNumber, volumeLabel } from '../utils/volumeLabel';
+import { chapterLabel, volumeLabel, volumeName } from '../utils/volumeLabel';
 import './EditionHighlightsEdit.css';
 
 /** Потолок списка — тот же, что проверяет сервер (maxHighlights). */
@@ -130,6 +130,7 @@ export const EditionHighlightsEdit: React.FC = () => {
         work_slug: volume.slug ?? '',
         volume_number: volume.volume_number ?? null,
         volume_part: volume.volume_part ?? null,
+        volume_order_only: volume.volume_order_only,
         label: '',
       },
     ]);
@@ -241,7 +242,7 @@ export const EditionHighlightsEdit: React.FC = () => {
             const label = volumeLabel(v);
             return (
               <option key={v.id} value={v.id}>
-                {`Том ${spineNumber(v)}${label ? `. ${label}` : ''}`}
+                {`${volumeName(v)}${label ? `. ${label}` : ''}`}
               </option>
             );
           })}
