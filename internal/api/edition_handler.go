@@ -191,6 +191,12 @@ func (h *EditionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 	if err := h.editionStore.Delete(ctx, id); err != nil {
+		// Тома закрытого издания открылись бы сносом молча (edition_id —
+		// ON DELETE SET NULL): отказ тем же голосом, что у шага вниз 000040.
+		if errors.Is(err, repository.ErrEditionClosed) {
+			writeError(w, http.StatusConflict, "Собрание закрыто: удаление открыло бы все его тома — сначала откройте его, потом удаляйте")
+			return
+		}
 		http.Error(w, "Failed to delete edition", http.StatusInternalServerError)
 		return
 	}

@@ -511,3 +511,24 @@ func TestPersonWithoutCreditsIsNotHidden(t *testing.T) {
 		t.Fatalf("человек без статей: %+v, %v", d, err)
 	}
 }
+
+// Снос закрытого издания открыл бы его тома (edition_id — ON DELETE SET
+// NULL): отказ, издание и привязка томов на месте. Открытое удаляется.
+func TestDeleteClosedEditionRefused(t *testing.T) {
+	ctx := context.Background()
+	f, closed := newClosedFixture(t)
+	editions := NewEditionRepository(testPool(t))
+
+	if err := editions.Delete(ctx, f.closedEdition.ID); !errors.Is(err, ErrEditionClosed) {
+		t.Fatalf("Delete закрытого: %v, ждали ErrEditionClosed", err)
+	}
+	if by, err := closed.ClosedBy(ctx, f.inClosedEdition.ID); err != nil || by != models.ClosedByEdition {
+		t.Errorf("том закрытого издания после отказа: %q, %v", by, err)
+	}
+	if err := editions.Delete(ctx, f.openEdit.ID); err != nil {
+		t.Errorf("Delete открытого: %v", err)
+	}
+	if err := editions.Delete(ctx, 999999); err == nil || errors.Is(err, ErrEditionClosed) {
+		t.Errorf("Delete несуществующего: %v, ждали «не найдено»", err)
+	}
+}

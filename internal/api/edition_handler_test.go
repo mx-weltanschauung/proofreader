@@ -49,6 +49,11 @@ func (f *fakeEditionStore) Create(ctx context.Context, e *models.Edition) error 
 }
 func (f *fakeEditionStore) Update(ctx context.Context, e *models.Edition) error { return nil }
 func (f *fakeEditionStore) Delete(ctx context.Context, id int64) error {
+	for _, e := range f.editions {
+		if e.ID == id && e.Closed {
+			return repository.ErrEditionClosed
+		}
+	}
 	f.deleted = true
 	f.deletedID = id
 	return nil
@@ -310,6 +315,26 @@ func TestEditionHandler_Delete(t *testing.T) {
 	}
 	if !store.deleted || store.deletedID != 7 {
 		t.Errorf("стор не вызван с id=7: deleted=%v deletedID=%d", store.deleted, store.deletedID)
+	}
+}
+
+// Снос закрытого собрания открыл бы его тома (edition_id — ON DELETE SET
+// NULL): 409 с объяснением, а не 500 и не тихий успех.
+func TestEditionHandler_DeleteClosedRefused(t *testing.T) {
+	store := &fakeEditionStore{editions: []*models.Edition{{ID: 7, Closed: true}}}
+	req := httptest.NewRequest(http.MethodDelete, "/api/editions/7", nil)
+	rec := httptest.NewRecorder()
+	NewEditionHandler(store).Delete(rec, mux.SetURLVars(req, map[string]string{"id": "7"}))
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("код %d, ожидался %d", rec.Code, http.StatusConflict)
+	}
+	var body struct{ Message string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || !strings.Contains(body.Message, "сначала откройте") {
+		t.Errorf("тело %q: ждали JSON с «сначала откройте»", rec.Body.String())
+	}
+	if store.deleted {
+		t.Error("закрытое собрание удалено")
 	}
 }
 

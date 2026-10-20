@@ -111,9 +111,18 @@ func (r *EditionRepository) Update(ctx context.Context, edition *models.Edition)
 	return nil
 }
 
-// Delete deletes an edition
+// ErrEditionClosed — удаление закрытого издания отвергнуто: works.edition_id
+// стоит ON DELETE SET NULL, и снос строки молча открыл бы все его тома.
+var ErrEditionClosed = errors.New("edition is closed")
+
+// Delete deletes an edition.
+//
+// Закрытое не удаляется: условие NOT closed стоит в самом DELETE, а не
+// проверкой до него, — закрытие, пришедшее между проверкой и удалением,
+// иначе открыло бы тома всё равно. Ноль удалённых строк различается
+// дочитыванием: издание есть и закрыто — ErrEditionClosed, нет — «не найдено».
 func (r *EditionRepository) Delete(ctx context.Context, id int64) error {
-	query := `DELETE FROM editions WHERE id = $1`
+	query := `DELETE FROM editions WHERE id = $1 AND NOT closed`
 
 	result, err := r.pool.Exec(ctx, query, id)
 	if err != nil {
@@ -121,6 +130,11 @@ func (r *EditionRepository) Delete(ctx context.Context, id int64) error {
 	}
 
 	if result.RowsAffected() == 0 {
+		var closed bool
+		err := r.pool.QueryRow(ctx, `SELECT closed FROM editions WHERE id = $1`, id).Scan(&closed)
+		if err == nil && closed {
+			return ErrEditionClosed
+		}
 		return fmt.Errorf("edition not found")
 	}
 
