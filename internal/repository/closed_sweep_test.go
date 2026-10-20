@@ -64,6 +64,10 @@ type closedSweep struct {
 	openRecording                   int64
 	suggestion                      int64
 	category                        int64
+	// События: организация с закрытым событием и смешанным, вторая
+	// организация — только закрытое.
+	orgA, orgB                          string
+	eventClosed, eventMixed, eventOther string
 }
 
 func (f *closedSweep) closedWorks() []int64 { return []int64{f.self, f.front, f.edVol, f.issue} }
@@ -267,6 +271,60 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 		VALUES ($1::bigint, $2, 1, 'Чтец', 'works/' || $1::bigint || '/rec/1.ogg', 'audio/ogg', 10, 1000) RETURNING id`,
 		f.open, f.chapters[f.open])
 
+	// События. Повестку пишет настоящий ReplaceAgenda. Событие 1 — целиком из
+	// закрытого тома (подпись строки и заглавие пункта несут маркер); событие
+	// 2 — открытый пункт и строка с маркером, ведущая в закрытый том;
+	// вторая организация держит только событие 1-го вида, тоже закрытое.
+	// Маркер — тот же closedMarker, что у остальной фикстуры.
+	f.orgA, f.orgB = "org-a", "org-b"
+	f.eventClosed, f.eventMixed, f.eventOther = "event-closed", "event-mixed", "event-other"
+	events := repository.NewEventRepository(pool)
+	mustEvent := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	orgA := &models.EventOrganization{Slug: f.orgA, Title: "Первая организация", Position: 1}
+	orgB := &models.EventOrganization{Slug: f.orgB, Title: "Вторая организация " + closedMarker, Position: 2}
+	mustEvent(events.CreateOrganization(ctx, orgA))
+	mustEvent(events.CreateOrganization(ctx, orgB))
+	kindA := &models.EventKind{OrganizationID: orgA.ID, Title: "Первый вид", Position: 1}
+	kindB := &models.EventKind{OrganizationID: orgB.ID, Title: "Вид второй организации", Position: 1}
+	mustEvent(events.CreateKind(ctx, kindA))
+	mustEvent(events.CreateKind(ctx, kindB))
+	event1 := &models.Event{KindID: kindA.ID, Slug: f.eventClosed, Title: "Событие " + closedMarker, Dates: "1 января", Position: 1}
+	event2 := &models.Event{KindID: kindA.ID, Slug: f.eventMixed, Title: "Смешанное событие", Dates: "2 января", Position: 2}
+	event3 := &models.Event{KindID: kindB.ID, Slug: f.eventOther, Title: "Событие второй организации", Dates: "3 января", Position: 1}
+	for _, e := range []*models.Event{event1, event2, event3} {
+		mustEvent(events.CreateEvent(ctx, e))
+	}
+	chapterTarget := func(w int64, label string) models.AgendaTargetInput {
+		return models.AgendaTargetInput{Kind: models.EventTargetChapter, WorkID: w, ChapterID: ptr(f.chapters[w]), Label: label}
+	}
+	mustEvent(events.ReplaceAgenda(ctx, event1.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Пункт " + closedMarker,
+		Entries: []models.AgendaEntryInput{{
+			Label:   "Строка " + closedMarker,
+			Targets: []models.AgendaTargetInput{chapterTarget(f.self, "Цель "+closedMarker)},
+		}},
+	}}}))
+	mustEvent(events.ReplaceAgenda(ctx, event2.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Открытый пункт",
+		Entries: []models.AgendaEntryInput{
+			{Label: "Открытая строка", Targets: []models.AgendaTargetInput{chapterTarget(f.open, "")}},
+			{Label: "Строка " + closedMarker, Targets: []models.AgendaTargetInput{
+				{Kind: models.EventTargetWork, WorkID: f.edVol, Label: "Том " + closedMarker}}},
+		},
+	}}}))
+	mustEvent(events.ReplaceAgenda(ctx, event3.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Пункт второй организации",
+		Entries: []models.AgendaEntryInput{{
+			Label:   "Строка " + closedMarker,
+			Targets: []models.AgendaTargetInput{chapterTarget(f.issue, "")},
+		}},
+	}}}))
+
 	// Правка читателя на полосе, которую потом закрыли.
 	f.suggestion = one(`INSERT INTO page_suggestions (page_id, base_markdown, proposed_markdown, user_id)
 		SELECT id, content_markdown, content_markdown || ' правка', $2 FROM pages WHERE id = $1 RETURNING id`,
@@ -341,32 +399,30 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		pages = append(pages, itoa(f.pages[w]))
 	}
 	return map[string][]string{
-		"works/{id}":             works,
-		"works/{workId}":         works,
-		"chapters/{id}":          chapters,
-		"pages/{pageId}":         pages,
-		"by-number/{pageNumber}": {"1"},
-		"versions/{versionId}":   {"1"},
-		"editions/{id}":          ids(f.openEd, f.closedEd),
-		"journals/{slug}":        {f.journalSlug, f.openJournal},
-		"persons/{slug}":         {f.person, f.openPerson},
-		"categories/{id}":        ids(f.category),
-		"concepts/{slug}":        {f.closedConcept, f.openConcept},
-		"references/{refId}":     ids(f.refs...),
-		"audio/{id}":             ids(f.track, f.openTrack),
-		"rec/{id}":               ids(f.recording, f.openRecording),
-		"suggestions/{id}":       ids(f.suggestion),
-		"documents/{slug}":       {"razbor"},
-		"documents/{nickname}":   {f.readerNick},
-		"cuts/{cutId}":           ids(f.cuts...),
-		"collections/{slug}":     {"podborka"},
-		"collections/{nickname}": {f.readerNick},
-		"items/{itemId}":         ids(append(append([]int64{}, f.staffItems...), f.readerItems...)...),
-		"readers/{nickname}":     {f.readerNick},
-		// Заглушки: настоящую фикстуру организации и события заведёт сторож
-		// закрытого (задача 4 плана событий).
-		"organizations/{slug}":      {"org-a"},
-		"organizations/{eventSlug}": {"event-a"},
+		"works/{id}":                works,
+		"works/{workId}":            works,
+		"chapters/{id}":             chapters,
+		"pages/{pageId}":            pages,
+		"by-number/{pageNumber}":    {"1"},
+		"versions/{versionId}":      {"1"},
+		"editions/{id}":             ids(f.openEd, f.closedEd),
+		"journals/{slug}":           {f.journalSlug, f.openJournal},
+		"persons/{slug}":            {f.person, f.openPerson},
+		"categories/{id}":           ids(f.category),
+		"concepts/{slug}":           {f.closedConcept, f.openConcept},
+		"references/{refId}":        ids(f.refs...),
+		"audio/{id}":                ids(f.track, f.openTrack),
+		"rec/{id}":                  ids(f.recording, f.openRecording),
+		"suggestions/{id}":          ids(f.suggestion),
+		"documents/{slug}":          {"razbor"},
+		"documents/{nickname}":      {f.readerNick},
+		"cuts/{cutId}":              ids(f.cuts...),
+		"collections/{slug}":        {"podborka"},
+		"collections/{nickname}":    {f.readerNick},
+		"items/{itemId}":            ids(append(append([]int64{}, f.staffItems...), f.readerItems...)...),
+		"readers/{nickname}":        {f.readerNick},
+		"organizations/{slug}":      {f.orgA, f.orgB},
+		"organizations/{eventSlug}": {f.eventClosed, f.eventMixed, f.eventOther},
 	}
 }
 
@@ -405,37 +461,32 @@ func closedSweepSilent() map[string]string {
 	const admin = "только администратор: анониму 401, читателю 403"
 	const staff = "только сотрудник: анониму 401, читателю 403"
 	return map[string]string{
-		// Временно: в фикстуре сторожа ещё нет организации и события (задача 4
-		// плана событий), поэтому обе ручки отвечают 404 всем. Строки удалить
-		// вместе с заведением фикстуры.
-		"/api/organizations/{slug}":                               "в фикстуре пока нет организации (задача 4)",
-		"/api/organizations/{slug}/{eventSlug}":                   "в фикстуре пока нет события (задача 4)",
-		"/api/admin/stats/crawlers":                               admin,
-		"/api/admin/stats/devices":                                admin,
-		"/api/admin/stats/health":                                 admin,
-		"/api/admin/stats/referrers":                              admin,
-		"/api/admin/stats/searches":                               admin,
-		"/api/admin/stats/top":                                    admin,
-		"/api/admin/stats/traffic":                                admin,
-		"/api/cache/stats":                                        admin,
-		"/api/export":                                             admin,
-		"/api/feedback":                                           admin,
-		"/api/feedback/unread-count":                              admin,
-		"/api/readers":                                            admin,
-		"/api/readers/{nickname}/collections":                     admin,
-		"/api/users":                                              admin,
-		"/api/audio/queue":                                        staff,
-		"/api/documents/review":                                   staff,
-		"/api/suggestions":                                        staff,
-		"/api/suggestions/{id}":                                   staff,
-		"/api/works/{id}/apparatus":                               staff,
-		"/api/works/{workId}/pages/{pageId}/versions":             staff,
+		"/api/admin/stats/crawlers":                   admin,
+		"/api/admin/stats/devices":                    admin,
+		"/api/admin/stats/health":                     admin,
+		"/api/admin/stats/referrers":                  admin,
+		"/api/admin/stats/searches":                   admin,
+		"/api/admin/stats/top":                        admin,
+		"/api/admin/stats/traffic":                    admin,
+		"/api/cache/stats":                            admin,
+		"/api/export":                                 admin,
+		"/api/feedback":                               admin,
+		"/api/feedback/unread-count":                  admin,
+		"/api/readers":                                admin,
+		"/api/readers/{nickname}/collections":         admin,
+		"/api/users":                                  admin,
+		"/api/audio/queue":                            staff,
+		"/api/documents/review":                       staff,
+		"/api/suggestions":                            staff,
+		"/api/suggestions/{id}":                       staff,
+		"/api/works/{id}/apparatus":                   staff,
+		"/api/works/{workId}/pages/{pageId}/versions": staff,
 		"/api/works/{workId}/pages/{pageId}/versions/{versionId}": staff,
-		"/api/static-archive":                                     "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
-		"/api/static-archive/download":                            "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
-		"/mcp":                                                    "GET отвечает 405 по устройству; MCP проверяет sweepMCP",
-		"/og/":                                                    "голый префикс — 404; карточки обходит sweepTokenless",
-		"/sitemap-":                                               "голый префикс — 404; куски карты обходит sweepTokenless от /sitemap.xml",
+		"/api/static-archive":          "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
+		"/api/static-archive/download": "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
+		"/mcp":                         "GET отвечает 405 по устройству; MCP проверяет sweepMCP",
+		"/og/":                         "голый префикс — 404; карточки обходит sweepTokenless",
+		"/sitemap-":                    "голый префикс — 404; куски карты обходит sweepTokenless от /sitemap.xml",
 	}
 }
 
@@ -460,6 +511,10 @@ func closedDirectValues(f *closedSweep) map[string]map[string]bool {
 		"concepts/{slug}": set(f.closedConcept),
 		"audio/{id}":      set(itoa(f.track)),
 		"rec/{id}":        set(itoa(f.recording)),
+		// Вторая организация и событие 1 видны только закрытым: 404 всем,
+		// кроме сотрудника.
+		"organizations/{slug}":      set(f.orgB),
+		"organizations/{eventSlug}": set(f.eventClosed),
 	}
 }
 
@@ -615,6 +670,8 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 		"/api/shelf", "/api/collections/podborka", "/api/collections/" + f.readerNick + "/podborka",
 		"/api/documents/razbor/view", "/api/documents/" + f.readerNick + "/razbor/view",
 		"/api/concepts/" + f.openConcept, "/api/categories/" + itoa(f.category),
+		"/api/organizations/" + f.orgA, "/api/organizations/" + f.orgA + "/" + f.eventMixed,
+		"/api/works/" + itoa(f.open) + "/chapters/" + openCh + "/events",
 	} {
 		if res := sweepDo(t, router, path, ""); res.code != http.StatusOK {
 			t.Errorf("аноним: открытое %s отвечает %d — проверка ничего не значит", path, res.code)
@@ -643,11 +700,32 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 		"/api/editions/"+itoa(f.closedEd),
 		"/api/persons/"+f.person,
 		"/api/concepts/"+f.closedConcept,
+		"/api/organizations/"+f.orgB,
+		"/api/organizations/"+f.orgA+"/"+f.eventClosed,
+		"/api/organizations/"+f.orgB+"/"+f.eventOther,
 	)
 	for _, path := range staffSees {
 		res := sweepDo(t, router, path, f.editorTok)
 		if res.code != http.StatusOK || leakIn(f, res.text) == "" {
 			t.Errorf("сотрудник: %s (%d) не видит закрытого — фикстура ничего не доказывает", path, res.code)
+		}
+	}
+	// События: закрытое событие и организация, у которой видимого нет, аноним
+	// и читатель получают 404; смешанное событие показывает открытую строку и
+	// не показывает строку с маркером.
+	for _, tok := range []string{"", f.readerTok} {
+		for _, path := range []string{
+			"/api/organizations/" + f.orgA + "/" + f.eventClosed,
+			"/api/organizations/" + f.orgB,
+			"/api/organizations/" + f.orgB + "/" + f.eventOther,
+		} {
+			if res := sweepDo(t, router, path, tok); res.code != http.StatusNotFound {
+				t.Errorf("события: %s отвечает %d, ждали 404", path, res.code)
+			}
+		}
+		res := sweepDo(t, router, "/api/organizations/"+f.orgA+"/"+f.eventMixed, tok)
+		if res.code != http.StatusOK || !strings.Contains(res.text, "Открытая строка") || leakIn(f, res.text) != "" {
+			t.Errorf("события: смешанное событие (%d) должно отдать открытую строку без маркера", res.code)
 		}
 	}
 	// Звук закрытого сотруднику — редирект на подписанную ссылку своего ключа.
