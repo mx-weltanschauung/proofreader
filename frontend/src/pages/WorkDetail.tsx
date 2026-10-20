@@ -158,6 +158,20 @@ export const WorkDetail: React.FC = () => {
     }
   };
 
+  // Закрытие/открытие тома: ответ несёт лишь затронутые id, поэтому карточку
+  // перечитываем — от этого зависят и пометка, и `closed_by` у служебных работ.
+  const handleToggleClosed = async (next: boolean) => {
+    if (!work) return;
+    try {
+      await worksApi.setClosed(work.id, next);
+      const { data } = await worksApi.get(work.id);
+      setWork(data);
+      toast.success(next ? 'Том закрыт' : 'Том открыт');
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, 'Не удалось изменить доступ к тому'));
+    }
+  };
+
   const handleUpload = async (file: File) => {
     if (!work) return;
 
@@ -338,6 +352,7 @@ export const WorkDetail: React.FC = () => {
           onUpload={handleUpload}
           onCreatePages={handleCreatePages}
           onDeleteWork={handleDeleteWork}
+          onToggleClosed={handleToggleClosed}
           onDeleteChapter={handleDeleteChapter}
           onMoveChapter={handleMoveChapter}
           reordering={reordering}

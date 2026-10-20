@@ -161,10 +161,16 @@ export const CollectionView: React.FC = () => {
       ) : (
         <ol className="collection-toc">
           {items.map((entry) => (
-            <li key={entry.id} className={`collection-entry ${entry.broken ? 'is-broken' : ''}`}>
+            <li
+              key={entry.id}
+              className={`collection-entry ${entry.broken || entry.unavailable ? 'is-broken' : ''}`}
+            >
               <div className="collection-entry-head">
                 {entry.author && <span className="collection-entry-author">{entry.author}. </span>}
-                {entry.broken ? (
+                {entry.unavailable ? (
+                  // Источник закрыт: сервер не отдал ни заглавия, ни адреса.
+                  <span className="collection-entry-title" />
+                ) : entry.broken ? (
                   // Битую строку некуда вести: источник удалён, читать нечего.
                   <span className="collection-entry-title">{entry.title}</span>
                 ) : (
@@ -175,8 +181,14 @@ export const CollectionView: React.FC = () => {
                     {entry.title}
                   </Link>
                 )}
-                <span className="collection-entry-source">{sourceLabel(entry)}</span>
+                {!entry.unavailable && (
+                  <span className="collection-entry-source">{sourceLabel(entry)}</span>
+                )}
               </div>
+
+              {entry.unavailable && (
+                <div className="collection-entry-note">Источник недоступен</div>
+              )}
 
               {entry.broken && (
                 <div className="collection-entry-note">Источник удалён из читальни</div>

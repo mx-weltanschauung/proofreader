@@ -263,4 +263,29 @@ describe('CollectionView: Поделиться', () => {
     await screen.findByRole('heading', { level: 1, name: 'Материализм' });
     expect(screen.queryByRole('button', { name: 'Поделиться' })).toBeNull();
   });
+
+  it('недоступную строку показывает без ссылки и с примечанием', async () => {
+    vi.mocked(collectionsApi.get).mockReturnValue(
+      ok({
+        ...COLLECTION,
+        items: [
+          {
+            id: 7,
+            kind: 'chapter',
+            order_number: 1,
+            title: '',
+            work_author: '',
+            author_override: '',
+            author: '',
+            broken: false,
+            unavailable: true,
+          },
+        ],
+      }),
+    );
+    const { container } = renderView();
+
+    expect(await screen.findByText('Источник недоступен')).toBeInTheDocument();
+    expect(container.querySelector('a[href="/collections/materializm/read/7"]')).toBeNull();
+  });
 });

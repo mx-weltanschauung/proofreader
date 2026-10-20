@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { journalsApi } from '../services/api';
 import type { JournalDetail as Detail } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { apiErrorMessage } from '../utils/apiError';
 import { workPath } from '../utils/paths';
+import { useAuth, canEdit } from '../hooks/useAuth';
+import { ClosedBadge } from '../components/ClosedBadge';
+import { ClosedToggle } from '../components/ClosedToggle';
 import './JournalDetail.css';
 
 export function JournalDetail() {
@@ -12,6 +16,7 @@ export function JournalDetail() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const { user } = useAuth();
   useDocumentTitle(detail?.journal.title);
 
   useEffect(() => {
@@ -52,7 +57,23 @@ export function JournalDetail() {
         ← В читальню
       </Link>
       <header className="journal-header">
-        <h1 className="journal-title">{journal.title}</h1>
+        <h1 className="journal-title">
+          {journal.title}
+          {journal.closed && <ClosedBadge />}
+        </h1>
+        {canEdit(user) && (
+          <ClosedToggle
+            closed={!!journal.closed}
+            onToggle={async (next) => {
+              try {
+                await journalsApi.setClosed(journal.id, next);
+                setDetail({ ...detail, journal: { ...journal, closed: next } });
+              } catch (err: unknown) {
+                toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к журналу'));
+              }
+            }}
+          />
+        )}
         {journal.subtitle && <p className="journal-subtitle">{journal.subtitle}</p>}
         {journal.description && <p className="journal-description">{journal.description}</p>}
       </header>

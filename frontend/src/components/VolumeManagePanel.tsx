@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { Chapter, Work } from '../types';
 import { ChapterTree } from './ChapterTree';
+import { ClosedToggle } from './ClosedToggle';
 import { workPath } from '../utils/paths';
 import './VolumeManagePanel.css';
 
@@ -16,6 +17,7 @@ interface Props {
   onDeleteWork: () => void;
   onDeleteChapter: (chapterId: number) => void;
   onMoveChapter: (chapterId: number, parentId: number | null, orderNumber: number) => Promise<void>;
+  onToggleClosed: (next: boolean) => Promise<void>;
   reordering: boolean;
   onReorderingChange: (on: boolean) => void;
 }
@@ -30,6 +32,7 @@ export const VolumeManagePanel: React.FC<Props> = ({
   onDeleteWork,
   onDeleteChapter,
   onMoveChapter,
+  onToggleClosed,
   reordering,
   onReorderingChange,
 }) => {
@@ -119,6 +122,11 @@ export const VolumeManagePanel: React.FC<Props> = ({
           <Link to={`${workPath(work)}/edit`} className="vol-manage-link">
             Изменить сведения
           </Link>
+          <ClosedToggle
+            closed={!!work.closed_by}
+            closedBy={work.closed_by}
+            onToggle={onToggleClosed}
+          />
           <button
             type="button"
             className="vol-manage-danger"

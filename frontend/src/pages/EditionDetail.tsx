@@ -13,6 +13,8 @@ import { EditionHighlights } from '../components/EditionHighlights';
 import { EditionSummary } from '../components/EditionSummary';
 import { EditionPrefaces } from '../components/EditionPrefaces';
 import { SearchTrigger } from '../components/SearchTrigger';
+import { ClosedBadge } from '../components/ClosedBadge';
+import { ClosedToggle } from '../components/ClosedToggle';
 import { ShareButton } from '../components/ShareButton';
 import { VolumeShelf } from '../components/VolumeShelf';
 import { VolumeTable } from '../components/VolumeTable';
@@ -152,6 +154,21 @@ export const EditionDetail: React.FC = () => {
           собрание, и пять «Поделиться» подряд там ни к чему. */}
       <div className="edition-share">
         <ShareButton title={edition.title} path={editionPath(edition)} />
+        {edition.closed && <ClosedBadge />}
+        {editable && (
+          <ClosedToggle
+            closed={!!edition.closed}
+            onToggle={async (next) => {
+              try {
+                await editionsApi.setClosed(edition.id, next);
+                setEdition({ ...edition, closed: next });
+                toast.success(next ? 'Собрание закрыто' : 'Собрание открыто');
+              } catch (err: unknown) {
+                toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к собранию'));
+              }
+            }}
+          />
+        )}
       </div>
 
       {/* Избранные работы собрания — прямо на главу, минуя том: новичку это
