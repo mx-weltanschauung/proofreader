@@ -1,6 +1,6 @@
 import React from 'react';
 import type { VolumeSummary } from '../types';
-import { chapterLabel, spineNumber, plural, worksPlural } from '../utils/volumeLabel';
+import { chapterLabel, volumeName, plural, worksPlural } from '../utils/volumeLabel';
 import { cardPosition } from '../utils/volumeCardPosition';
 import './VolumeCard.css';
 
@@ -24,7 +24,7 @@ export const VolumeCard: React.FC<Props> = ({ volume, anchor, id }) => {
 
   return (
     <div className="volume-card" id={id} role="tooltip" style={{ left, top }}>
-      <div className="volume-card-number">Том {spineNumber(volume)}</div>
+      <div className="volume-card-number">{volumeName(volume)}</div>
       {label && <div className="volume-card-label">{label}</div>}
 
       {works.length > 0 && (

@@ -173,3 +173,16 @@
     width: 100%;
   }
 }
+
+/* Флажок нумерации: общие правила .form-group растягивают input на всю
+   ширину и ставят подпись блоком над полем — флажку нужна строка. */
+.form-group .edition-form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-group .edition-form-checkbox input {
+  width: auto;
+  margin: 0;
+}

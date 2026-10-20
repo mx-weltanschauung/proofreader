@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"proofreader/internal/models"
 	"proofreader/internal/staticsite/sitecheck"
 )
 
@@ -173,5 +174,19 @@ func TestFixtureBuildPassesSiteCheck(t *testing.T) {
 	}
 	for _, p := range problems {
 		t.Error(p)
+	}
+}
+
+// Строка тома в списке собрания: у условной нумерации собрания (миграция
+// 000039) номера нет — том назван заглавием, у печатной «Том N» как было.
+func TestVolumeLabelHidesOrderOnlyNumber(t *testing.T) {
+	n := 24
+	printed := &models.Work{Title: "XII пленум ИККИ", VolumeNumber: &n}
+	if got := volumeLabel(printed); got != "Том 24" {
+		t.Fatalf("печатная нумерация: %q, ожидалось «Том 24»", got)
+	}
+	order := &models.Work{Title: "XII пленум ИККИ", VolumeNumber: &n, VolumeOrderOnly: true}
+	if got := volumeLabel(order); got != "XII пленум ИККИ" {
+		t.Fatalf("условная нумерация: %q, ожидалось заглавие тома", got)
 	}
 }

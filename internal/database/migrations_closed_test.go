@@ -109,7 +109,7 @@ func TestClosedMigrationDownRefuses(t *testing.T) {
 		if _, err := pool.Exec(ctx, c.close, id); err != nil {
 			t.Fatal(err)
 		}
-		err := m.Migrate(closedMigrationVersion - 2)
+		err := m.Migrate(closedMigrationVersion - 1)
 		if err == nil {
 			t.Fatalf("%s закрыт(о), а шаг вниз прошёл — ждали отказ", c.name)
 		}
@@ -132,7 +132,7 @@ func TestClosedMigrationDownRefuses(t *testing.T) {
 	}
 
 	// Закрытого нет — шаг вниз проходит, столбцы уходят, up возвращает их.
-	if err := m.Migrate(closedMigrationVersion - 2); err != nil {
+	if err := m.Migrate(closedMigrationVersion - 1); err != nil {
 		t.Fatalf("down без закрытого: %v", err)
 	}
 	if got := columns(); got != 0 {

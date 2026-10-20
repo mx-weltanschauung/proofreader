@@ -522,13 +522,17 @@ func (s *DownloadSource) editionTitle(ctx context.Context, work *models.Work) st
 	return edition.Title
 }
 
+// volumeLabel — «Том 23», «Том 26, III» на титуле выгрузки, в OPDS и в
+// isPartOf краулера. Номер — показанный (Work.ShownVolumeNumber): у собрания
+// с условной нумерацией подписи нет вовсе, том назван заглавием.
 func volumeLabel(work *models.Work) string {
-	if work.VolumeNumber == nil {
+	number := work.ShownVolumeNumber()
+	if number == nil {
 		return ""
 	}
-	label := fmt.Sprintf("Том %d", *work.VolumeNumber)
-	if work.VolumePart != nil && *work.VolumePart != "" {
-		label += ", " + *work.VolumePart
+	label := fmt.Sprintf("Том %d", *number)
+	if part := work.ShownVolumePart(); part != nil && *part != "" {
+		label += ", " + *part
 	}
 	return label
 }

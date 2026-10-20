@@ -183,6 +183,16 @@ func (h *IndexHandler) Import(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Edition not found", http.StatusNotFound)
 		return
 	}
+	// Адрес указателя — печатный «т. N, с. M», и страница понятия печатает его
+	// читателю как есть. У собрания с условной нумерацией (миграция 000039)
+	// печатных номеров томов нет: номер ставит книги на полку и только.
+	// Адресовать по нему нечего, а принятый указатель вернул бы читателю
+	// выдуманное «т. 24» мимо всех подписей, которые его гасят.
+	if edition.VolumeNumbering == models.VolumeNumberingOrder {
+		http.Error(w, "edition has order-only volume numbering: index addresses need printed volume numbers",
+			http.StatusConflict)
+		return
+	}
 
 	taken, err := h.index.TakenSlugs(ctx)
 	if err != nil {

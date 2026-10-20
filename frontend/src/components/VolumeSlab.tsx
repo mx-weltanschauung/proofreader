@@ -6,6 +6,7 @@ import {
   volumeLabelParts,
   spineNumber,
   spineNumberParts,
+  volumeName,
   isMostlyCaps,
 } from '../utils/volumeLabel';
 import { useClippedFlag } from '../utils/useClippedFlag';
@@ -75,9 +76,15 @@ export const VolumeSlab: React.FC<Props> = ({
   // строки — приём вёрстки, а не перечисление. Номер берётся из spineNumber, а
   // не из `number` выше: там уже отделена часть, и «Том 26 III» прочлось бы
   // двумя разными числами вместо одного тома.
+  // У собрания с условной нумерацией номера нет (spineNumber пуст): имя тома
+  // тогда — его подпись, а без подписи заглавие (volumeName).
   const label = volumeLabel(volume);
   const coordinate = spineNumber(volume);
-  const name = label ? `Том ${coordinate}. ${label}` : `Том ${coordinate}`;
+  const name = coordinate
+    ? label
+      ? `${volumeName(volume)}. ${label}`
+      : volumeName(volume)
+    : label || volumeName(volume);
 
   return (
     <Link

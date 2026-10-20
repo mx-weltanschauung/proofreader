@@ -24,8 +24,12 @@ func NewEditionRepository(pool *pgxpool.Pool) *EditionRepository {
 
 // Create creates a new edition
 func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition) error {
-	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "closed"}
-	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned, edition.Closed}
+	if edition.VolumeNumbering == "" {
+		edition.VolumeNumbering = models.VolumeNumberingPrinted
+	}
+	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering", "closed"}
+	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned,
+		edition.VolumeNumbering, edition.Closed}
 	if err := insertRow(ctx, r.pool, "editions", edition.ID, cols, args,
 		&edition.ID, &edition.CreatedAt, &edition.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create edition: %w", err)
@@ -36,7 +40,7 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition)
 // GetByID retrieves an edition by ID
 func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, closed, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, closed, created_at, updated_at
 		FROM editions
 		WHERE id = $1
 	`
@@ -44,7 +48,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 	var edition models.Edition
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-		&edition.VolumesPlanned, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
+		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
 	)
 
 	if err != nil {
@@ -60,7 +64,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 // List retrieves all editions
 func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, closed, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, closed, created_at, updated_at
 		FROM editions
 		ORDER BY title
 	`
@@ -76,7 +80,7 @@ func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error)
 		var edition models.Edition
 		err := rows.Scan(
 			&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-			&edition.VolumesPlanned, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
+			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan edition: %w", err)
@@ -91,14 +95,18 @@ func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error)
 func (r *EditionRepository) Update(ctx context.Context, edition *models.Edition) error {
 	query := `
 		UPDATE editions
-		SET title = $2, slug = $3, url_slug = $4, description = $5, volumes_planned = $6
+		SET title = $2, slug = $3, url_slug = $4, description = $5, volumes_planned = $6,
+		    volume_numbering = $7
 		WHERE id = $1
 		RETURNING updated_at
 	`
 
+	if edition.VolumeNumbering == "" {
+		edition.VolumeNumbering = models.VolumeNumberingPrinted
+	}
 	err := r.pool.QueryRow(
 		ctx, query, edition.ID, edition.Title, edition.Slug, edition.URLSlug, edition.Description,
-		edition.VolumesPlanned,
+		edition.VolumesPlanned, edition.VolumeNumbering,
 	).Scan(&edition.UpdatedAt)
 
 	if err != nil {
@@ -183,9 +191,11 @@ func (r *EditionRepository) ListWorks(ctx context.Context, editionID int64) ([]*
 	return works, nil
 }
 
-// workSummariesQueryTemplate — тело запроса сводок с тремя дырами: %[1]s —
+// workSummariesQueryTemplate — тело запроса сводок с пятью дырами: %[1]s —
 // условие отбора томов, %[2]s — приставка к ORDER BY, %[3]s — ингредиенты
-// слага (см. workSummariesSlugColumns ниже). Тяжёлые CTE (page_stats
+// слага и признак условной нумерации (см. workSummariesSlugColumns ниже),
+// %[4]s — причина закрытости (closedByCaseW), %[5]s — её соединения
+// (closedByJoinsW, closed_repository.go). Тяжёлые CTE (page_stats
 // по всем страницам, works_only по всем главам) не зависят от собрания и
 // считаются по всему корпусу в обоих вариантах; фильтр стоит только в финальном
 // SELECT. Отсюда и смысл общего варианта: запрос по всем собраниям обходится
@@ -276,10 +286,13 @@ const workSummariesQueryTemplate = `
 // шаблоне сводок работа зовётся w, а в workSlugColumns — works. Подставляем
 // одну и ту же константу, а не держим второй текст, — второй копии выражения
 // не существует, поэтому разойтись с полкой карточка тома не может.
-// ReplaceAll трогает только префикс works.<колонка> (шесть вхождений во всей
-// константе); внутренние подзапросы обращаются к таблице по алиасу `FROM
-// works p` — без точки после works, так что замена их не задевает.
-var workSummariesSlugColumns = strings.ReplaceAll(workSlugColumns, "works.", "w.")
+// ReplaceAll трогает только префикс works.<колонка>; внутренние подзапросы
+// обращаются к таблице по алиасу `FROM works p` — без точки после works, так
+// что замена их не задевает. Следом за слагом — признак условной нумерации
+// (workOrderOnlyExpr тем же приёмом): VolumeSummary встраивает Work, и полка
+// обязана знать, что номер тома печатать нельзя.
+var workSummariesSlugColumns = strings.ReplaceAll(workSlugColumns, "works.", "w.") + `,
+	` + strings.ReplaceAll(workOrderOnlyExpr, "works.", "w.") + ` AS volume_order_only`
 
 var (
 	listWorkSummariesQuery = fmt.Sprintf(
@@ -333,7 +346,7 @@ func (r *EditionRepository) scanSummaries(
 			&s.FilePath, &s.Status, &s.EditionID, &s.VolumeNumber, &s.VolumePart,
 			&s.PageOffset, &s.Role, &s.PrecedesVolume, &s.ShelfLabel,
 			&s.OwnerID, &s.CreatedAt, &s.UpdatedAt,
-			&slugEdition, &slugVolume, &slugPart, &s.Closed, &s.ClosedBy,
+			&slugEdition, &slugVolume, &slugPart, &s.VolumeOrderOnly, &s.Closed, &s.ClosedBy,
 			&s.PagesTotal, &s.PagesByStatus, &s.ChaptersTotal, &s.TopChapters,
 		)
 		if err != nil {
