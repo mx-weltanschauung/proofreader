@@ -27,7 +27,15 @@ const (
 // HighlightHandler — избранные работы собрания: чтение для экрана правки и
 // замена списком целиком.
 type HighlightHandler struct {
-	store HighlightStore
+	store  HighlightStore
+	closed ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: пункты избранного, чья
+// работа закрыта, не-сотрудник не видит. nil — ничего не скрывается.
+func (h *HighlightHandler) WithClosed(c ClosedStore) *HighlightHandler {
+	h.closed = c
+	return h
 }
 
 // NewHighlightHandler creates a new highlight handler.
@@ -43,7 +51,8 @@ func (h *HighlightHandler) editionFromPath(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "Неверный номер собрания")
 		return 0, false
 	}
-	if edition, err := h.store.GetByID(r.Context(), id); err != nil || edition == nil {
+	if edition, err := h.store.GetByID(r.Context(), id); err != nil || edition == nil ||
+		(edition.Closed && !isStaffRequest(r)) {
 		writeError(w, http.StatusNotFound, "Собрание не найдено")
 		return 0, false
 	}
@@ -61,9 +70,18 @@ func (h *HighlightHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать избранное")
 		return
 	}
-	if list == nil {
-		list = []models.EditionHighlight{}
+	closed, err := closedSetFor(r, h.closed)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось прочитать избранное")
+		return
 	}
+	open := make([]models.EditionHighlight, 0, len(list))
+	for _, item := range list {
+		if !closed.Has(item.WorkID) {
+			open = append(open, item)
+		}
+	}
+	list = open
 	writeJSONStatus(w, http.StatusOK, list)
 }
 

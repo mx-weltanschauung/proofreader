@@ -654,6 +654,18 @@ func (r *CollectionRepository) ItemRows(ctx context.Context, collectionID int64)
 	return out, nil
 }
 
+// ChapterWorkID — том, которому принадлежит глава.
+func (r *CollectionRepository) ChapterWorkID(ctx context.Context, chapterID int64) (int64, error) {
+	var workID int64
+	if err := r.pool.QueryRow(ctx, `SELECT work_id FROM chapters WHERE id = $1`, chapterID).Scan(&workID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, fmt.Errorf("chapter %d not found", chapterID)
+		}
+		return 0, fmt.Errorf("глава %d: %w", chapterID, err)
+	}
+	return workID, nil
+}
+
 // ChaptersForWorks отдаёт главы всех задействованных томов одним запросом —
 // из них собираются поддеревья оглавления.
 func (r *CollectionRepository) ChaptersForWorks(

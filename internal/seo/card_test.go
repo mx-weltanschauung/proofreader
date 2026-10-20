@@ -547,3 +547,21 @@ func TestDocumentCardTruncatesLongAuthorTitle(t *testing.T) {
 		t.Errorf("заглавие уехало за нижний край: %d непустых точек", n)
 	}
 }
+
+// Карточка главы, чья работа не найдена (открытый вид Works прячет закрытую),
+// — отсутствие, а не карточка с заглавием главы без строки тома: заглавие
+// выдало бы статью закрытого тома. Отказ базы — тоже не карточка.
+func TestCardInputChapterOfMissingWorkIsNotFound(t *testing.T) {
+	s := cardHTTPSource()
+	delete(s.Works.(*fakeWorks).byID, 1)
+	if _, _, err := s.cardInput(context.Background(), "chapter", "10"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("карточка главы без работы: %v, ждали ErrNotFound", err)
+	}
+
+	s = cardHTTPSource()
+	s.Works.(*fakeWorks).err = fmt.Errorf("failed to get work: база легла")
+	in, _, err := s.cardInput(context.Background(), "chapter", "10")
+	if err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("карточка главы при отказе базы: %+v, %v — ждали ошибку", in, err)
+	}
+}

@@ -6,6 +6,7 @@ import { volumeCoordinates } from '../utils/volumeCoordinates';
 import { plural, worksPlural } from '../utils/volumeLabel';
 import { worksLevel } from '../utils/volumeOutline';
 import { DownloadMenu } from './DownloadMenu';
+import { ClosedBadge } from './ClosedBadge';
 import { ShareButton } from './ShareButton';
 import { FeatureHint } from './FeatureHint';
 import { chapterPath, editionPath, journalPath, pagePath, workPath } from '../utils/paths';
@@ -72,7 +73,10 @@ export const VolumeMasthead: React.FC<Props> = ({
         </p>
       )}
 
-      <h1 className="vol-masthead-title">{work.title}</h1>
+      <h1 className="vol-masthead-title">
+        {work.title}
+        {!!work.closed_by && <ClosedBadge />}
+      </h1>
 
       {work.description?.trim() && (
         // Текстом, не HTML: описание — свободный ввод редактора, а не
@@ -105,7 +109,11 @@ export const VolumeMasthead: React.FC<Props> = ({
               {resume.pageNumber !== null && `, стр. ${resume.pageNumber}`}
             </Link>
           )}
-          <DownloadMenu href={`/api/works/${work.id}/download`} audio={hasAudio} />
+          <DownloadMenu
+            href={`/api/works/${work.id}/download`}
+            audio={hasAudio}
+            withToken={!!work.closed_by}
+          />
           {/* Подпись — та же, что во вкладке (WorkDetail, useDocumentTitle):
               название вперёд, автор следом. */}
           <ShareButton

@@ -38,6 +38,17 @@ type fakeIndexStore struct {
 	taken            map[string]bool
 	links            []repository.LinkWithTarget
 	incoming         []repository.IncomingLink
+	// conceptsBySlug, когда задан, отвечает на GetConceptBySlug по слагу
+	// (для отсылок между понятиями); иначе — concept.
+	conceptsBySlug map[string]*models.IndexConcept
+	// listClosedArg — includeClosed последнего ListConcepts.
+	listClosedArg *bool
+	// Счётчики обращений: сколько раз ходили за понятием, картой томов и
+	// списком скрытых слагов.
+	getCalls, volumeCalls, hiddenCalls int
+	// hiddenSlugs — что HiddenConceptSlugs считает скрытым.
+	hiddenSlugs map[string]bool
+	hiddenErr   error
 }
 
 func (f *fakeIndexStore) ReplaceForEdition(ctx context.Context, editionID int64, cs []*models.IndexConcept) ([]string, error) {
@@ -45,12 +56,18 @@ func (f *fakeIndexStore) ReplaceForEdition(ctx context.Context, editionID int64,
 	return f.replaceWarnings, f.replaceErr
 }
 func (f *fakeIndexStore) GetConceptBySlug(ctx context.Context, slug string) (*models.IndexConcept, error) {
+	f.getCalls++
+	if c, ok := f.conceptsBySlug[slug]; ok {
+		return c, nil
+	}
 	return f.concept, nil
 }
-func (f *fakeIndexStore) ListConcepts(ctx context.Context, q, letter string, limit, offset int) ([]*models.IndexConcept, error) {
+func (f *fakeIndexStore) ListConcepts(ctx context.Context, q, letter string, limit, offset int, includeClosed bool) ([]*models.IndexConcept, error) {
+	f.listClosedArg = &includeClosed
 	return f.list, nil
 }
 func (f *fakeIndexStore) VolumeMap(ctx context.Context, editionID int64) ([]models.VolumeLocation, error) {
+	f.volumeCalls++
 	if vols, ok := f.volumesByEdition[editionID]; ok {
 		return vols, nil
 	}
@@ -58,6 +75,16 @@ func (f *fakeIndexStore) VolumeMap(ctx context.Context, editionID int64) ([]mode
 }
 func (f *fakeIndexStore) Backlinks(ctx context.Context, editionID int64, vol int, part *string, page int) ([]models.ConceptBacklink, error) {
 	return f.backlinks, nil
+}
+func (f *fakeIndexStore) HiddenConceptSlugs(ctx context.Context, slugs []string) (map[string]bool, error) {
+	f.hiddenCalls++
+	out := map[string]bool{}
+	for _, s := range slugs {
+		if f.hiddenSlugs[s] {
+			out[s] = true
+		}
+	}
+	return out, f.hiddenErr
 }
 func (f *fakeIndexStore) TakenSlugs(ctx context.Context) (map[string]bool, error) {
 	return f.taken, nil

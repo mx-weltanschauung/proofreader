@@ -114,6 +114,14 @@ type CollectionHandler struct {
 	cache           *RangeCache
 	jwtSecret       string
 	trustProxy      bool
+	closed          ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: элементы подборки на
+// закрытой работе не-сотруднику недоступны. nil — ничего не скрывается.
+func (h *CollectionHandler) WithClosed(c ClosedStore) *CollectionHandler {
+	h.closed = c
+	return h
 }
 
 // NewCollectionHandler creates a new collection handler
@@ -250,7 +258,12 @@ func (h *CollectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	// у пустой подборки Items остаётся пустым срезом. Из-за json:"items,omitempty"
 	// это значит, что ключ "items" в ответе отсутствует вовсе (не []); потребитель
 	// обязан читать отсутствие ключа как пустой состав.
-	collection.Items = buildCollectionTOC(rows, chapters)
+	closed, err := closedSetFor(r, h.closed)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось получить состав подборки")
+		return
+	}
+	collection.Items = buildCollectionTOC(rows, chapters, closed)
 
 	writeJSON(w, collection)
 }
@@ -492,6 +505,38 @@ func (h *CollectionHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Закрытую цель не-сотрудник добавить не может: ответ с заглавием-снимком
+	// выдал бы название закрытой главы. Том главы берётся из базы, как и в
+	// самом AddItem.
+	if !isStaffRequest(r) {
+		targetWork := req.WorkID
+		if req.Kind == models.CollectionItemKindChapter {
+			// Без запасного хода на присланный work_id: сбой базы не должен
+			// пропускать проверку закрытости (fail closed).
+			workID, err := h.collectionStore.ChapterWorkID(ctx, *req.ChapterID)
+			if err != nil {
+				if storageNotFound(err) {
+					writeError(w, http.StatusNotFound, "Не найдено")
+				} else {
+					writeError(w, http.StatusInternalServerError, "Не удалось проверить доступность источника")
+				}
+				return
+			}
+			targetWork = &workID
+		}
+		if targetWork != nil {
+			closed, err := closedSetFor(r, h.closed)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "Не удалось проверить доступность источника")
+				return
+			}
+			if closed.Has(*targetWork) {
+				writeError(w, http.StatusNotFound, "Не найдено")
+				return
+			}
+		}
+	}
+
 	item, err := h.collectionStore.AddItem(
 		ctx, collection.ID, req.Kind, req.ChapterID, req.WorkID, req.AuthorOverride)
 	if err != nil {
@@ -636,6 +681,18 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 	item, err := h.collectionStore.ItemByID(ctx, collection.ID, itemID)
 	if err != nil || item == nil {
 		writeError(w, http.StatusNotFound, "Элемент подборки не найден")
+		return
+	}
+
+	// Закрытая работа — раньше диапазонов и кэша: файл, прогретый
+	// сотрудником для того же диапазона, не-сотруднику не отдаётся.
+	closed, err := closedSetFor(r, h.closed)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось определить доступность элемента")
+		return
+	}
+	if itemIsClosed(*item, closed) {
+		writeError(w, http.StatusGone, "Источник элемента недоступен")
 		return
 	}
 

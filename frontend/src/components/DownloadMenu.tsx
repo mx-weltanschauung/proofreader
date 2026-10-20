@@ -20,6 +20,8 @@ interface DownloadMenuProps {
   /** Есть звук — пятый пункт, плейлист .m3u. Запоминание формата на него
    *  не распространяется: следующее «Скачать» — снова книга. */
   audio?: boolean;
+  /** Закрытый том отдаётся только сотруднику: качаем с токеном и сохраняем сами. */
+  withToken?: boolean;
 }
 
 /** Прочитанный формат из localStorage — без записи ключа обратно и без падения в приватном режиме. */
@@ -31,8 +33,28 @@ function readRememberedFormat(): string | null {
   }
 }
 
-export function DownloadMenu({ href, label = 'Скачать', audio = false }: DownloadMenuProps) {
+/** Имя файла из Content-Disposition; без него — запасное. */
+function filenameFrom(header: string | null, fallback: string): string {
+  const star = header?.match(/filename\*=UTF-8''([^;]+)/i);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      // битая кодировка — пробуем простое имя
+    }
+  }
+  const plain = header?.match(/filename="?([^";]+)"?/i);
+  return plain ? plain[1] : fallback;
+}
+
+export function DownloadMenu({
+  href,
+  label = 'Скачать',
+  audio = false,
+  withToken = false,
+}: DownloadMenuProps) {
   const [open, setOpen] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [lastFormat, setLastFormat] = useState<string | null>(readRememberedFormat);
   const root = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
@@ -87,6 +109,41 @@ export function DownloadMenu({ href, label = 'Скачать', audio = false }: 
     setOpen(false);
   };
 
+  /** Скачивание с заголовком Authorization: ссылка `download` его не несёт. */
+  const downloadWithToken = async (url: string, fallbackName: string) => {
+    setFailed(false);
+    try {
+      let token: string | null = null;
+      try {
+        token = localStorage.getItem('token');
+      } catch {
+        // без токена сервер ответит отказом — это и покажем
+      }
+      const response = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error(String(response.status));
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filenameFrom(response.headers.get('Content-Disposition'), fallbackName);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Часть браузеров начинает скачивание после возврата из click().
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      setFailed(true);
+    }
+  };
+
+  const onItemClick = (event: React.MouseEvent, url: string, name: string) => {
+    if (!withToken) return;
+    event.preventDefault();
+    void downloadWithToken(url, name);
+  };
+
   return (
     <div className="download-menu" ref={root}>
       <button
@@ -127,7 +184,14 @@ export function DownloadMenu({ href, label = 'Скачать', audio = false }: 
                   aria-current={isLast ? 'true' : undefined}
                   href={`${API_BASE_URL}${href}?format=${format.id}`}
                   download
-                  onClick={() => remember(format.id)}
+                  onClick={(e) => {
+                    onItemClick(
+                      e,
+                      `${API_BASE_URL}${href}?format=${format.id}`,
+                      `book.${format.id}`,
+                    );
+                    remember(format.id);
+                  }}
                 >
                   <span className="download-menu__name">{format.name}</span>
                   <span className="download-menu__hint">{format.hint}</span>
@@ -142,7 +206,10 @@ export function DownloadMenu({ href, label = 'Скачать', audio = false }: 
                 className="download-menu__item"
                 href={`${API_BASE_URL}${href}?format=m3u`}
                 download
-                onClick={() => setOpen(false)}
+                onClick={(e) => {
+                  onItemClick(e, `${API_BASE_URL}${href}?format=m3u`, 'playlist.m3u');
+                  setOpen(false);
+                }}
               >
                 <span className="download-menu__name">Аудио — плейлист .m3u</span>
                 <span className="download-menu__hint">для VLC и других плееров</span>
@@ -150,6 +217,11 @@ export function DownloadMenu({ href, label = 'Скачать', audio = false }: 
             </li>
           )}
         </ul>
+      )}
+      {failed && (
+        <p role="alert" className="download-menu__error">
+          Не удалось скачать.
+        </p>
       )}
     </div>
   );

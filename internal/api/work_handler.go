@@ -91,6 +91,9 @@ type CreateWorkRequest struct {
 	Language        string            `json:"language"`
 	Country         string            `json:"country"`
 	Status          models.WorkStatus `json:"status"`
+	// Closed — завести работу сразу закрытой (публикатор, закрытое издание).
+	// Update поле не читает: признак меняет только ClosedHandler.
+	Closed bool `json:"closed,omitempty"`
 }
 
 // UpdateWorkRequest represents a request to update a work.
@@ -142,9 +145,16 @@ func (h *WorkHandler) List(w http.ResponseWriter, r *http.Request) {
 		works = []*models.Work{}
 	}
 
-	resp := make([]workResponse, len(works))
-	for i, wk := range works {
-		resp[i] = newWorkResponse(r.Context(), wk, h.store, h.presignTTL)
+	// Закрытое (само, по родителю, изданию или журналу) не-сотруднику не
+	// показывается. Страница от этого может выйти короче limit: сдвиг offset
+	// остаётся по строкам базы, поэтому постраничный обход ничего не теряет.
+	staff := isStaffRequest(r)
+	resp := make([]workResponse, 0, len(works))
+	for _, wk := range works {
+		if !staff && wk.ClosedBy != "" {
+			continue
+		}
+		resp = append(resp, newWorkResponse(r.Context(), wk, h.store, h.presignTTL))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -181,6 +191,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		FilePath: "", // Will be set during file upload
 		Status:   req.Status,
 		OwnerID:  claims.UserID,
+		Closed:   req.Closed,
 	}
 
 	ctx := context.Background()
@@ -224,7 +235,12 @@ func (h *WorkHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("work %d: failed to list child works: %v", id, err)
 	}
+	staff := isStaffRequest(r)
 	for _, kid := range kids {
+		// Закрытая служебная работа не-сотруднику не перечисляется.
+		if kid.ClosedBy != "" && !staff {
+			continue
+		}
 		resp.Children = append(resp.Children, newWorkResponse(r.Context(), kid, h.store, h.presignTTL))
 	}
 
@@ -302,9 +318,38 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to update work", http.StatusInternalServerError)
 		return
 	}
+	h.dropCacheIfClosednessMoved(ctx, work)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(work)
+}
+
+// dropCacheIfClosednessMoved — второй, после ClosedHandler, путь, которым
+// меняется действующая закрытость: PUT /works/{id} пишет edition_id и
+// parent_work_id, а с ними закрытость издания и родителя. Без сброса /seo,
+// .md, MCP и карточки отдавали бы текст и заглавие тома, ставшего закрытым,
+// до часа (карточки — до суток), а ставшего открытым — закэшированным
+// отказом. Причина перечитывается из базы: считает её SQL (work_closed_by),
+// а не структура в памяти. Перечитать не вышло — сбрасываем: лишний сброс
+// стоит пересборки, пропущенный — утечки закрытого.
+func (h *WorkHandler) dropCacheIfClosednessMoved(ctx context.Context, work *models.Work) {
+	before := work.ClosedBy
+	fresh, err := h.workRepo.GetByID(ctx, work.ID)
+	if err == nil {
+		work.ClosedBy = fresh.ClosedBy
+		if fresh.ClosedBy == before {
+			return
+		}
+	}
+	// Дети закрыты через родителя: их закрытость сменилась вместе с ним.
+	kids, err := h.workRepo.ListChildren(ctx, work.ID)
+	if err != nil {
+		log.Printf("сброс кэша работы %d: дети не прочитаны: %v", work.ID, err)
+	}
+	for _, kid := range kids {
+		h.cache.DropWork(kid.ID)
+	}
+	h.cache.DropWork(work.ID)
 }
 
 // Delete deletes a work

@@ -26,6 +26,15 @@ type DocumentCutHandler struct {
 	works     WorkStore
 	pages     PageStore
 	renderer  *markdown.Renderer
+	closed    ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: не-сотрудник не заводит
+// вклейку на закрытой работе и не догружает уже заведённую. nil — ничего не
+// скрывается.
+func (h *DocumentCutHandler) WithClosed(c ClosedStore) *DocumentCutHandler {
+	h.closed = c
+	return h
 }
 
 func NewDocumentCutHandler(documents DocumentStore, cuts DocumentCutStore, works WorkStore, pages PageStore, renderer *markdown.Renderer) *DocumentCutHandler {
@@ -93,6 +102,18 @@ func (h *DocumentCutHandler) Create(w http.ResponseWriter, r *http.Request) {
 	claims, _ := middleware.GetUserFromContext(r.Context())
 	if !mayEditDocument(claims, document) {
 		writeError(w, http.StatusForbidden, "Вклейка заводится только в своём разборе")
+		return
+	}
+
+	// Закрытая работа не-сотруднику не существует: 404 до чтения полос, чтобы
+	// ни отказом, ни подписью нельзя было нащупать закрытое.
+	closed, err := closedSetFor(r, h.closed)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить доступность источника")
+		return
+	}
+	if closed.Has(req.WorkID) {
+		writeError(w, http.StatusNotFound, "Не найдено")
 		return
 	}
 
@@ -341,6 +362,22 @@ func (h *DocumentCutHandler) Full(w http.ResponseWriter, r *http.Request) {
 	if !named {
 		writeError(w, http.StatusGone, "Вклейка снята")
 		return
+	}
+
+	// Закрытая работа — ПОСЛЕ проверки «названа ли вклейка»: иначе статус 404
+	// против 410 выдавал бы перебором id, что вклейка черновика указывает на
+	// закрытое. Названная вклейка закрытой работы не-сотруднику — 404, а не
+	// 410: «снята» подтвердило бы, что она была.
+	if cut.WorkID != nil {
+		closed, err := closedSetFor(r, h.closed)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать вклейку")
+			return
+		}
+		if closed.Has(*cut.WorkID) {
+			writeError(w, http.StatusNotFound, "Не найдено")
+			return
+		}
 	}
 
 	// Тот же guard, что renderCutState ставит перед renderCut: сама renderCut

@@ -44,6 +44,32 @@ type IndexHandler struct {
 	chapters  ChapterTreeStore
 	fragments FragmentStore
 	renderer  *markdown.Renderer
+	closed    ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: понятие, статьи которого
+// закрыты, и адреса в закрытые тома не-сотруднику не отдаются. Без него —
+// ничего не скрывается.
+func (h *IndexHandler) WithClosed(c ClosedStore) *IndexHandler {
+	h.closed = c
+	return h
+}
+
+// concept — понятие по слагу для читателя этого запроса: скрытое отвечает как
+// несуществующее (ok == false). Ошибка базы — второй результат.
+func (h *IndexHandler) conceptFor(r *http.Request, slug string) (c *models.IndexConcept, view closedView, found bool, err error) {
+	raw, gerr := h.index.GetConceptBySlug(r.Context(), slug)
+	// Отсутствующий slug приходит из репозитория ошибкой, а фейк тестов
+	// отдаёт (nil, nil) — оба случая «нет такого понятия».
+	if gerr != nil || raw == nil {
+		return nil, closedView{}, false, nil
+	}
+	view, err = closedViewFor(r, h.closed)
+	if err != nil {
+		return nil, view, false, err
+	}
+	c, found, err = view.filter(r.Context(), h.index, raw)
+	return c, view, found, err
 }
 
 // NewIndexHandler creates a new index handler.
@@ -265,9 +291,14 @@ func (h *IndexHandler) GetConcept(w http.ResponseWriter, r *http.Request) {
 	// this codebase (compare ChapterHandler.Get, EditionHandler.Update) - any
 	// error here means "not found", not a distinguishable server fault. The
 	// fake store in tests instead returns (nil, nil) for "no concept
-	// configured", so both are treated as 404.
-	c, err := h.index.GetConceptBySlug(ctx, slug)
-	if err != nil || c == nil {
+	// configured", so both are treated as 404. Скрытое закрытым понятие
+	// отвечает тем же 404.
+	c, view, found, err := h.conceptFor(r, slug)
+	if err != nil {
+		http.Error(w, "Failed to resolve volume map", http.StatusInternalServerError)
+		return
+	}
+	if !found {
 		http.Error(w, "Concept not found", http.StatusNotFound)
 		return
 	}
@@ -325,6 +356,39 @@ func (h *IndexHandler) GetConcept(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to retrieve incoming links", http.StatusInternalServerError)
 		return
 	}
+	// Отсылки на скрытые понятия снимаются одним запросом на весь ответ.
+	var linkSlugs []string
+	for _, a := range articles {
+		for _, l := range a.Links {
+			linkSlugs = append(linkSlugs, l.TargetSlug)
+		}
+	}
+	for _, l := range incoming {
+		linkSlugs = append(linkSlugs, l.Slug)
+	}
+	hidden, err := view.hiddenSlugs(ctx, h.index, linkSlugs)
+	if err != nil {
+		http.Error(w, "Failed to retrieve concept links", http.StatusInternalServerError)
+		return
+	}
+	if len(hidden) > 0 {
+		for i := range articles {
+			kept := make([]repository.LinkWithTarget, 0, len(articles[i].Links))
+			for _, l := range articles[i].Links {
+				if !hidden[l.TargetSlug] {
+					kept = append(kept, l)
+				}
+			}
+			articles[i].Links = kept
+		}
+		keptIn := make([]repository.IncomingLink, 0, len(incoming))
+		for _, l := range incoming {
+			if !hidden[l.Slug] {
+				keptIn = append(keptIn, l)
+			}
+		}
+		incoming = keptIn
+	}
 	if incoming == nil {
 		incoming = []repository.IncomingLink{}
 	}
@@ -367,7 +431,7 @@ func (h *IndexHandler) ListConcepts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	concepts, err := h.index.ListConcepts(ctx, q, letter, limit, offset)
+	concepts, err := h.index.ListConcepts(ctx, q, letter, limit, offset, isStaffRequest(r))
 	if err != nil {
 		http.Error(w, "Failed to retrieve concepts", http.StatusInternalServerError)
 		return
@@ -425,8 +489,26 @@ func (h *IndexHandler) PageConcepts(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to retrieve backlinks", http.StatusInternalServerError)
 		return
 	}
-	if backlinks != nil {
-		out = backlinks
+	// Понятие, чьи статьи закрыты целиком, не называется и здесь: заглавие на
+	// полосе открытого тома выдало бы его так же, как список понятий.
+	view, err := closedViewFor(r, h.closed)
+	if err != nil {
+		http.Error(w, "Failed to retrieve backlinks", http.StatusInternalServerError)
+		return
+	}
+	slugs := make([]string, 0, len(backlinks))
+	for _, b := range backlinks {
+		slugs = append(slugs, b.Slug)
+	}
+	hidden, err := view.hiddenSlugs(ctx, h.index, slugs)
+	if err != nil {
+		http.Error(w, "Failed to retrieve backlinks", http.StatusInternalServerError)
+		return
+	}
+	for _, b := range backlinks {
+		if !hidden[b.Slug] {
+			out = append(out, b)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

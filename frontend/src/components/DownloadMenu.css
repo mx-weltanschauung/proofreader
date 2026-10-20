@@ -110,3 +110,9 @@
   font-size: 0.85em;
   color: var(--color-text-secondary);
 }
+
+.download-menu__error {
+  margin: 0.25rem 0 0;
+  color: var(--color-error-ink);
+  font-size: 0.875rem;
+}

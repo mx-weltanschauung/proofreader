@@ -110,14 +110,18 @@ func (r *PersonRepository) Search(ctx context.Context, q string, limit int) ([]m
 	return out, rows.Err()
 }
 
-func (r *PersonRepository) Detail(ctx context.Context, personSlug string) (*models.PersonDetail, error) {
+// Detail — страница автора. includeClosed == false: статьи закрытых работ
+// отброшены; был хоть один кредит и не осталось ни одного — автор «не найден»
+// (по одной только странице автора закрытый журнал иначе не скрыть).
+func (r *PersonRepository) Detail(ctx context.Context, personSlug string, includeClosed bool) (*models.PersonDetail, error) {
 	p, err := scanPerson(r.pool.QueryRow(ctx, `SELECT `+personColumns+` FROM persons WHERE slug = $1`, personSlug))
 	if err != nil {
 		return nil, err
 	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.id, c.title, coalesce(c.article_kind, ''), ac.role, w.id, w.title, w.role,
-		       j.slug, j.title, ji.year, ji.label, c.start_page, c.end_page
+		       j.slug, j.title, ji.year, ji.label, c.start_page, c.end_page,
+		       work_closed_by(w.id) <> ''
 		FROM article_credits ac
 		JOIN chapters c ON c.id = ac.chapter_id
 		JOIN works w ON w.id = c.work_id
@@ -130,18 +134,30 @@ func (r *PersonRepository) Detail(ctx context.Context, personSlug string) (*mode
 	}
 	defer rows.Close()
 	d := &models.PersonDetail{Person: p, Articles: []models.PersonArticle{}}
+	hidden := 0
 	for rows.Next() {
 		var a models.PersonArticle
 		var workTitle, workRole string
+		var closed bool
 		if err := rows.Scan(&a.ChapterID, &a.Title, &a.ArticleKind, &a.Role, &a.WorkID, &workTitle, &workRole,
-			&a.JournalSlug, &a.JournalTitle, &a.Year, &a.Label, &a.StartPage, &a.EndPage); err != nil {
+			&a.JournalSlug, &a.JournalTitle, &a.Year, &a.Label, &a.StartPage, &a.EndPage, &closed); err != nil {
 			return nil, err
+		}
+		if closed && !includeClosed {
+			hidden++
+			continue
 		}
 		a.ChapterSlug = slug.Chapter(a.Title)
 		a.WorkSlug = workSlugFrom(workRole, "", nil, nil, nil, workTitle)
 		d.Articles = append(d.Articles, a)
 	}
-	return d, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if hidden > 0 && len(d.Articles) == 0 {
+		return nil, ErrPersonNotFound
+	}
+	return d, nil
 }
 
 // Merge переносит подписи fromID на intoID и удаляет fromID — одной транзакцией.

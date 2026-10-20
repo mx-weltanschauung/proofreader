@@ -67,6 +67,14 @@ func (a *SEOBookSource) Chapter(
 // держит их вместе.
 type SEOCollectionSource struct {
 	collections CollectionStore
+	closed      ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: краулер без токена,
+// поэтому оглавление всегда строится с полным множеством закрытых.
+func (a *SEOCollectionSource) WithClosed(c ClosedStore) *SEOCollectionSource {
+	a.closed = c
+	return a
 }
 
 func NewSEOCollectionSource(collections CollectionStore) *SEOCollectionSource {
@@ -108,9 +116,14 @@ func (a *SEOCollectionSource) GetByAuthorSlug(ctx context.Context, nickname, slu
 		return nil, fmt.Errorf("главы подборки %q: %w", slug, err)
 	}
 
+	closed, err := fullClosedSet(ctx, a.closed)
+	if err != nil {
+		return nil, fmt.Errorf("закрытые работы: %w", err)
+	}
+
 	// Тот же вызов, что и в CollectionHandler.Get — состав не должен
 	// разойтись между API и страницей краулера.
-	collection.Items = buildCollectionTOC(rows, chapters)
+	collection.Items = buildCollectionTOC(rows, chapters, closed)
 
 	return collection, nil
 }

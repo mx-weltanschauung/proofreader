@@ -18,6 +18,7 @@ function setup(props: Partial<React.ComponentProps<typeof VolumeManagePanel>> = 
     onDeleteChapter: vi.fn(),
     onMoveChapter: vi.fn().mockResolvedValue(undefined),
     onReorderingChange: vi.fn(),
+    onToggleClosed: vi.fn().mockResolvedValue(undefined),
   };
   const user = userEvent.setup();
   render(
@@ -101,5 +102,17 @@ describe('VolumeManagePanel', () => {
     await user.click(screen.getByRole('button', { name: 'Удалить том' }));
     expect(onDeleteWork).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+
+  it('в разделе «Том» есть кнопка «Закрыть», у закрытого — «Открыть»', async () => {
+    const { user } = setup();
+    await user.click(screen.getByText('Управление томом'));
+    expect(screen.getByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
+  });
+
+  it('закрытому тому предлагает «Открыть»', async () => {
+    const { user } = setup({ work: { ...WORK, closed: true, closed_by: 'work' } });
+    await user.click(screen.getByText('Управление томом'));
+    expect(screen.getByRole('button', { name: 'Открыть' })).toBeInTheDocument();
   });
 });

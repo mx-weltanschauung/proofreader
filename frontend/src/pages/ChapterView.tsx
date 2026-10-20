@@ -576,6 +576,7 @@ export const ChapterView: React.FC = () => {
               <DownloadMenu
                 href={`/api/works/${workId}/chapters/${chapter.id}/download`}
                 audio={hasAudio}
+                withToken={!!work?.closed_by}
               />
               <AskAiButton prompt={() => askAiPrompt(work, chapter, window.location.origin)} />
               {/* Глава целиком, а не видимая полоса — ту отдаёт «Ссылка» в

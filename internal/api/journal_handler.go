@@ -36,6 +36,8 @@ type journalBody struct {
 	Title       string `json:"title"`
 	Subtitle    string `json:"subtitle"`
 	Description string `json:"description"`
+	// Closed — завести журнал сразу закрытым; Update поле не читает.
+	Closed bool `json:"closed,omitempty"`
 }
 
 type issueRequest struct {
@@ -45,6 +47,8 @@ type issueRequest struct {
 	NumberFrom int    `json:"number_from"`
 	NumberTo   int    `json:"number_to"`
 	Months     string `json:"months"`
+	// Closed — признак работы номера (у номера своего нет); Update не читает.
+	Closed bool `json:"closed,omitempty"`
 }
 
 func journalPathID(r *http.Request) (int64, bool) {
@@ -54,7 +58,7 @@ func journalPathID(r *http.Request) (int64, bool) {
 
 // List — журналы со сводкой. Публично.
 func (h *JournalHandler) List(w http.ResponseWriter, r *http.Request) {
-	list, err := h.store.List(r.Context())
+	list, err := h.store.List(r.Context(), isStaffRequest(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать журналы")
 		return
@@ -64,7 +68,7 @@ func (h *JournalHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // Get — журнал и номера по годам. Публично.
 func (h *JournalHandler) Get(w http.ResponseWriter, r *http.Request) {
-	d, err := h.store.Detail(r.Context(), mux.Vars(r)["slug"])
+	d, err := h.store.Detail(r.Context(), mux.Vars(r)["slug"], isStaffRequest(r))
 	if errors.Is(err, repository.ErrJournalNotFound) {
 		writeError(w, http.StatusNotFound, "Журнал не найден")
 		return
@@ -102,7 +106,7 @@ func (h *JournalHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	j := &models.Journal{ID: req.ID, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description}
+	j := &models.Journal{ID: req.ID, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description, Closed: req.Closed}
 	if err := h.store.Create(r.Context(), j); err != nil {
 		h.writeStoreError(w, err, "Не удалось завести журнал")
 		return
@@ -126,7 +130,14 @@ func (h *JournalHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	j := &models.Journal{ID: id, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description}
+	// Признак Update не пишет, но в ответе должен стоять настоящий, а не
+	// нулевой из тела запроса.
+	stored, err := h.store.GetByID(r.Context(), id)
+	if err != nil {
+		h.writeStoreError(w, err, "Не удалось сохранить журнал")
+		return
+	}
+	j := &models.Journal{ID: id, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description, Closed: stored.Closed}
 	if err := h.store.Update(r.Context(), j); err != nil {
 		h.writeStoreError(w, err, "Не удалось сохранить журнал")
 		return
@@ -187,7 +198,7 @@ func (h *JournalHandler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	issue := &models.JournalIssue{ID: req.ID, JournalID: j.ID, Year: req.Year, NumberFrom: req.NumberFrom,
 		NumberTo: req.NumberTo, Label: label, Months: req.Months}
 	work := &models.Work{ID: req.WorkID, Title: models.IssueTitle(j.Title, req.Year, label), Language: "ru",
-		Status: models.WorkStatusDraft, OwnerID: claims.UserID}
+		Status: models.WorkStatusDraft, OwnerID: claims.UserID, Closed: req.Closed}
 	if err := h.store.CreateIssue(r.Context(), issue, work); err != nil {
 		h.writeStoreError(w, err, "Не удалось завести номер")
 		return

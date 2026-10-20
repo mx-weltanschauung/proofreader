@@ -14,15 +14,11 @@ import (
 	"proofreader/internal/auth"
 	"proofreader/internal/config"
 	"proofreader/internal/database"
-	"proofreader/internal/mcp"
 	"proofreader/internal/metrics"
 	"proofreader/internal/models"
-	"proofreader/internal/opds"
 	"proofreader/internal/pagecache"
 	"proofreader/internal/repository"
-	"proofreader/internal/seo"
 	"proofreader/internal/stats"
-	"proofreader/pkg/markdown"
 	"proofreader/pkg/storage"
 
 	"github.com/joho/godotenv"
@@ -56,28 +52,6 @@ func main() {
 
 	log.Println("Connected to database successfully")
 
-	// Initialize repositories
-	userRepo := repository.NewUserRepository(db.Pool)
-	workRepo := repository.NewWorkRepository(db.Pool)
-	categoryRepo := repository.NewCategoryRepository(db.Pool)
-	pageRepo := repository.NewPageRepository(db.Pool)
-	pageVersionRepo := repository.NewPageVersionRepository(db.Pool)
-	chapterRepo := repository.NewChapterRepository(db.Pool)
-	documentRepo := repository.NewDocumentRepository(db.Pool)
-	editionRepo := repository.NewEditionRepository(db.Pool)
-	journalRepo := repository.NewJournalRepository(db.Pool)
-	personRepo := repository.NewPersonRepository(db.Pool)
-	collectionRepo := repository.NewCollectionRepository(db.Pool)
-	indexRepo := repository.NewIndexRepository(db.Pool)
-	fragmentRepo := repository.NewIndexFragmentRepository(db.Pool)
-	documentCutRepo := repository.NewDocumentCutRepository(db.Pool)
-	feedbackRepo := repository.NewFeedbackRepository(db.Pool)
-	statsRepo := repository.NewStatsRepository(db.Pool)
-
-	// Initialize services
-	authService := auth.NewService(&cfg.JWT)
-	markdownRenderer := markdown.NewRenderer()
-
 	// Файловый кэш готовых ответов по диапазону полос. Отметка коммита
 	// стирает содержимое чужой сборки: изменившийся рендерер не должен
 	// доехать до читателя. ResolveCommit подстраховывает: compose-сборки
@@ -94,7 +68,6 @@ func main() {
 		log.Printf("кэш глав выключен: %v", err)
 		pageCache = pagecache.New("")
 	}
-	rangeCache := api.NewRangeCache(pageCache)
 
 	if pageCache.Enabled() {
 		go func() {
@@ -181,181 +154,36 @@ func main() {
 	if err := audioStore.SetCORS(context.Background(), cfg.S3.CORSOrigins); err != nil {
 		log.Printf("Warning: audio bucket CORS: %v", err)
 	}
-	audioRepo := repository.NewAudioRepository(db.Pool)
-	audioRecordingRepo := repository.NewAudioRecordingRepository(db.Pool)
-
-	// Initialize handlers
-	authAttemptRepo := repository.NewAuthAttemptRepository(db.Pool)
-	authHandler := api.NewAuthHandler(userRepo, authService, authAttemptRepo,
-		cfg.JWT.Secret, cfg.Server.TrustProxyHeaders)
-	categoryHandler := api.NewCategoryHandler(categoryRepo)
-	pageHandler := api.NewPageHandler(pageRepo, pageVersionRepo, fragmentRepo, documentCutRepo, markdownRenderer, scans, cfg.S3.PresignTTL)
-	chapterHandler := api.NewChapterHandler(chapterRepo, pageRepo, markdownRenderer, rangeCache).
-		WithRecordings(audioRecordingRepo).
-		WithCredits(personRepo)
-	readingHandler := api.NewReadingHandler(pageRepo, markdownRenderer)
-	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же
-	// набор источников, что у чтения разбора, плюс свой рендер без подрезки.
-	documentCutHandler := api.NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, pageRepo, markdownRenderer)
-	userHandler := api.NewUserHandler(userRepo, authService)
-	exportHandler := api.NewExportHandler(workRepo, chapterRepo, pageRepo)
-	editionHandler := api.NewEditionHandler(editionRepo)
-	shelfHandler := api.NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo)
-	highlightHandler := api.NewHighlightHandler(editionRepo)
-	searchRepo := repository.NewSearchRepository(db.Pool)
-	searchHandler := api.NewSearchHandler(searchRepo)
-
 	// Посещаемость (internal/stats): буфер пишет пачками в фоне, раз в час
-	// сворачивает сутки. Поиск пишет текст запроса и число найденного сам.
-	statsRecorder := stats.NewRecorder(statsRepo)
-	searchHandler.WithRecorder(statsRecorder, cfg.Server.TrustProxyHeaders)
+	// сворачивает сутки.
+	statsRecorder := stats.NewRecorder(repository.NewStatsRepository(db.Pool))
 
 	// Здоровье (internal/metrics): отдаётся на METRICS_ADDR и выжимкой на /admin/stats.
 	appMetrics := metrics.New()
 	appMetrics.RegisterPgx(db.Pool)
-	appMetrics.RegisterSlots("search", searchHandler.Slots())
 	appMetrics.RegisterCounterFunc("stats_events_accepted_total", "Принятые события посещаемости.",
 		func() float64 { return float64(statsRecorder.Accepted()) })
 	appMetrics.RegisterCounterFunc("stats_events_dropped_total", "Отброшенные при полном буфере.",
 		func() float64 { return float64(statsRecorder.Dropped()) })
 	appMetrics.RegisterCounterFunc("stats_write_errors_total", "Сбои записи посещаемости.",
 		func() float64 { return float64(statsRecorder.WriteErrors()) })
-	indexHandler := api.NewIndexHandler(indexRepo, workRepo, editionRepo, pageRepo, chapterRepo, fragmentRepo, markdownRenderer)
-	collectionHandler := api.NewCollectionHandler(collectionRepo, pageRepo, markdownRenderer, rangeCache, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders)
-	downloadSource := api.NewDownloadSource(
-		workRepo, chapterRepo, pageRepo, editionRepo, collectionRepo,
-		markdownRenderer, cfg.Server.PublicBaseURL,
-	)
-	downloadHandler := api.NewDownloadHandler(downloadSource).
-		WithAudio(api.NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, chapterRepo, cfg.Server.PublicBaseURL))
-	audioHandler := api.NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, chapterRepo, audioStore)
-	seoRepo := repository.NewSEORepository(db.Pool)
-	seoHandler := seo.NewHandler(&seo.Source{
-		Works:       workRepo,
-		Chapters:    chapterRepo,
-		Pages:       pageRepo,
-		Editions:    editionRepo,
-		Concepts:    indexRepo,
-		Collections: api.NewSEOCollectionSource(collectionRepo),
-		Documents: api.NewSEODocumentSource(
-			documentRepo, documentCutRepo, workRepo, markdownRenderer),
-		Books:        api.NewSEOBookSource(downloadSource),
-		ConceptBooks: api.NewConceptBookSource(indexRepo, pageRepo, chapterRepo, cfg.Server.PublicBaseURL),
-		Catalog:      seoRepo,
-		Renderer:     markdownRenderer,
-		// Тот же адрес, что печатает титульный лист выгрузок: два источника
-		// адреса в одной программе разошлись бы, и canonical начал бы
-		// противоречить скачанному файлу.
-		BaseURL: cfg.Server.PublicBaseURL,
-		// Та же отметка, что у файлового кэша глав: новая сборка меняет ETag
-		// страниц краулера, иначе 304 отдавал бы вёрстку прежнего рендерера.
-		Build: build,
+
+	// Обработчики и маршруты — api.NewServer: та же сборка идёт в сквозной
+	// сторож закрытых работ (internal/repository/closed_sweep_test.go).
+	r := api.NewServer(api.ServerDeps{
+		Config:    cfg,
+		Pool:      db.Pool,
+		Commit:    Commit,
+		Build:     build,
+		PageCache: pageCache,
+		Scans:     scans,
+		Audio:     audioStore,
+		Stats:     statsRecorder,
+		Metrics:   appMetrics,
 	})
-	// Кэши отдачи одним узлом. Собирается после seoHandler, потому что держит
-	// и его половину тоже: снос тома обязан уносить и готовые главы с диска, и
-	// страницы с карточками, которые краулерская половина держит в памяти.
-	servingCache := api.NewServingCache(pageCache, seoHandler)
-	apparatusRepo := repository.NewApparatusRepository(db.Pool)
-	workHandler := api.NewWorkHandler(
-		workRepo, pageRepo, markdownRenderer, scans, cfg.S3.PresignTTL,
-		servingCache, apparatusRepo,
-	).WithAudioStore(audioStore).WithJournalIssues(journalRepo)
-	// documentHandler/documentReviewHandler собираются здесь же, а не рядом с
-	// остальными обработчиками разбора выше: снятие с публикации и удаление
-	// обязаны сбросить краулерскую половину servingCache (см. DropCrawler), а
-	// она собирается только после seoHandler.
-	documentHandler := api.NewDocumentHandler(documentRepo, markdownRenderer, documentCutRepo, workRepo, servingCache)
-	// Модерация разбора: отправка автором, очередь редактору, приём и отказ.
-	// jwtSecret и trustProxy — рельс предела частоты, тот же, что у подборок.
-	documentReviewHandler := api.NewDocumentReviewHandler(
-		documentRepo, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders, servingCache)
-
-	versionHandler := api.NewVersionHandler(func(ctx context.Context) (int, bool, error) {
-		var version int
-		var dirty bool
-		// golang-migrate держит в этой таблице ровно одну строку.
-		err := db.Pool.QueryRow(ctx,
-			`SELECT version, dirty FROM schema_migrations`).Scan(&version, &dirty)
-		return version, dirty, err
-	}, Commit)
-	feedbackHandler := api.NewFeedbackHandler(
-		feedbackRepo, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders,
-	)
-	pageSuggestionRepo := repository.NewPageSuggestionRepository(db.Pool)
-	pageSuggestionHandler := api.NewPageSuggestionHandler(
-		pageSuggestionRepo, pageRepo, pageVersionRepo, fragmentRepo, documentCutRepo,
-		cfg.JWT.Secret, cfg.Server.TrustProxyHeaders,
-	)
-	// Настоящее хранилище (pageCache), а не общий rangeCache: сбросу нужно
-	// уметь удалять и мести файлы, а не только читать и наполнять.
-	cacheHandler := api.NewCacheHandler(pageCache, chapterRepo)
-	// Читатели глазами администратора: разбор жалобы идёт от ника к подборкам.
-	readerAdminHandler := api.NewReaderAdminHandler(userRepo, collectionRepo)
-
-	// MCP-сервер читальни: поиск тот же (и те же два слота, что у сайта —
-	// через свои ворота), текст глав — через seoHandler с его кэшем, который
-	// сбрасывает снятие тома.
-	mcpHandler, mcpGates := mcp.NewHandlerWithGates(mcp.Deps{
-		BaseURL:     cfg.Server.PublicBaseURL,
-		Search:      searchRepo,
-		SearchSlots: searchHandler.Slots(),
-		Text:        seoHandler,
-		Works:       workRepo,
-		Chapters:    chapterRepo,
-		Library:     api.NewMCPSource(downloadSource),
-		Stats:       statsRecorder,
-	})
-	// Каталог OPDS: поиск тот же (те же слоты и таймаут), файлы — тот же
-	// /api/.../download.
-	opdsHandler := opds.NewHandler(api.NewOPDSSource(
-		editionRepo, workRepo, chapterRepo, repository.NewOPDSRepository(db.Pool), searchHandler,
-	), cfg.Server.PublicBaseURL)
-	appMetrics.RegisterSlots("heavy", seoHandler.HeavySlots())
-	for name, s := range mcpGates {
-		appMetrics.RegisterSlots(name, s)
-	}
-
-	// Create router
-	router := api.NewRouter(
-		authHandler,
-		workHandler,
-		pageHandler,
-		chapterHandler,
-		categoryHandler,
-		documentHandler,
-		documentCutHandler,
-		documentReviewHandler,
-		userHandler,
-		exportHandler,
-		editionHandler,
-		shelfHandler,
-		indexHandler,
-		collectionHandler,
-		downloadHandler,
-		readingHandler,
-		versionHandler,
-		feedbackHandler,
-		pageSuggestionHandler,
-		searchHandler,
-		seoHandler,
-		cacheHandler,
-		readerAdminHandler,
-		authService,
-	).WithMCP(mcpHandler).
-		WithOPDS(opdsHandler).
-		WithAudio(audioHandler).
-		WithHighlights(highlightHandler).
-		WithSite(api.NewSiteHandler(cfg.Site)).
-		WithJournals(api.NewJournalHandler(journalRepo), api.NewPersonHandler(personRepo, personRepo, chapterRepo)).
-		WithStaticArchive(api.NewStaticArchiveHandler(cfg.Server.StaticArchiveURL, &http.Client{Timeout: 5 * time.Second})).
-		WithStats(api.NewStatsHandler(statsRecorder, statsRepo, appMetrics, cfg.Server.TrustProxyHeaders)).
-		WithMetrics(appMetrics)
-
-	// Setup routes
-	r := router.Setup()
 
 	// Seed admin user if not exists
-	if err := seedAdminUser(userRepo, authService, &cfg.Admin); err != nil {
+	if err := seedAdminUser(repository.NewUserRepository(db.Pool), auth.NewService(&cfg.JWT), &cfg.Admin); err != nil {
 		log.Printf("Warning: Failed to seed admin user: %v", err)
 	}
 

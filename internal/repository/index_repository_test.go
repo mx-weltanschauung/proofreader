@@ -320,7 +320,7 @@ func TestListConceptsKindReflectsAnyArticle(t *testing.T) {
 	mixedArticle := seedArticle(t, pool, mixed, edition2ID, &work2ID, "смешанное понятие (тест)")
 	setArticleDetails(t, pool, mixedArticle, models.IndexConceptKindArticle, "текст", 3, 4)
 
-	concepts, err := repo.ListConcepts(ctx, "", "", 100, 0)
+	concepts, err := repo.ListConcepts(ctx, "", "", 100, 0, true)
 	if err != nil {
 		t.Fatalf("ListConcepts: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestListConceptsReportsEditionIDs(t *testing.T) {
 	seedArticle(t, pool, both, edition1ID, &work1ID, "два издания (тест)")
 	seedArticle(t, pool, both, edition2ID, &work2ID, "два издания (тест)")
 
-	concepts, err := repo.ListConcepts(ctx, "", "", 100, 0)
+	concepts, err := repo.ListConcepts(ctx, "", "", 100, 0, true)
 	if err != nil {
 		t.Fatalf("ListConcepts: %v", err)
 	}

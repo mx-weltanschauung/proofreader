@@ -91,3 +91,114 @@ func TestJournalIssueDoesNotLeakIntoChannels(t *testing.T) {
 		t.Error("номер в выдаче поиска OPDS (VolumesByID)")
 	}
 }
+
+// closedFixtureWithText — newClosedFixture, у каждой работы полоса и глава:
+// каталог краулера перечисляет главы, а OPDS берёт только тома с полосами.
+func closedFixtureWithText(t *testing.T) (*closedFixture, []*models.Work) {
+	t.Helper()
+	ctx := context.Background()
+	f, _ := newClosedFixture(t)
+	pool := testPool(t)
+	all := []*models.Work{f.open, f.closedSelf, f.childOfClosed, f.inClosedEdition,
+		f.childInClosedEdition, f.inClosedJournal, f.closedSelfAndEdition}
+	for _, w := range all {
+		if _, err := pool.Exec(ctx, `INSERT INTO pages (work_id, page_number, content_markdown, status)
+			VALUES ($1, 1, 'текст', 'не_вычитана')`, w.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page)
+			VALUES ($1, 'Глава', 'chapter', 1, 1, 1)`, w.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return f, all
+}
+
+// TestSEOCatalogSkipsClosed — карта сайта (и всё, что строится из каталога
+// краулера) не называет закрытого: ни работы любым путём закрытости, ни её
+// глав, ни закрытого издания. Открытое при этом на месте — иначе пустой
+// каталог прошёл бы проверку.
+func TestSEOCatalogSkipsClosed(t *testing.T) {
+	ctx := context.Background()
+	f, all := closedFixtureWithText(t)
+	seo := NewSEORepository(testPool(t))
+
+	rows, err := seo.Works(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[int64]bool{}
+	for _, r := range rows {
+		seen[r.ID] = true
+	}
+	chRows, err := seo.Chapters(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chSeen := map[int64]bool{}
+	for _, r := range chRows {
+		chSeen[r.WorkID] = true
+	}
+	if !seen[f.open.ID] || !chSeen[f.open.ID] {
+		t.Fatal("открытой работы нет в каталоге — проверка ничего не значит")
+	}
+	for _, w := range all[1:] {
+		if seen[w.ID] {
+			t.Errorf("закрытая работа %q в каталоге работ", w.Title)
+		}
+		if chSeen[w.ID] {
+			t.Errorf("глава закрытой работы %q в каталоге глав", w.Title)
+		}
+	}
+
+	edRows, err := seo.Editions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edSeen := map[int64]bool{}
+	for _, r := range edRows {
+		edSeen[r.ID] = true
+	}
+	if !edSeen[f.openEdit.ID] {
+		t.Error("открытого издания нет в каталоге")
+	}
+	if edSeen[f.closedEdition.ID] {
+		t.Error("закрытое издание в каталоге")
+	}
+}
+
+// TestOPDSVolumesSkipClosed — «Новые поступления» и тома выдачи поиска OPDS
+// не берут закрытого тома.
+func TestOPDSVolumesSkipClosed(t *testing.T) {
+	ctx := context.Background()
+	f, all := closedFixtureWithText(t)
+	opds := NewOPDSRepository(testPool(t))
+
+	recent, err := opds.RecentVolumes(ctx, 1000, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[int64]bool{}
+	for _, w := range recent {
+		seen[w.ID] = true
+	}
+	if !seen[f.open.ID] {
+		t.Fatal("открытого тома нет в «новых поступлениях» — проверка ничего не значит")
+	}
+	ids := []int64{}
+	for _, w := range all {
+		ids = append(ids, w.ID)
+	}
+	byID, err := opds.VolumesByID(ctx, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byID) != 1 || byID[0].ID != f.open.ID {
+		t.Errorf("VolumesByID: %d томов, ждали только открытый", len(byID))
+	}
+	for _, w := range all[1:] {
+		if seen[w.ID] {
+			t.Errorf("закрытый том %q в «новых поступлениях»", w.Title)
+		}
+	}
+}

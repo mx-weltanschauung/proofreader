@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { JournalSummary } from '../types';
+import { ClosedBadge } from './ClosedBadge';
 import { journalPath } from '../utils/paths';
 import { plural } from '../utils/volumeLabel';
 import './JournalShelf.css';
@@ -21,7 +22,10 @@ export function JournalShelf({ journals }: { journals: JournalSummary[] }) {
         {journals.map((j) => (
           <li key={j.id}>
             <Link to={journalPath(j)} className="journal-spine">
-              <span className="journal-spine-title">{j.title}</span>
+              <span className="journal-spine-title">
+                {j.title}
+                {j.closed && <ClosedBadge />}
+              </span>
               <span className="journal-spine-meta">
                 {[years(j), plural(j.issues_total, ['номер', 'номера', 'номеров'])]
                   .filter(Boolean)

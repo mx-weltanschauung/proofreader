@@ -27,7 +27,11 @@ func collectionWorkIDs(rows []repository.ItemRow) []int64 {
 // Заголовок берётся живым, из chapters/works: переименование главы в томе
 // доезжает до подборки само. Снимок подставляется только когда источник
 // пропал — тогда строка помечается broken, а поддерева у неё нет.
-func buildCollectionTOC(rows []repository.ItemRow, chapters []*models.Chapter) []*models.CollectionEntry {
+//
+// Закрытая работа проверяется РАНЬШЕ «пропавшего источника»: строка такой
+// работы — unavailable без заглавия, автора и источника, а снимок заглавия
+// (он вернул бы название закрытого) не печатается ни в каком состоянии.
+func buildCollectionTOC(rows []repository.ItemRow, chapters []*models.Chapter, closed ClosedSet) []*models.CollectionEntry {
 	byID, childrenOf, topLevel := indexChapters(chapters)
 
 	entries := make([]*models.CollectionEntry, 0, len(rows))
@@ -35,6 +39,16 @@ func buildCollectionTOC(rows []repository.ItemRow, chapters []*models.Chapter) [
 		offset := 0
 		if row.PageOffset != nil {
 			offset = *row.PageOffset
+		}
+
+		if itemIsClosed(row.Item, closed) {
+			entries = append(entries, &models.CollectionEntry{
+				ID:          row.Item.ID,
+				Kind:        row.Item.Kind,
+				OrderNumber: row.Item.OrderNumber,
+				Unavailable: true,
+			})
+			continue
 		}
 
 		entry := &models.CollectionEntry{
@@ -80,6 +94,13 @@ func buildCollectionTOC(rows []repository.ItemRow, chapters []*models.Chapter) [
 	}
 
 	return entries
+}
+
+// itemIsClosed — стоит ли элемент подборки на закрытой работе. Закрытость
+// ищется по id работы самого элемента, а не по строке источника: так проверка
+// не зависит от того, нашёл ли запрос саму работу.
+func itemIsClosed(item models.CollectionItem, closed ClosedSet) bool {
+	return item.WorkID != nil && closed.Has(*item.WorkID)
 }
 
 // indexChapters раскладывает плоский список глав в три указателя: по id, по

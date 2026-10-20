@@ -27,9 +27,9 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition)
 	if edition.VolumeNumbering == "" {
 		edition.VolumeNumbering = models.VolumeNumberingPrinted
 	}
-	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering"}
+	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering", "closed"}
 	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned,
-		edition.VolumeNumbering}
+		edition.VolumeNumbering, edition.Closed}
 	if err := insertRow(ctx, r.pool, "editions", edition.ID, cols, args,
 		&edition.ID, &edition.CreatedAt, &edition.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create edition: %w", err)
@@ -40,7 +40,7 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition)
 // GetByID retrieves an edition by ID
 func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, closed, created_at, updated_at
 		FROM editions
 		WHERE id = $1
 	`
@@ -48,7 +48,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 	var edition models.Edition
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.CreatedAt, &edition.UpdatedAt,
+		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
 	)
 
 	if err != nil {
@@ -64,7 +64,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 // List retrieves all editions
 func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, closed, created_at, updated_at
 		FROM editions
 		ORDER BY title
 	`
@@ -80,7 +80,7 @@ func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error)
 		var edition models.Edition
 		err := rows.Scan(
 			&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.CreatedAt, &edition.UpdatedAt,
+			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan edition: %w", err)
@@ -119,9 +119,18 @@ func (r *EditionRepository) Update(ctx context.Context, edition *models.Edition)
 	return nil
 }
 
-// Delete deletes an edition
+// ErrEditionClosed — удаление закрытого издания отвергнуто: works.edition_id
+// стоит ON DELETE SET NULL, и снос строки молча открыл бы все его тома.
+var ErrEditionClosed = errors.New("edition is closed")
+
+// Delete deletes an edition.
+//
+// Закрытое не удаляется: условие NOT closed стоит в самом DELETE, а не
+// проверкой до него, — закрытие, пришедшее между проверкой и удалением,
+// иначе открыло бы тома всё равно. Ноль удалённых строк различается
+// дочитыванием: издание есть и закрыто — ErrEditionClosed, нет — «не найдено».
 func (r *EditionRepository) Delete(ctx context.Context, id int64) error {
-	query := `DELETE FROM editions WHERE id = $1`
+	query := `DELETE FROM editions WHERE id = $1 AND NOT closed`
 
 	result, err := r.pool.Exec(ctx, query, id)
 	if err != nil {
@@ -129,6 +138,11 @@ func (r *EditionRepository) Delete(ctx context.Context, id int64) error {
 	}
 
 	if result.RowsAffected() == 0 {
+		var closed bool
+		err := r.pool.QueryRow(ctx, `SELECT closed FROM editions WHERE id = $1`, id).Scan(&closed)
+		if err == nil && closed {
+			return ErrEditionClosed
+		}
 		return fmt.Errorf("edition not found")
 	}
 
@@ -177,9 +191,11 @@ func (r *EditionRepository) ListWorks(ctx context.Context, editionID int64) ([]*
 	return works, nil
 }
 
-// workSummariesQueryTemplate — тело запроса сводок с тремя дырами: %[1]s —
+// workSummariesQueryTemplate — тело запроса сводок с пятью дырами: %[1]s —
 // условие отбора томов, %[2]s — приставка к ORDER BY, %[3]s — ингредиенты
-// слага и признак условной нумерации (см. workSummariesSlugColumns ниже). Тяжёлые CTE (page_stats
+// слага и признак условной нумерации (см. workSummariesSlugColumns ниже),
+// %[4]s — причина закрытости (closedByCaseW), %[5]s — её соединения
+// (closedByJoinsW, closed_repository.go). Тяжёлые CTE (page_stats
 // по всем страницам, works_only по всем главам) не зависят от собрания и
 // считаются по всему корпусу в обоих вариантах; фильтр стоит только в финальном
 // SELECT. Отсюда и смысл общего варианта: запрос по всем собраниям обходится
@@ -244,6 +260,7 @@ const workSummariesQueryTemplate = `
 	       w.page_offset, w.role, w.precedes_volume, w.shelf_label,
 	       w.owner_id, w.created_at, w.updated_at,
 	       %[3]s,
+	       w.closed, %[4]s,
 	       COALESCE(ps.pages_total, 0),
 	       COALESCE(ps.by_status, '{}'::jsonb),
 	       COALESCE(cs.chapters_total, 0),
@@ -251,7 +268,7 @@ const workSummariesQueryTemplate = `
 	FROM works w
 	LEFT JOIN page_stats ps ON ps.work_id = w.id
 	LEFT JOIN chapter_stats cs ON cs.work_id = w.id
-	LEFT JOIN top_works tw ON tw.work_id = w.id
+	LEFT JOIN top_works tw ON tw.work_id = w.id%[5]s
 	WHERE %[1]s
 	-- (w.role <> 'edition_front_matter') — false у предваряющих работ, true у
 	-- томов; false < true, поэтому предисловия сортируются первыми без CASE.
@@ -280,11 +297,13 @@ var workSummariesSlugColumns = strings.ReplaceAll(workSlugColumns, "works.", "w.
 var (
 	listWorkSummariesQuery = fmt.Sprintf(
 		workSummariesQueryTemplate, "w.edition_id = $1", "", workSummariesSlugColumns,
+		closedByCaseW, closedByJoinsW,
 	)
 	// Общий вариант группируется по собранию первым ключом, чтобы читающий
 	// ответ мог резать его подряд, не собирая карту.
 	listAllWorkSummariesQuery = fmt.Sprintf(
 		workSummariesQueryTemplate, "w.edition_id IS NOT NULL", "w.edition_id,", workSummariesSlugColumns,
+		closedByCaseW, closedByJoinsW,
 	)
 )
 
@@ -327,7 +346,7 @@ func (r *EditionRepository) scanSummaries(
 			&s.FilePath, &s.Status, &s.EditionID, &s.VolumeNumber, &s.VolumePart,
 			&s.PageOffset, &s.Role, &s.PrecedesVolume, &s.ShelfLabel,
 			&s.OwnerID, &s.CreatedAt, &s.UpdatedAt,
-			&slugEdition, &slugVolume, &slugPart, &s.VolumeOrderOnly,
+			&slugEdition, &slugVolume, &slugPart, &s.VolumeOrderOnly, &s.Closed, &s.ClosedBy,
 			&s.PagesTotal, &s.PagesByStatus, &s.ChaptersTotal, &s.TopChapters,
 		)
 		if err != nil {

@@ -27,10 +27,21 @@ type fakeJournalStore struct {
 	createdWork  *models.Work
 	updatedTitle string
 	issue        *models.JournalIssue
+	// list — что отдаёт List; includeClosed — с каким признаком его звали.
+	list          []models.JournalSummary
+	includeClosed bool
 }
 
-func (f *fakeJournalStore) List(context.Context) ([]models.JournalSummary, error) {
-	return []models.JournalSummary{}, nil
+func (f *fakeJournalStore) List(_ context.Context, includeClosed bool) ([]models.JournalSummary, error) {
+	f.includeClosed = includeClosed
+	out := []models.JournalSummary{}
+	for _, s := range f.list {
+		if s.Closed && !includeClosed {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out, nil
 }
 func (f *fakeJournalStore) GetByID(_ context.Context, id int64) (*models.Journal, error) {
 	if f.journal == nil || f.journal.ID != id {
@@ -38,8 +49,9 @@ func (f *fakeJournalStore) GetByID(_ context.Context, id int64) (*models.Journal
 	}
 	return f.journal, nil
 }
-func (f *fakeJournalStore) Detail(_ context.Context, slug string) (*models.JournalDetail, error) {
-	if f.journal == nil || f.journal.Slug != slug {
+func (f *fakeJournalStore) Detail(_ context.Context, slug string, includeClosed bool) (*models.JournalDetail, error) {
+	f.includeClosed = includeClosed
+	if f.journal == nil || f.journal.Slug != slug || (f.journal.Closed && !includeClosed) {
 		return nil, repository.ErrJournalNotFound
 	}
 	return &models.JournalDetail{Journal: f.journal, Years: []models.JournalYear{}}, nil

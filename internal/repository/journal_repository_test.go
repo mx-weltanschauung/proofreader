@@ -110,7 +110,7 @@ func TestJournalDetailGroupsByYearAndDeleteCascades(t *testing.T) {
 	newIssue(t, repo, j, 1925, 7, 8)
 	newIssue(t, repo, j, 1925, 1, 2)
 
-	d, err := repo.Detail(ctx, "jr-detail")
+	d, err := repo.Detail(ctx, "jr-detail", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestJournalDetailGroupsByYearAndDeleteCascades(t *testing.T) {
 	if d.Years[1].Issues[0].WorkSlug == "" {
 		t.Fatal("у номера пустой слаг работы")
 	}
-	list, err := repo.List(ctx)
+	list, err := repo.List(ctx, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,11 +140,11 @@ func TestJournalDetailGroupsByYearAndDeleteCascades(t *testing.T) {
 	if err := works.Delete(ctx, w1.ID); err != nil {
 		t.Fatal(err)
 	}
-	d, _ = repo.Detail(ctx, "jr-detail")
+	d, _ = repo.Detail(ctx, "jr-detail", true)
 	if len(d.Years) != 1 {
 		t.Fatalf("после удаления работы номера годы: %+v", d.Years)
 	}
-	if _, err := repo.Detail(ctx, "net-takogo"); !errors.Is(err, ErrJournalNotFound) {
+	if _, err := repo.Detail(ctx, "net-takogo", true); !errors.Is(err, ErrJournalNotFound) {
 		t.Fatalf("неизвестный журнал: %v", err)
 	}
 }

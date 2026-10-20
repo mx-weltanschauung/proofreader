@@ -54,6 +54,9 @@ type SearchQuery struct {
 	Text       string
 	EditionIDs []int64
 	WorkIDs    []int64
+	// IncludeClosed — показывать закрытые работы (их видят сотрудники).
+	// Нулевое значение прячет: MCP и OPDS зовут поиск без флага.
+	IncludeClosed bool
 }
 
 // SearchTerms — ответ на ?terms_only=1: только леммы для подсветки.

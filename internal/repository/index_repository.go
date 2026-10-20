@@ -743,18 +743,90 @@ func (r *IndexRepository) IncomingLinks(ctx context.Context, conceptID int64) ([
 // ветке уже правили дважды (kind по EXISTS, затем work_id nullable), и задача
 // 11 будет её трогать снова — если меняешь список колонок, проверь, что
 // agrегат и сканирование edition_ids ниже пережили правку.
-const listConceptsQuery = `
+// Закрытое в указателе (спека закрытых работ, «Указатель»). Статья скрыта,
+// если закрыто её издание или её работа-указатель; адрес скрыт, если он
+// разрешается (издание статьи, номер и часть тома) в закрытую работу. Статья,
+// у которой адреса были и все скрыты, а своего текста нет, ничего не несёт и
+// считается скрытой. Правило одно с Go-стороной (visibleConcept,
+// internal/api/closed_concept.go): расхождение показало бы в списке понятие,
+// которое страница отвечает как несуществующее.
+//
+// Подзапрос по closed_works — НЕкоррелированный IN: Postgres считает его
+// множество один раз (см. scopeConditionFor в search_repository.go).
+func closedReferenceSQL(ref, art string) string {
+	return `EXISTS (SELECT 1 FROM works cw
+	      WHERE cw.edition_id = ` + art + `.edition_id
+	        AND cw.volume_number = ` + ref + `.volume_number
+	        AND coalesce(cw.volume_part, '') = coalesce(` + ref + `.volume_part, '')
+	        AND cw.id IN (SELECT id FROM closed_works))`
+}
+
+// visibleArticleSQL — условие «статья видна не-сотруднику» над статьёй art.
+func visibleArticleSQL(art string) string {
+	return `(
+	  NOT EXISTS (SELECT 1 FROM editions ae WHERE ae.id = ` + art + `.edition_id AND ae.closed)
+	  AND (` + art + `.work_id IS NULL OR ` + art + `.work_id NOT IN (SELECT id FROM closed_works))
+	  AND (
+	    NOT EXISTS (SELECT 1 FROM index_references vr WHERE vr.article_id = ` + art + `.id)
+	    OR btrim(` + art + `.article_markdown, '` + models.BlankCutset + `') <> ''
+	    OR EXISTS (SELECT 1 FROM index_references vr
+	               WHERE vr.article_id = ` + art + `.id AND NOT ` + closedReferenceSQL("vr", art) + `)
+	  ))`
+}
+
+// visibleConceptCond — условие «понятие видно не-сотруднику» над понятием c:
+// без статей вовсе (как было) либо хоть одна видимая статья.
+var visibleConceptCond = `(
+	  NOT EXISTS (SELECT 1 FROM index_concept_articles va WHERE va.concept_id = c.id)
+	  OR EXISTS (SELECT 1 FROM index_concept_articles va WHERE va.concept_id = c.id AND ` + visibleArticleSQL("va") + `)
+	)`
+
+// hiddenConceptSlugsQuery — какие из слагов ($1) скрыты от не-сотрудника: понятие
+// есть, статьи у него есть и ни одна не видна. Правило то же, что у списка
+// (visibleConceptCond), — один запрос на пачку слагов вместо понятия и карты
+// томов на каждый.
+var hiddenConceptSlugsQuery = `
+	SELECT c.slug FROM index_concepts c
+	WHERE c.slug = ANY($1::text[]) AND NOT ` + visibleConceptCond
+
+// HiddenConceptSlugs отвечает, какие из слагов скрыты закрытым. Неизвестный
+// слаг не скрыт (отсылка в никуда остаётся как была). Ошибка базы — ошибка:
+// «не удалось узнать» нельзя читать как «не скрыто».
+func (r *IndexRepository) HiddenConceptSlugs(ctx context.Context, slugs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(slugs) == 0 {
+		return out, nil
+	}
+	rows, err := r.pool.Query(ctx, hiddenConceptSlugsQuery, slugs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find hidden concepts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, fmt.Errorf("failed to scan hidden concept: %w", err)
+		}
+		out[slug] = true
+	}
+	return out, rows.Err()
+}
+
+var listConceptsQuery = `
 	SELECT c.id, c.title, c.slug, c.sort_key, c.title_key,
 	       CASE WHEN EXISTS (
 	           SELECT 1 FROM index_concept_articles a
 	           WHERE a.concept_id = c.id AND a.kind = 'article'
+	             AND ($5 OR ` + visibleArticleSQL("a") + `)
 	       ) THEN 'article' ELSE 'redirect' END,
 	       c.created_at, c.updated_at,
 	       COALESCE((SELECT array_agg(DISTINCT a.edition_id)
-	                 FROM index_concept_articles a WHERE a.concept_id = c.id), '{}') AS edition_ids
+	                 FROM index_concept_articles a WHERE a.concept_id = c.id
+	                   AND ($5 OR ` + visibleArticleSQL("a") + `)), '{}') AS edition_ids
 	FROM index_concepts c
 	WHERE ($1 = '' OR c.title ILIKE '%' || $1 || '%')
 	  AND ($2 = '' OR c.sort_key LIKE $2 || '%')
+	  AND ($5 OR ` + visibleConceptCond + `)
 	ORDER BY c.sort_key, c.id
 	LIMIT $3 OFFSET $4
 `
@@ -763,8 +835,12 @@ const listConceptsQuery = `
 // optionally filtered by a title substring and/or a sort-key prefix
 // (first letter). article_markdown is intentionally left empty: the
 // navigator doesn't need it, and it is by far the heaviest column.
-func (r *IndexRepository) ListConcepts(ctx context.Context, query, letter string, limit, offset int) ([]*models.IndexConcept, error) {
-	rows, err := r.pool.Query(ctx, listConceptsQuery, query, letter, limit, offset)
+//
+// includeClosed ложь прячет закрытое: понятие, у которого не осталось ни
+// видимой статьи, выпадает из списка, а kind и edition_ids считаются по
+// видимым статьям (id закрытого собрания в агрегате сам рассказал бы о нём).
+func (r *IndexRepository) ListConcepts(ctx context.Context, query, letter string, limit, offset int, includeClosed bool) ([]*models.IndexConcept, error) {
+	rows, err := r.pool.Query(ctx, listConceptsQuery, query, letter, limit, offset, includeClosed)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list concepts: %w", err)
 	}

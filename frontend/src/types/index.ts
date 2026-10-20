@@ -80,6 +80,8 @@ export interface Journal {
   title: string;
   subtitle: string;
   description: string;
+  /** Закрыт ли журнал; поле приходит только сотруднику. */
+  closed?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -203,6 +205,10 @@ export interface Work {
   description?: string;
   /** печатная страница = page_number + page_offset */
   page_offset: number;
+  /** Закрыта ли работа для всех, кроме сотрудников; поле приходит только им. */
+  closed?: boolean;
+  /** Откуда закрытие: `''|'work'|'parent'|'edition'|'journal'`. */
+  closed_by?: string;
   created_at: string;
   updated_at: string;
 }
@@ -220,6 +226,8 @@ export interface Edition {
    * со сканов, из самих данных о работах не выводится никак.
    */
   volumes_planned?: number;
+  /** Закрыто ли собрание; поле приходит только сотруднику. */
+  closed?: boolean;
   /**
    * Нумерация томов: `printed` — номер стоит на книге и печатается читателю;
    * `order` — условная, номер только задаёт порядок полки. Старый сервер
@@ -270,6 +278,8 @@ export interface CollectionEntry {
   author: string;
   /** Источник удалён: строка живёт снимком заголовка, читать её нечего. */
   broken: boolean;
+  /** Источник закрыт: ни заглавия, ни источника сервер не отдаёт. */
+  unavailable?: boolean;
   source?: CollectionSource;
   children?: CollectionTocNode[];
 }

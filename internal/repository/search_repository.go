@@ -51,16 +51,35 @@ func NewSearchRepository(pool *pgxpool.Pool) *SearchRepository {
 	return &SearchRepository{pool: pool}
 }
 
-// begin открывает транзакцию с локальным statement_timeout: SET LOCAL живёт
-// только внутри неё и не трогает соединение пула.
+// searchSettings — SET LOCAL поисковой транзакции; живут только внутри неё
+// и соединение пула не трогают.
+//
+// jit = off: цена запроса томов выше jit_above_cost, и компиляция выражений
+// съедала больше, чем экономила. force_custom_plan: pgx кэширует именованные
+// операторы, и с шестого исполнения на соединении Postgres переходит на общий
+// план — websearch_to_tsquery($1) там не сворачивается в константу, оценка
+// совпадений слепа. Замер на копии корпуса (20.10.2026, «революция», 570
+// работ): тома 1,5 с с jit против 0,73 с без него, но без force_custom_plan
+// выигрыш живёт пять исполнений, дальше общий план — 2,0—2,2 с; обе
+// настройки вместе — 0,73 с ровно. Главы, понятия, полосы тома — без
+// изменений. Числа — отчёт final-fix-report закрытых работ.
+var searchSettings = []string{
+	"statement_timeout = '" + searchStatementTimeout + "'",
+	"jit = off",
+	"plan_cache_mode = force_custom_plan",
+}
+
+// begin открывает транзакцию с локальными настройками поиска (searchSettings).
 func (r *SearchRepository) begin(ctx context.Context) (pgx.Tx, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin search transaction: %w", err)
 	}
-	if _, err := tx.Exec(ctx, "SET LOCAL statement_timeout = '"+searchStatementTimeout+"'"); err != nil {
-		_ = tx.Rollback(ctx)
-		return nil, fmt.Errorf("failed to set statement_timeout: %w", err)
+	for _, setting := range searchSettings {
+		if _, err := tx.Exec(ctx, "SET LOCAL "+setting); err != nil {
+			_ = tx.Rollback(ctx)
+			return nil, fmt.Errorf("failed to set %s: %w", setting, err)
+		}
 	}
 	return tx, nil
 }
@@ -95,6 +114,9 @@ func termsIn(ctx context.Context, tx pgx.Tx, text string) ([]string, error) {
 // Terms — леммы разобранного запроса без исключённых. Пустой срез означает
 // «после разбора ничего не осталось» (одни знаки препинания или одни
 // исключения); обработчик отвечает на это 400.
+//
+// IncludeClosed здесь нарочно не читается: леммы разбираются из текста запроса и
+// данных работ не касаются.
 func (r *SearchRepository) Terms(ctx context.Context, q models.SearchQuery) ([]string, error) {
 	tx, err := r.begin(ctx)
 	if err != nil {
@@ -141,7 +163,18 @@ const searchShownVolumeColumns = `CASE WHEN e.volume_numbering = 'order' THEN NU
 // Тома разворачиваются в сам том и его передние листы (parent_work_id):
 // читатель, отметивший том, ждёт его титул, содержание и предисловие внутри
 // области. Собрание служебной работы по-прежнему берётся у родителя.
-func scopeConditionFor(editionExpr string) string {
+//
+// Закрытое — НЕКОРРЕЛИРОВАННЫЙ `NOT IN (SELECT id FROM closed_works)`: Postgres
+// считает его множество один раз на запрос (хешированный подплан), а не на
+// каждую совпавшую полосу — `NOT EXISTS` внутри OR в антисоединение не
+// превращается и гнал work_closed_by по строке (замер — отчёт задачи 5).
+//
+// closedParam — номер параметра «показывать закрытое» ($4 у томов, $5 у глав,
+// понятий и отрывков томов): ложь прячет закрытую работу (closed_works уже
+// несёт и родителя, и собрание, и журнал), поэтому передний лист закрытого
+// тома и том закрытого собрания уходят вместе с ним. У статьи указателя без
+// работы (w NULL) закрытости нет — скрывает только закрытая работа.
+func scopeConditionFor(editionExpr, closedParam string) string {
 	return `
 	  AND (
 	    (coalesce(cardinality($2::bigint[]), 0) = 0
@@ -149,13 +182,19 @@ func scopeConditionFor(editionExpr string) string {
 	    OR ` + editionExpr + ` = ANY($2::bigint[])
 	    OR w.id = ANY($3::bigint[])
 	    OR w.parent_work_id = ANY($3::bigint[])
-	  )`
+	  )
+	  AND (` + closedParam + ` OR w.id IS NULL OR w.id NOT IN (SELECT id FROM closed_works))`
 }
 
 // Собрание строки, у которой работа есть всегда: главы, тома, полосы тома.
 const workEditionExpr = `coalesce(w.edition_id, p.edition_id)`
 
-var scopeCondition = scopeConditionFor(workEditionExpr)
+// Условия под разное число параметров: у томов флаг закрытого — $4, у глав,
+// понятий и отрывков томов — $5 (четвёртым стоит предел).
+var (
+	scopeCondition    = scopeConditionFor(workEditionExpr, "$4")
+	scopeConditionLim = scopeConditionFor(workEditionExpr, "$5")
+)
 
 // Каталог и тома. Собрание служебной работы (передних листов) — у родителя:
 // своего edition_id у неё нет, а искать «в собрании» её полосы должно.
@@ -172,7 +211,7 @@ var searchChaptersQuery = `
 	LEFT JOIN works p ON p.id = w.parent_work_id
 	LEFT JOIN editions e ON e.id = coalesce(w.edition_id, p.edition_id)
 	WHERE to_tsvector('ru', c.title) @@ q.tsq
-	` + scopeCondition + `
+	` + scopeConditionLim + `
 	ORDER BY c.is_apparatus, ts_rank(to_tsvector('ru', c.title), q.tsq) DESC, c.id
 	LIMIT $4
 `
@@ -205,7 +244,12 @@ var searchConceptsQuery = `
 	    LEFT JOIN works w ON w.id = a.work_id
 	    LEFT JOIN works p ON p.id = w.parent_work_id
 	    WHERE a.concept_id = ic.id
-	    ` + scopeConditionFor(`coalesce(w.edition_id, p.edition_id, a.edition_id)`) + `
+	    ` + scopeConditionFor(`coalesce(w.edition_id, p.edition_id, a.edition_id)`, "$5") + `
+	    -- Видимость статьи — то же правило, что у списка понятий и страницы
+	    -- (visibleArticleSQL): собрание, работа-указатель, адреса в закрытых
+	    -- томах и пустая оболочка без текста. Свой вариант правила разошёлся бы
+	    -- с ними: поиск называл бы понятие, чья страница отвечает 404.
+	    AND ($5 OR ` + visibleArticleSQL("a") + `)
 	  )
 	ORDER BY ts_rank(to_tsvector('ru', ic.title), q.tsq) DESC, ic.sort_key, ic.id
 	LIMIT $4
@@ -272,7 +316,7 @@ func (r *SearchRepository) Search(ctx context.Context, q models.SearchQuery) (*m
 		return res, tx.Commit(ctx)
 	}
 
-	rows, err := tx.Query(ctx, searchChaptersQuery, q.Text, idList(q.EditionIDs), idList(q.WorkIDs), catalogLimit)
+	rows, err := tx.Query(ctx, searchChaptersQuery, q.Text, idList(q.EditionIDs), idList(q.WorkIDs), catalogLimit, q.IncludeClosed)
 	if err != nil {
 		return nil, wrapSearchErr("failed to search chapters", err)
 	}
@@ -302,7 +346,7 @@ func (r *SearchRepository) Search(ctx context.Context, q models.SearchQuery) (*m
 		return nil, wrapSearchErr("failed to read chapter hits", err)
 	}
 
-	rows, err = tx.Query(ctx, searchConceptsQuery, q.Text, idList(q.EditionIDs), idList(q.WorkIDs), catalogLimit)
+	rows, err = tx.Query(ctx, searchConceptsQuery, q.Text, idList(q.EditionIDs), idList(q.WorkIDs), catalogLimit, q.IncludeClosed)
 	if err != nil {
 		return nil, wrapSearchErr("failed to search concepts", err)
 	}
@@ -319,7 +363,7 @@ func (r *SearchRepository) Search(ctx context.Context, q models.SearchQuery) (*m
 		return nil, wrapSearchErr("failed to read concept hits", err)
 	}
 
-	rows, err = tx.Query(ctx, searchVolumesQuery, q.Text, idList(q.EditionIDs), idList(q.WorkIDs))
+	rows, err = tx.Query(ctx, searchVolumesQuery, q.Text, idList(q.EditionIDs), idList(q.WorkIDs), q.IncludeClosed)
 	if err != nil {
 		return nil, wrapSearchErr("failed to search volumes", err)
 	}
@@ -413,6 +457,7 @@ const searchPagesQuery = `
 	CROSS JOIN q
 	JOIN works w ON w.id = pg.work_id` + pageHitChapterJoin + `
 	WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq` + chapterCondition + `
+	  AND ($6 OR pg.work_id NOT IN (SELECT id FROM closed_works))
 	ORDER BY pg.page_number
 	LIMIT $4 OFFSET $5
 `
@@ -438,7 +483,7 @@ var searchVolumePagesQuery = `
 	  JOIN works w ON w.id = h.work_id
 	  LEFT JOIN works p ON p.id = w.parent_work_id
 	  WHERE true
-	  ` + scopeCondition + `
+	  ` + scopeConditionLim + `
 	),
 	top AS (
 	  SELECT v.work_id, t.page_number
@@ -493,6 +538,7 @@ const searchPagesFacetQuery = `
 	  SELECT pg.page_number
 	  FROM pages pg CROSS JOIN q
 	  WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq
+	    AND ($4 OR pg.work_id NOT IN (SELECT id FROM closed_works))
 	)
 	SELECT ch.id, ch.title, count(*)::int AS hits, (count(*) OVER ())::int AS total
 	FROM hits h
@@ -510,6 +556,7 @@ const searchPagesCountQuery = `
 	WITH q AS (SELECT websearch_to_tsquery('ru', $1) AS tsq)
 	SELECT count(*)::int FROM pages pg CROSS JOIN q
 	WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq` + chapterCondition + `
+	  AND ($4 OR pg.work_id NOT IN (SELECT id FROM closed_works))
 `
 
 // SearchPages — полосы одного тома в порядке чтения. Неизвестный том — пустой
@@ -533,10 +580,10 @@ func (r *SearchRepository) SearchPages(
 		return res, tx.Commit(ctx)
 	}
 
-	if err := tx.QueryRow(ctx, searchPagesCountQuery, q.Text, workID, idList(chapterIDs)).Scan(&res.Total); err != nil {
+	if err := tx.QueryRow(ctx, searchPagesCountQuery, q.Text, workID, idList(chapterIDs), q.IncludeClosed).Scan(&res.Total); err != nil {
 		return nil, wrapSearchErr("failed to count page hits", err)
 	}
-	rows, err := tx.Query(ctx, searchPagesQuery, q.Text, workID, idList(chapterIDs), limit, offset)
+	rows, err := tx.Query(ctx, searchPagesQuery, q.Text, workID, idList(chapterIDs), limit, offset, q.IncludeClosed)
 	if err != nil {
 		return nil, wrapSearchErr("failed to search pages", err)
 	}
@@ -564,7 +611,7 @@ func (r *SearchRepository) SearchPages(
 	// (по-прежнему весь том, а не окно загруженных полос, как требует спека,
 	// раздел 5) — он лишь не повторяет один и тот же подсчёт впустую.
 	if offset == 0 {
-		frows, err := tx.Query(ctx, searchPagesFacetQuery, q.Text, workID, facetLimit)
+		frows, err := tx.Query(ctx, searchPagesFacetQuery, q.Text, workID, facetLimit, q.IncludeClosed)
 		if err != nil {
 			return nil, wrapSearchErr("failed to build chapter facet", err)
 		}
@@ -595,7 +642,7 @@ func (r *SearchRepository) attachVolumePages(
 	if len(volumes) == 0 {
 		return nil
 	}
-	rows, err := tx.Query(ctx, searchVolumePagesQuery, q.Text, idList(q.EditionIDs), idList(q.WorkIDs), volumePagesPreview)
+	rows, err := tx.Query(ctx, searchVolumePagesQuery, q.Text, idList(q.EditionIDs), idList(q.WorkIDs), volumePagesPreview, q.IncludeClosed)
 	if err != nil {
 		return wrapSearchErr("failed to search volume pages", err)
 	}

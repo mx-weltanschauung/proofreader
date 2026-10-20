@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DownloadMenu } from './DownloadMenu';
@@ -115,6 +115,53 @@ describe('DownloadMenu', () => {
       render(<DownloadMenu href="/api/works/4/download" />);
       await userEvent.click(screen.getByRole('button', { name: /Скачать/ }));
       expect(screen.queryByRole('menuitem', { name: /Аудио/ })).toBeNull();
+    });
+  });
+
+  describe('withToken', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('качает через fetch с Authorization и сохраняет под именем из заголовка', async () => {
+      localStorage.setItem('token', 'tok');
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response('книга', {
+          status: 200,
+          headers: { 'Content-Disposition': 'attachment; filename="tom.epub"' },
+        }),
+      );
+      const createUrl = vi.fn(() => 'blob:x');
+      const revokeUrl = vi.fn();
+      Object.assign(URL, { createObjectURL: createUrl, revokeObjectURL: revokeUrl });
+      const saved: string[] = [];
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+        this: HTMLAnchorElement,
+      ) {
+        saved.push(this.download);
+      });
+
+      const user = userEvent.setup();
+      render(<DownloadMenu href="/api/works/47/download" withToken />);
+      await user.click(screen.getByRole('button', { name: 'Скачать' }));
+      await user.click(screen.getByRole('menuitem', { name: /EPUB/ }));
+
+      await vi.waitFor(() => expect(click).toHaveBeenCalled());
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(String(url)).toContain('/api/works/47/download?format=epub');
+      expect(new Headers((init as RequestInit).headers).get('Authorization')).toBe('Bearer tok');
+      expect(saved).toEqual(['tom.epub']);
+      expect(revokeUrl).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(revokeUrl).toHaveBeenCalledWith('blob:x'), { timeout: 3000 });
+    });
+
+    it('на отказ сервера не сохраняет тело ошибки, а говорит об ошибке', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('Не найдено', { status: 404 }));
+      const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+      const user = userEvent.setup();
+      render(<DownloadMenu href="/api/works/47/download" withToken />);
+      await user.click(screen.getByRole('button', { name: 'Скачать' }));
+      await user.click(screen.getByRole('menuitem', { name: /EPUB/ }));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось скачать');
+      expect(click).not.toHaveBeenCalled();
     });
   });
 });

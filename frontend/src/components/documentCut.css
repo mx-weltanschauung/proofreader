@@ -51,7 +51,8 @@
 }
 
 .document-cut--stale,
-.document-cut--broken {
+.document-cut--broken,
+.document-cut--unavailable {
   margin: 1.75rem 0 1.75rem 1.5rem;
   color: var(--color-text-secondary);
   font-size: 0.9375rem;
@@ -60,7 +61,8 @@
 
 /* Снимок подписи без ссылки: идти некуда, курсор об этом не должен молчать
    курсивом одним. */
-.document-cut--broken {
+.document-cut--broken,
+.document-cut--unavailable {
   cursor: default;
 }
 

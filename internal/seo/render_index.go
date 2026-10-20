@@ -184,6 +184,13 @@ func (s *Source) Collection(ctx context.Context, nickname, slug string) (*Doc, e
 	live := 0
 	body.WriteString("<ul>\n")
 	for _, item := range c.Items {
+		// Пункт закрытого источника: ни заглавия, ни автора, ни ссылки —
+		// заглавие выдало бы закрытую работу, а чтение пункта отвечает 410. В
+		// счёт живых пунктов он не идёт, как и битый.
+		if item.Unavailable {
+			body.WriteString("<li>" + unavailableItemLabel + "</li>\n")
+			continue
+		}
 		label := Esc(OneLine(item.Title))
 		if a := item.ResolvedAuthor(); a != "" {
 			label = Esc(OneLine(a)) + ". " + label
@@ -232,6 +239,9 @@ func (s *Source) Collection(ctx context.Context, nickname, slug string) (*Doc, e
 		CacheKey: c.UpdatedAt,
 	}, nil
 }
+
+// unavailableItemLabel — строка пункта подборки на закрытом источнике.
+const unavailableItemLabel = "Источник недоступен"
 
 // ConceptList — предметный указатель списком, точка входа для человека.
 //

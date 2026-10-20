@@ -192,6 +192,13 @@ export const feedbackApi = {
   remove: (id: number) => api.delete(`/feedback/${id}`),
 };
 
+/** Ответ закрытия/открытия: затронутые работы. */
+export interface ClosedResult {
+  id: number;
+  closed: boolean;
+  affected: number[];
+}
+
 // Works API
 export const worksApi = {
   list: (params?: { limit?: number; offset?: number }) => api.get<Work[]>('/works', { params }),
@@ -207,6 +214,9 @@ export const worksApi = {
   update: (id: number, data: WorkUpdatePayload) => api.put<Work>(`/works/${id}`, data),
 
   delete: (id: number) => api.delete(`/works/${id}`),
+
+  setClosed: (id: number, closed: boolean) =>
+    api.put<ClosedResult>(`/works/${id}/closed`, { closed }),
 
   uploadFile: (id: number, formData: FormData) =>
     api.post(`/works/${id}/upload`, formData, {
@@ -458,6 +468,9 @@ export const editionsApi = {
   update: (id: number, data: EditionPayload) => api.put<Edition>(`/editions/${id}`, data),
 
   remove: (id: number) => api.delete(`/editions/${id}`),
+
+  setClosed: (id: number, closed: boolean) =>
+    api.put<ClosedResult>(`/editions/${id}/closed`, { closed }),
 };
 
 // Главная целиком — собрания со своими томами и работы вне собраний.
@@ -465,6 +478,8 @@ export const editionsApi = {
 export const journalsApi = {
   list: () => api.get<JournalSummary[]>('/journals'),
   get: (slug: string) => api.get<JournalDetail>(`/journals/${encodeURIComponent(slug)}`),
+  setClosed: (id: number, closed: boolean) =>
+    api.put<ClosedResult>(`/journals/${id}/closed`, { closed }),
 };
 
 export const personsApi = {

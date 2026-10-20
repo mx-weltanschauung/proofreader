@@ -20,6 +20,9 @@ type Router struct {
 	// opdsHandler — каталог OPDS (internal/opds). nil — /opds отвечает 404:
 	// так собран роутер в тестах, которым каталог не нужен.
 	opdsHandler http.Handler
+	// closedStore — закрытые работы; nil — слой closedGate пропускает всё
+	// (тесты роутера, экземпляр без хранилища).
+	closedStore ClosedStore
 	// statsHandler — посещаемость (internal/stats). nil — маячок отвечает 204
 	// и ничего не пишет, серверные каналы молчат: так собран роутер в тестах.
 	statsHandler *StatsHandler
@@ -41,6 +44,7 @@ type Router struct {
 	// serveWithRecover), как у озвучки.
 	highlightHandler      *HighlightHandler
 	journalHandler        *JournalHandler
+	closedHandler         *ClosedHandler
 	personHandler         *PersonHandler
 	indexHandler          *IndexHandler
 	collectionHandler     *CollectionHandler
@@ -66,6 +70,13 @@ type Router struct {
 // полдюжины вызовов в тестах.
 func (rt *Router) WithMCP(h http.Handler) *Router {
 	rt.mcpHandler = h
+	return rt
+}
+
+// WithClosed подключает хранилище закрытых работ: closedGate на подроутерах
+// public и reader прячет закрытое от не-сотрудников. Вызывается до Setup.
+func (rt *Router) WithClosed(store ClosedStore) *Router {
+	rt.closedStore = store
 	return rt
 }
 
@@ -174,6 +185,13 @@ func (rt *Router) WithJournals(j *JournalHandler, p *PersonHandler) *Router {
 	return rt
 }
 
+// WithClosedWriter подключает запись признака «закрыт». nil допустим, как у
+// WithAudio: маршруты регистрируются всегда, чтобы их видел сторож ролей.
+func (rt *Router) WithClosedWriter(h *ClosedHandler) *Router {
+	rt.closedHandler = h
+	return rt
+}
+
 // WithHighlights подключает избранное собраний. Отдельным методом по той же
 // причине, что WithMCP: у NewRouter два десятка позиционных параметров.
 func (rt *Router) WithHighlights(h *HighlightHandler) *Router {
@@ -268,6 +286,9 @@ func (rt *Router) Setup() *mux.Router {
 	reader.Use(middleware.AuthMiddleware(rt.authService))
 	reader.Use(middleware.RequireRole(
 		models.RoleReader, models.RoleEditor, models.RoleAdministrator))
+	// Закрытая работа читателю не видна и правки к ней он не предложит;
+	// слой стоит после AuthMiddleware — claims уже в контексте.
+	reader.Use(closedGate(rt.closedStore))
 
 	// staffEarly — сотруднические маршруты с ЛИТЕРАЛЬНЫМ путём, который иначе
 	// перехватил бы публичный шаблон с переменной. mux перебирает подроутеры
@@ -283,6 +304,9 @@ func (rt *Router) Setup() *mux.Router {
 	// present (so handlers can vary behavior for logged-in users later).
 	public := api.PathPrefix("").Subrouter()
 	public.Use(middleware.OptionalAuth(rt.authService))
+	// После OptionalAuth (сотрудника узнаём по токену) и до обработчиков с
+	// их кэшем глав: закрытый том не должен отдаваться готовым файлом.
+	public.Use(closedGate(rt.closedStore))
 
 	// Authenticated routes: any valid token, any role.
 	authRequired := api.PathPrefix("").Subrouter()
@@ -361,6 +385,9 @@ func (rt *Router) Setup() *mux.Router {
 	// Edition management (Editor and Admin only)
 	staff.HandleFunc("/editions", rt.editionHandler.Create).Methods("POST")
 	staff.HandleFunc("/editions/{id}", rt.editionHandler.Update).Methods("PUT")
+	staff.HandleFunc("/editions/{id}/closed", rt.closedHandler.Edition).Methods("PUT")
+	staff.HandleFunc("/works/{id}/closed", rt.closedHandler.Work).Methods("PUT")
+	staff.HandleFunc("/journals/{id}/closed", rt.closedHandler.Journal).Methods("PUT")
 	staff.HandleFunc("/editions/{id}", rt.editionHandler.Delete).Methods("DELETE")
 	staff.HandleFunc("/editions/{id}/highlights", rt.highlightHandler.Replace).Methods("PUT")
 

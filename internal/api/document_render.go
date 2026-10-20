@@ -373,6 +373,7 @@ func assembleDocument(
 	cuts []*models.DocumentCut,
 	cutPages map[int64][]*models.Page,
 	offsets map[int64]int,
+	unavailable map[int64]bool,
 ) string {
 	byID := map[int64]*models.DocumentCut{}
 	for _, c := range cuts {
@@ -400,7 +401,7 @@ func assembleDocument(
 	for i, id := range ids {
 		block := `<p class="document-cut document-cut--broken">Вклейка не найдена.</p>`
 		if cut, ok := byID[id]; ok {
-			block = renderCutState(r, cut, cutPages[id], ordinal[id], offsets)
+			block = renderCutState(r, cut, cutPages[id], ordinal[id], offsets, unavailable[id])
 		}
 		// Плейсхолдер на исчезнувшую вклейку: сохранение такого тела не
 		// пропускает проверка (задача 9), но рендер обязан не молчать.
@@ -427,7 +428,16 @@ func assembleDocument(
 // берёт pages[0] без проверок, а отсекать оба случая — дело вызывающего,
 // потому что проверка в двух местах разъехалась бы. Здесь она стоит ровно
 // один раз, до вызова renderCut.
-func renderCutState(r *markdown.Renderer, cut *models.DocumentCut, pages []*models.Page, ordinal int, offsets map[int64]int) string {
+//
+// unavailable — вклейка стоит на закрытой работе. Проверка ПЕРВАЯ, раньше
+// битой и отвязавшейся: обе печатают снимок подписи источника, а подпись
+// закрытой работы наружу не идёт ни в каком состоянии.
+func renderCutState(r *markdown.Renderer, cut *models.DocumentCut, pages []*models.Page, ordinal int, offsets map[int64]int, unavailable bool) string {
+	if unavailable {
+		return fmt.Sprintf(
+			`<p class="document-cut document-cut--unavailable" data-cut-id="%d">Вклейка недоступна.</p>`,
+			cut.ID)
+	}
 	if cut.Broken() || len(pages) == 0 {
 		// Битая: источника нет (сняли том/полосы, либо обе), полос тоже нет —
 		// вести некуда. Показываем только снимок подписи, без ссылки.
@@ -468,6 +478,7 @@ func assembleDocumentFor(
 	cutStore DocumentCutStore,
 	works WorkStore,
 	d *models.Document,
+	closed ClosedSet,
 ) (string, int, error) {
 	// Разбор собирается здесь и сейчас, а не читается снимком: вклейка едет за
 	// источником. Кэша у сборки нет намеренно — кэш глав
@@ -481,7 +492,14 @@ func assembleDocumentFor(
 	// (assembleDocument) читают их напрямую, без похода в базу изнутри.
 	cutPages := make(map[int64][]*models.Page, len(cuts))
 	workIDs := map[int64]bool{}
+	unavailable := map[int64]bool{}
 	for _, c := range cuts {
+		// Вклейка закрытой работы: ни полос, ни смещения не читаем — рендерить
+		// из них нечего, а подпись источника наружу не идёт.
+		if c.WorkID != nil && closed.Has(*c.WorkID) {
+			unavailable[c.ID] = true
+			continue
+		}
 		pages, err := cutStore.PagesOfCut(ctx, c)
 		if err != nil {
 			return "", 0, err
@@ -519,7 +537,7 @@ func assembleDocumentFor(
 	// удваивать счёт.
 	cutCount := len(uniqueIDs(cutPlaceholderIDs(d.MarkdownContent)))
 
-	return assembleDocument(r, d.MarkdownContent, cuts, cutPages, offsets), cutCount, nil
+	return assembleDocument(r, d.MarkdownContent, cuts, cutPages, offsets, unavailable), cutCount, nil
 }
 
 // cutOrdinal отдаёт порядковый номер вклейки id в теле разбора — ту же

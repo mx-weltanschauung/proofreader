@@ -148,7 +148,7 @@ type ShelfEditions interface {
 
 // ShelfJournals — журналы для полки главной.
 type ShelfJournals interface {
-	List(ctx context.Context) ([]models.JournalSummary, error)
+	List(ctx context.Context, includeClosed bool) ([]models.JournalSummary, error)
 }
 
 // JournalIssueLookup — журнальные координаты работы-номера.
@@ -176,10 +176,14 @@ type IndexStore interface {
 	GetConceptBySlug(ctx context.Context, slug string) (*models.IndexConcept, error)
 	ArticleLinks(ctx context.Context, articleID int64) ([]repository.LinkWithTarget, error)
 	IncomingLinks(ctx context.Context, conceptID int64) ([]repository.IncomingLink, error)
-	ListConcepts(ctx context.Context, query, letter string, limit, offset int) ([]*models.IndexConcept, error)
+	// includeClosed — показывать ли понятия и места закрытых изданий и работ
+	// (только сотруднику): ложь прячет их в самом запросе.
+	ListConcepts(ctx context.Context, query, letter string, limit, offset int, includeClosed bool) ([]*models.IndexConcept, error)
 	VolumeMap(ctx context.Context, editionID int64) ([]models.VolumeLocation, error)
 	Backlinks(ctx context.Context, editionID int64, volumeNumber int, volumePart *string, printedPage int) ([]models.ConceptBacklink, error)
 	TakenSlugs(ctx context.Context) (map[string]bool, error)
+	// HiddenConceptSlugs — какие из слагов скрыты закрытым, одним запросом.
+	HiddenConceptSlugs(ctx context.Context, slugs []string) (map[string]bool, error)
 }
 
 // FragmentStore is the slice of the fragment repository the handlers use.
@@ -229,6 +233,9 @@ type CollectionStore interface {
 	ItemByID(ctx context.Context, collectionID, itemID int64) (*models.CollectionItem, error)
 	ItemRows(ctx context.Context, collectionID int64) ([]repository.ItemRow, error)
 	ChaptersForWorks(ctx context.Context, workIDs []int64) ([]*models.Chapter, error)
+	// ChapterWorkID — том главы; нужен, чтобы закрытую главу не добавили в
+	// подборку не-сотрудником.
+	ChapterWorkID(ctx context.Context, chapterID int64) (int64, error)
 }
 
 // PageSuggestionStore is the slice of the suggestion repository the handler
@@ -259,9 +266,9 @@ type SearchStore interface {
 
 // JournalStore — журналы и номера (repository.JournalRepository).
 type JournalStore interface {
-	List(ctx context.Context) ([]models.JournalSummary, error)
+	List(ctx context.Context, includeClosed bool) ([]models.JournalSummary, error)
 	GetByID(ctx context.Context, id int64) (*models.Journal, error)
-	Detail(ctx context.Context, slug string) (*models.JournalDetail, error)
+	Detail(ctx context.Context, slug string, includeClosed bool) (*models.JournalDetail, error)
 	Create(ctx context.Context, j *models.Journal) error
 	Update(ctx context.Context, j *models.Journal) error
 	CreateIssue(ctx context.Context, issue *models.JournalIssue, work *models.Work) error
@@ -274,7 +281,7 @@ type PersonStore interface {
 	Create(ctx context.Context, p *models.Person) error
 	Update(ctx context.Context, p *models.Person) error
 	GetByID(ctx context.Context, id int64) (*models.Person, error)
-	Detail(ctx context.Context, slug string) (*models.PersonDetail, error)
+	Detail(ctx context.Context, slug string, includeClosed bool) (*models.PersonDetail, error)
 	Search(ctx context.Context, q string, limit int) ([]models.Person, error)
 	Merge(ctx context.Context, intoID, fromID int64) error
 }
@@ -288,4 +295,13 @@ type CreditLister interface {
 type CreditStore interface {
 	CreditLister
 	ReplaceCredits(ctx context.Context, chapterID int64, credits []models.CreditInput) error
+}
+
+// ClosedStore — срез репозитория закрытых работ: чем закрыта работа, какие
+// работы и издания закрыты целиком. Объявлен здесь, на стороне потребителя;
+// *repository.ClosedRepository удовлетворяет ему как есть.
+type ClosedStore interface {
+	ClosedBy(ctx context.Context, workID int64) (string, error)
+	ClosedIDs(ctx context.Context) (map[int64]bool, error)
+	ClosedEditionIDs(ctx context.Context) (map[int64]bool, error)
 }

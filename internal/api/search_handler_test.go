@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"proofreader/internal/auth"
+	"proofreader/internal/middleware"
 	"proofreader/internal/models"
 	"proofreader/internal/repository"
 )
@@ -415,5 +417,41 @@ func TestSearchResponseCarriesSlugs(t *testing.T) {
 		body.Chapters[0].Slug != "chto-delat" ||
 		body.Chapters[0].WorkSlug != "lenin-t06" {
 		t.Fatalf("слаги не доехали: %s", rec.Body.String())
+	}
+}
+
+// Сотрудник просит поиск с закрытым, аноним и читатель — без.
+func TestSearchHandlerStaffSeesClosed(t *testing.T) {
+	cases := []struct {
+		role models.UserRole
+		want bool
+	}{
+		{models.RoleEditor, true}, {models.RoleAdministrator, true},
+		{models.RoleReader, false}, {"", false},
+	}
+	for _, c := range cases {
+		for _, url := range []string{"/api/search?q=xx", "/api/search?q=xx&terms_only=1", "/api/search/pages?q=xx&work_id=1"} {
+			store := &fakeSearchStore{terms: []string{"xx"},
+				result: &models.SearchResult{Terms: []string{"xx"}},
+				pages:  &models.SearchPagesResult{Terms: []string{"xx"}}}
+			h := NewSearchHandler(store)
+			req := httptest.NewRequest(http.MethodGet, url, nil)
+			if c.role != "" {
+				req = req.WithContext(context.WithValue(req.Context(), middleware.UserContextKey,
+					&auth.Claims{UserID: 1, Role: c.role}))
+			}
+			rec := httptest.NewRecorder()
+			if strings.Contains(url, "/pages") {
+				h.Pages(rec, req)
+			} else {
+				h.Search(rec, req)
+			}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s: code %d", url, rec.Code)
+			}
+			if store.lastQuery.IncludeClosed != c.want {
+				t.Errorf("роль %q, %s: IncludeClosed = %v, ждали %v", c.role, url, store.lastQuery.IncludeClosed, c.want)
+			}
+		}
 	}
 }

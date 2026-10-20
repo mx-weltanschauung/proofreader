@@ -28,11 +28,11 @@ func NewJournalRepository(pool *pgxpool.Pool) *JournalRepository {
 	return &JournalRepository{pool: pool}
 }
 
-const journalColumns = `id, slug, title, subtitle, description, created_at, updated_at`
+const journalColumns = `id, slug, title, subtitle, description, closed, created_at, updated_at`
 
 func scanJournal(row pgx.Row) (*models.Journal, error) {
 	var j models.Journal
-	if err := row.Scan(&j.ID, &j.Slug, &j.Title, &j.Subtitle, &j.Description, &j.CreatedAt, &j.UpdatedAt); err != nil {
+	if err := row.Scan(&j.ID, &j.Slug, &j.Title, &j.Subtitle, &j.Description, &j.Closed, &j.CreatedAt, &j.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrJournalNotFound
 		}
@@ -47,8 +47,8 @@ func isUnique(err error, constraint string) bool {
 }
 
 func (r *JournalRepository) Create(ctx context.Context, j *models.Journal) error {
-	cols := []string{"slug", "title", "subtitle", "description"}
-	args := []any{j.Slug, j.Title, j.Subtitle, j.Description}
+	cols := []string{"slug", "title", "subtitle", "description", "closed"}
+	args := []any{j.Slug, j.Title, j.Subtitle, j.Description, j.Closed}
 	err := insertRow(ctx, r.pool, "journals", j.ID, cols, args, &j.ID, &j.CreatedAt, &j.UpdatedAt)
 	if isUnique(err, "journals_slug_key") {
 		return fmt.Errorf("%w: %s", ErrJournalSlugTaken, j.Slug)
@@ -73,12 +73,17 @@ func (r *JournalRepository) GetByID(ctx context.Context, id int64) (*models.Jour
 }
 
 // List — журналы с числом и годами загруженных номеров, по заглавию.
-func (r *JournalRepository) List(ctx context.Context) ([]models.JournalSummary, error) {
+// includeClosed == false (читатель): закрытый журнал не попадает в список,
+// а номера закрытых работ не входят в счёт и годы.
+func (r *JournalRepository) List(ctx context.Context, includeClosed bool) ([]models.JournalSummary, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT j.id, j.slug, j.title, j.subtitle, j.description, j.created_at, j.updated_at,
+		SELECT j.id, j.slug, j.title, j.subtitle, j.description, j.closed, j.created_at, j.updated_at,
 		       count(ji.id), min(ji.year), max(ji.year)
-		FROM journals j LEFT JOIN journal_issues ji ON ji.journal_id = j.id
-		GROUP BY j.id ORDER BY j.title, j.id`)
+		FROM journals j
+		LEFT JOIN journal_issues ji ON ji.journal_id = j.id
+		     AND ($1 OR work_closed_by(ji.work_id) = '')
+		WHERE $1 OR NOT j.closed
+		GROUP BY j.id ORDER BY j.title, j.id`, includeClosed)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +91,7 @@ func (r *JournalRepository) List(ctx context.Context) ([]models.JournalSummary, 
 	out := []models.JournalSummary{}
 	for rows.Next() {
 		var s models.JournalSummary
-		if err := rows.Scan(&s.ID, &s.Slug, &s.Title, &s.Subtitle, &s.Description, &s.CreatedAt, &s.UpdatedAt,
+		if err := rows.Scan(&s.ID, &s.Slug, &s.Title, &s.Subtitle, &s.Description, &s.Closed, &s.CreatedAt, &s.UpdatedAt,
 			&s.IssuesTotal, &s.YearFrom, &s.YearTo); err != nil {
 			return nil, err
 		}
@@ -96,15 +101,21 @@ func (r *JournalRepository) List(ctx context.Context) ([]models.JournalSummary, 
 }
 
 // Detail — журнал и номера по годам; порядок — год, затем первый номер.
-func (r *JournalRepository) Detail(ctx context.Context, slug string) (*models.JournalDetail, error) {
+// includeClosed == false: закрытый журнал — ErrJournalNotFound, номера
+// закрытых работ в годы не попадают.
+func (r *JournalRepository) Detail(ctx context.Context, slug string, includeClosed bool) (*models.JournalDetail, error) {
 	j, err := scanJournal(r.pool.QueryRow(ctx, `SELECT `+journalColumns+` FROM journals WHERE slug = $1`, slug))
 	if err != nil {
 		return nil, err
 	}
+	if j.Closed && !includeClosed {
+		return nil, ErrJournalNotFound
+	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT ji.id, ji.year, ji.label, ji.months, w.id, w.title, w.role
 		FROM journal_issues ji JOIN works w ON w.id = ji.work_id
-		WHERE ji.journal_id = $1 ORDER BY ji.year, ji.number_from`, j.ID)
+		WHERE ji.journal_id = $1 AND ($2 OR work_closed_by(w.id) = '')
+		ORDER BY ji.year, ji.number_from`, j.ID, includeClosed)
 	if err != nil {
 		return nil, err
 	}

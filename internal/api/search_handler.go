@@ -167,7 +167,7 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "works должен быть списком чисел через запятую")
 		return
 	}
-	query := models.SearchQuery{Text: q, EditionIDs: editions, WorkIDs: works}
+	query := models.SearchQuery{Text: q, EditionIDs: editions, WorkIDs: works, IncludeClosed: isStaffRequest(r)}
 	ctx := r.Context()
 
 	// Режим чтения по прямой ссылке с ?q= просит только леммы для подсветки;
@@ -279,7 +279,7 @@ func (h *SearchHandler) Pages(w http.ResponseWriter, r *http.Request) {
 	var res *models.SearchPagesResult
 	err := h.underSlot(r, func() error {
 		var err error
-		res, err = h.store.SearchPages(r.Context(), models.SearchQuery{Text: q}, *workID, chapters, limit, offset)
+		res, err = h.store.SearchPages(r.Context(), models.SearchQuery{Text: q, IncludeClosed: isStaffRequest(r)}, *workID, chapters, limit, offset)
 		return err
 	})
 	if err != nil {

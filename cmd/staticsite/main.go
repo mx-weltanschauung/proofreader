@@ -96,14 +96,21 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	pages := repository.NewPageRepository(pool)
 	editions := repository.NewEditionRepository(pool)
 	collections := repository.NewCollectionRepository(pool)
-	index := repository.NewIndexRepository(pool)
+	closedRepo := repository.NewClosedRepository(pool)
+	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), closedRepo)
 	renderer := markdown.NewRenderer()
 
-	books := api.NewDownloadSource(works, chapters, pages, editions, collections, renderer, *base).WithChapterAnchors()
+	// Архив раздают всем, токена у него нет: работы и издания — открытым
+	// видом, закрытое для сборки не существует. Кроме того, loadPolicy кладёт
+	// закрытые работы в exclude, и самопроверка роняет выпуск, если они всё
+	// же попали в сборку.
+	openWorks := api.NewOpenWorks(works, closedRepo)
+	openEditions := api.NewOpenEditions(editions, closedRepo)
+	books := api.NewDownloadSource(openWorks, chapters, pages, openEditions, collections, renderer, *base).WithChapterAnchors()
 	documents := api.NewSEODocumentSource(
-		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), works, renderer)
-	src := api.NewStaticSource(editions, works, books, pages, index, repository.NewSEORepository(pool),
-		collections, documents, renderer)
+		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closedRepo)
+	src := api.NewStaticSource(openEditions, openWorks, books, pages, index, repository.NewSEORepository(pool),
+		collections, documents, renderer).WithClosed(closedRepo)
 
 	g := &staticsite.Generator{Src: src, Out: *out, BaseURL: *base, BuildDate: *date, EditionID: *edition,
 		Exclude: pol.exclude, Only: pol.only, Apparatus: pol.apparatus, Logf: log.Printf}

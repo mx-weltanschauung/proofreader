@@ -72,6 +72,15 @@ type StaticSource struct {
 	documents   StaticDocuments
 	renderer    *markdown.Renderer
 	volumeMaps  map[int64]map[volumeKey]models.VolumeLocation
+	closed      ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ: в архив, который раздают
+// всем, элементы подборок на закрытых работах не идут. Токена у архива нет,
+// поэтому множество полное всегда.
+func (s *StaticSource) WithClosed(c ClosedStore) *StaticSource {
+	s.closed = c
+	return s
 }
 
 func NewStaticSource(
@@ -217,6 +226,10 @@ func (s *StaticSource) Collections(ctx context.Context) ([]staticsite.Collection
 	if err != nil {
 		return nil, err
 	}
+	closed, err := fullClosedSet(ctx, s.closed)
+	if err != nil {
+		return nil, fmt.Errorf("закрытые работы: %w", err)
+	}
 	var out []staticsite.Collection
 	for _, c := range list {
 		if c.AuthorNickname != "" || c.PublishedAt == nil {
@@ -228,6 +241,11 @@ func (s *StaticSource) Collections(ctx context.Context) ([]staticsite.Collection
 		}
 		col := staticsite.Collection{ID: c.ID, Slug: c.Slug, Title: c.Title, Description: c.Description}
 		for _, row := range rows {
+			// Закрытый элемент в архив не идёт вовсе: ни строкой, ни снимком
+			// заглавия.
+			if itemIsClosed(row.Item, closed) {
+				continue
+			}
 			it := staticsite.CollectionItem{Title: itemLabel(row), Author: itemAuthor(row)}
 			if row.Item.WorkID != nil {
 				it.WorkID = *row.Item.WorkID

@@ -196,7 +196,16 @@ func TestShelfHandlerDropsVolumeOfUnknownEdition(t *testing.T) {
 
 type fakeShelfJournals struct{ list []models.JournalSummary }
 
-func (f fakeShelfJournals) List(context.Context) ([]models.JournalSummary, error) { return f.list, nil }
+func (f fakeShelfJournals) List(_ context.Context, includeClosed bool) ([]models.JournalSummary, error) {
+	out := []models.JournalSummary{}
+	for _, s := range f.list {
+		if s.Closed && !includeClosed {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
 
 func TestShelfSkipsJournalsWithoutIssues(t *testing.T) {
 	h := NewShelfHandler(&fakeShelfEditions{}, &fakeShelfWorks{}).WithJournals(fakeShelfJournals{list: []models.JournalSummary{

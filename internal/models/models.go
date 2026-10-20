@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // UserRole represents user roles in the system
 type UserRole string
@@ -117,11 +120,26 @@ type Work struct {
 	ShelfLabel string `json:"shelf_label" db:"shelf_label"`
 	// Description — свободный текст о томе, заданный руками: почему в скане не
 	// хватает полос, откуда взят источник. Пустая строка — описания нет.
-	Description string    `json:"description" db:"description"`
-	OwnerID     int64     `json:"owner_id" db:"owner_id"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	Description string `json:"description" db:"description"`
+	OwnerID     int64  `json:"owner_id" db:"owner_id"`
+	// Closed — собственный признак «закрыт»: работу видят только сотрудники.
+	// Меняет его один путь — ClosedRepository.SetWorkClosed; общий Update
+	// колонку не пишет.
+	Closed bool `json:"closed" db:"closed"`
+	// ClosedBy — откуда действующая закрытость (ClosedBy*), пусто — открыта.
+	// Считается на чтении (work_closed_by), в базе не хранится.
+	ClosedBy  string    `json:"closed_by" db:"-"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
+
+// Причины действующей закрытости работы (Work.ClosedBy, work_closed_by).
+const (
+	ClosedByWork    = "work"
+	ClosedByParent  = "parent"
+	ClosedByEdition = "edition"
+	ClosedByJournal = "journal"
+)
 
 // TopChapter is one of a volume's largest top-level chapters - the works the
 // volume is known for. In a collected-works edition the volume titles are
@@ -345,9 +363,12 @@ type Edition struct {
 	// VolumeNumbering — печатная («printed») или условная («order») нумерация
 	// томов. При условной номер тома только ставит книги по порядку на полке,
 	// а читателю не печатается нигде (миграция 000039).
-	VolumeNumbering string    `json:"volume_numbering" db:"volume_numbering"`
-	CreatedAt       time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+	VolumeNumbering string `json:"volume_numbering" db:"volume_numbering"`
+	// Closed — издание закрыто: его тома видят только сотрудники. Общий
+	// Update колонку не пишет, меняет её ClosedRepository.SetEditionClosed.
+	Closed    bool      `json:"closed" db:"closed"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Виды нумерации томов собрания (editions.volume_numbering).
@@ -718,9 +739,13 @@ type CollectionEntry struct {
 	Author         string `json:"author"`
 	// Broken — источник удалён: строка показывается снимком заголовка, а
 	// чтение элемента отвечает 410.
-	Broken   bool                `json:"broken"`
-	Source   *CollectionSource   `json:"source,omitempty"`
-	Children []CollectionTocNode `json:"children,omitempty"`
+	Broken bool `json:"broken"`
+	// Unavailable — источник закрыт: строка без заглавия, автора и источника,
+	// чтение элемента отвечает 410. От Broken отличается тем, что снимка
+	// заглавия нет вовсе: он выдал бы название закрытой работы.
+	Unavailable bool                `json:"unavailable,omitempty"`
+	Source      *CollectionSource   `json:"source,omitempty"`
+	Children    []CollectionTocNode `json:"children,omitempty"`
 }
 
 // ResolvedAuthor — автор строки оглавления: переопределение, если задано,
@@ -859,3 +884,13 @@ type HighlightInput struct {
 	ChapterID int64  `json:"chapter_id"`
 	Label     string `json:"label"`
 }
+
+// BlankCutset — знаки, которые «пустой» текст статьи указателя может состоять
+// только из: ровно набор strings.TrimSpace (unicode.IsSpace). Один набор на Go
+// и на SQL (btrim с этим набором в visibleArticleSQL): со своим пробелом у
+// каждой стороны текст из одного «\n» был бы пуст для одной и текстом для
+// другой — понятие попадало бы в список, а отвечало 410.
+const BlankCutset = " \t\n\v\f\r\u0085                 　"
+
+// IsBlankArticleText — у статьи нет своего текста.
+func IsBlankArticleText(s string) bool { return strings.Trim(s, BlankCutset) == "" }

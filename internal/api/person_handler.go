@@ -44,7 +44,7 @@ func (h *PersonHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 // Get — страница автора. Публично.
 func (h *PersonHandler) Get(w http.ResponseWriter, r *http.Request) {
-	d, err := h.persons.Detail(r.Context(), mux.Vars(r)["slug"])
+	d, err := h.persons.Detail(r.Context(), mux.Vars(r)["slug"], isStaffRequest(r))
 	if errors.Is(err, repository.ErrPersonNotFound) {
 		writeError(w, http.StatusNotFound, "Автор не найден")
 		return

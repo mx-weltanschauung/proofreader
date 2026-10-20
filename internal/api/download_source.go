@@ -25,7 +25,7 @@ type DownloadSource struct {
 	works       WorkStore
 	chapters    ChapterStore
 	pages       PageStore
-	editions    EditionStore
+	editions    DownloadEditions
 	collections CollectionStore
 	renderer    *markdown.Renderer
 	baseURL     string
@@ -35,8 +35,15 @@ type DownloadSource struct {
 	chapterAnchors bool
 }
 
+// DownloadEditions — что выгрузке нужно от изданий: заглавие для титула.
+// Уже, чем EditionStore, чтобы выгрузку можно было собрать и над открытым видом
+// (OpenEditions), у которого записи нет.
+type DownloadEditions interface {
+	GetByID(ctx context.Context, id int64) (*models.Edition, error)
+}
+
 func NewDownloadSource(
-	works WorkStore, chapters ChapterStore, pages PageStore, editions EditionStore,
+	works WorkStore, chapters ChapterStore, pages PageStore, editions DownloadEditions,
 	collections CollectionStore, renderer *markdown.Renderer, baseURL string,
 ) *DownloadSource {
 	return &DownloadSource{
@@ -203,7 +210,12 @@ func (s *DownloadSource) PageRange(ctx context.Context, workID int64, from, to i
 //
 // Единого издания, тома и диапазона страниц у подборки нет — эти поля Meta
 // остаются пустыми, иначе титул получил бы огрызок «Источник: , с. 0—0».
-func (s *DownloadSource) Collection(ctx context.Context, nickname, slug string) (*book.Book, error) {
+//
+// closed — закрытые работы, невидимые пришедшему (nil — всё открыто). Закрытый
+// элемент проверяется РАНЬШЕ «пропавшего источника» и уходит на титул
+// безымянной строкой «недоступный источник»: itemLabel вернул бы снимок
+// заглавия закрытой работы.
+func (s *DownloadSource) Collection(ctx context.Context, nickname, slug string, closed ClosedSet) (*book.Book, error) {
 	collection, err := s.collections.GetByAuthorSlug(ctx, nickname, slug)
 	if err != nil || collection == nil {
 		return nil, fmt.Errorf("%w: подборка %q", ErrNotFound, slug)
@@ -238,6 +250,12 @@ func (s *DownloadSource) Collection(ctx context.Context, nickname, slug string) 
 	for _, row := range rows {
 		cacheKey = latestOf(cacheKey, row.Item.UpdatedAt)
 
+		if itemIsClosed(row.Item, closed) {
+			b.Meta.Missing = append(b.Meta.Missing, unavailableSourceLabel)
+			b.Meta.CacheVariant += fmt.Sprintf("u%d.", row.Item.ID)
+			continue
+		}
+
 		section, pages, ok := s.collectionItemSection(ctx, collection.ID, row)
 		if !ok {
 			// Источник удалён или пересоздан. Молча терять пункт оглавления
@@ -260,6 +278,10 @@ func (s *DownloadSource) Collection(ctx context.Context, nickname, slug string) 
 	b.Meta.CacheKey = latestOf(cacheKey, b.Meta.Modified)
 	return b, nil
 }
+
+// unavailableSourceLabel — как на титуле выгрузки подписан элемент подборки на
+// закрытой работе.
+const unavailableSourceLabel = "недоступный источник"
 
 // collectionItemSection собирает секцию одного элемента подборки.
 func (s *DownloadSource) collectionItemSection(

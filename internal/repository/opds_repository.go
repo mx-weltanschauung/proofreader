@@ -90,8 +90,11 @@ func (r *OPDSRepository) ChapterStamps(ctx context.Context, workID int64) (map[i
 // полоса. Условие стоит в самом запросе, до LIMIT: том без полос — это
 // работа, которую публикатор завёл и ещё не залил, и она всегда самая
 // свежая; отсев после LIMIT ломал разбивку «Новых поступлений».
+//
+// Закрытый том (openWorkSQL) каталогу не виден: OPDS — канал без токена.
 const volumeWithPages = `parent_work_id IS NULL AND role = 'volume'
-	AND EXISTS (SELECT 1 FROM pages p WHERE p.work_id = works.id)`
+	AND EXISTS (SELECT 1 FROM pages p WHERE p.work_id = works.id)
+	AND ` + openWorkSQL
 
 func (r *OPDSRepository) scanWorks(ctx context.Context, what, query string, args ...any) ([]*models.Work, error) {
 	rows, err := r.pool.Query(ctx, query, args...)

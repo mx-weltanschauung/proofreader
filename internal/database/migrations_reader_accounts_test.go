@@ -53,6 +53,7 @@ func TestReaderAccountsMigrationRoundTrip(t *testing.T) {
 		}
 	}
 	up()
+	openAllClosed(ctx, t, pool)
 
 	const (
 		fixtureReaderID     = 900000101

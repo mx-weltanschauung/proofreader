@@ -82,6 +82,11 @@ func (r *SEORepository) query(ctx context.Context, what, sql string, scan scanFu
 	return out, nil
 }
 
+// openWorkSQL — работа не закрыта ни одним путём (closed_works). Каталог
+// краулера — канал без токена: закрытого в нём нет ни для кого, и карта сайта,
+// витрины краулера и всё, что из них строится, его не называют.
+const openWorkSQL = `NOT EXISTS (SELECT 1 FROM closed_works cw WHERE cw.id = works.id)`
+
 // Ингредиенты слага добираются к строке работы так же, как в scanWork
 // (work_repository.go): role и precedes_volume — для передних листов
 // собрания (edition_front_matter), у которых номер тома не свой, а «перед
@@ -92,6 +97,7 @@ func (r *SEORepository) Works(ctx context.Context) ([]CatalogRow, error) {
 		       `+workSlugColumns+`
 		FROM works
 		WHERE works.role IN `+indexableWorkRoles+`
+		  AND `+openWorkSQL+`
 		ORDER BY works.id`, func(rows pgx.Rows) (CatalogRow, error) {
 		var row CatalogRow
 		var role, title, slugEdition string
@@ -128,6 +134,7 @@ func (r *SEORepository) Chapters(ctx context.Context) ([]CatalogRow, error) {
 			       `+workSlugColumns+`
 			FROM works
 			WHERE works.role IN `+indexableWorkRoles+`
+			  AND `+openWorkSQL+`
 		)
 		SELECT c.id, c.work_id, c.updated_at, c.title,
 		       ws.role, ws.precedes_volume, ws.title,
@@ -154,7 +161,7 @@ func (r *SEORepository) Chapters(ctx context.Context) ([]CatalogRow, error) {
 func (r *SEORepository) Editions(ctx context.Context) ([]CatalogRow, error) {
 	return r.query(ctx, "издания", `
 		SELECT id, updated_at, COALESCE(NULLIF(url_slug, ''), slug)
-		FROM editions ORDER BY id`, func(rows pgx.Rows) (CatalogRow, error) {
+		FROM editions WHERE NOT closed ORDER BY id`, func(rows pgx.Rows) (CatalogRow, error) {
 		var row CatalogRow
 		err := rows.Scan(&row.ID, &row.UpdatedAt, &row.Slug)
 		return row, err
@@ -176,6 +183,7 @@ func (r *SEORepository) Concepts(ctx context.Context) ([]CatalogRow, error) {
 		WHERE EXISTS (
 		    SELECT 1 FROM index_concept_articles a
 		    WHERE a.concept_id = c.id AND a.kind = 'article'
+		      AND `+visibleArticleSQL("a")+`
 		)
 		ORDER BY c.slug`, func(rows pgx.Rows) (CatalogRow, error) {
 		var row CatalogRow
@@ -191,6 +199,9 @@ type ConceptShelfRow struct {
 	Places int
 }
 
+// Concepts и ConceptShelf отдают каналам без токена только видимое: закрытое
+// скрыто всегда (visibleArticleSQL), число адресов считает одни видимые.
+//
 // ConceptShelf — понятия-статьи по алфавиту с числом адресов, одним
 // запросом: витрина печатает все ~2400 строк, и счёт по понятию стоил бы
 // столько же запросов.
@@ -198,8 +209,8 @@ func (r *SEORepository) ConceptShelf(ctx context.Context) ([]ConceptShelfRow, er
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.slug, c.title, c.sort_key, count(ref.id)
 		FROM index_concepts c
-		JOIN index_concept_articles a ON a.concept_id = c.id
-		LEFT JOIN index_references ref ON ref.article_id = a.id
+		JOIN index_concept_articles a ON a.concept_id = c.id AND `+visibleArticleSQL("a")+`
+		LEFT JOIN index_references ref ON ref.article_id = a.id AND NOT `+closedReferenceSQL("ref", "a")+`
 		GROUP BY c.id
 		HAVING bool_or(a.kind = 'article')
 		ORDER BY c.sort_key, c.slug`)
