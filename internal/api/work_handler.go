@@ -318,9 +318,38 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to update work", http.StatusInternalServerError)
 		return
 	}
+	h.dropCacheIfClosednessMoved(ctx, work)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(work)
+}
+
+// dropCacheIfClosednessMoved — второй, после ClosedHandler, путь, которым
+// меняется действующая закрытость: PUT /works/{id} пишет edition_id и
+// parent_work_id, а с ними закрытость издания и родителя. Без сброса /seo,
+// .md, MCP и карточки отдавали бы текст и заглавие тома, ставшего закрытым,
+// до часа (карточки — до суток), а ставшего открытым — закэшированным
+// отказом. Причина перечитывается из базы: считает её SQL (work_closed_by),
+// а не структура в памяти. Перечитать не вышло — сбрасываем: лишний сброс
+// стоит пересборки, пропущенный — утечки закрытого.
+func (h *WorkHandler) dropCacheIfClosednessMoved(ctx context.Context, work *models.Work) {
+	before := work.ClosedBy
+	fresh, err := h.workRepo.GetByID(ctx, work.ID)
+	if err == nil {
+		work.ClosedBy = fresh.ClosedBy
+		if fresh.ClosedBy == before {
+			return
+		}
+	}
+	// Дети закрыты через родителя: их закрытость сменилась вместе с ним.
+	kids, err := h.workRepo.ListChildren(ctx, work.ID)
+	if err != nil {
+		log.Printf("сброс кэша работы %d: дети не прочитаны: %v", work.ID, err)
+	}
+	for _, kid := range kids {
+		h.cache.DropWork(kid.ID)
+	}
+	h.cache.DropWork(work.ID)
 }
 
 // Delete deletes a work
