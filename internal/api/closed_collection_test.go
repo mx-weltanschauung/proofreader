@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -87,6 +88,7 @@ func TestCollectionGetClosedItemHasNoTitle(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.Get(rec, req)
 	if strings.Contains(rec.Body.String(), "Людвиг Фейербах") || strings.Contains(rec.Body.String(), "Закрытый том") ||
+		strings.Contains(rec.Body.String(), closedTitle) ||
 		!strings.Contains(rec.Body.String(), `"unavailable":true`) {
 		t.Fatalf("закрытое в ответе подборки: %s", rec.Body.String())
 	}
@@ -94,8 +96,8 @@ func TestCollectionGetClosedItemHasNoTitle(t *testing.T) {
 	// Сотрудник видит всё, как раньше.
 	rec = httptest.NewRecorder()
 	withClaims(editorClaims(), h.Get)(rec, req)
-	if !strings.Contains(rec.Body.String(), "Людвиг Фейербах") && !strings.Contains(rec.Body.String(), "Том 21") &&
-		!strings.Contains(rec.Body.String(), closedTitle) {
+	if !strings.Contains(rec.Body.String(), "Людвиг Фейербах") || !strings.Contains(rec.Body.String(), "Закрытый том") ||
+		strings.Contains(rec.Body.String(), `"unavailable"`) {
 		t.Fatalf("сотруднику закрытое не показано: %s", rec.Body.String())
 	}
 	if strings.Contains(rec.Body.String(), `"unavailable"`) {
@@ -160,6 +162,32 @@ func TestCollectionAddItemClosedTargetIs404ForReader(t *testing.T) {
 		withClaims(editorClaims(), h.AddItem)(rec, req)
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("%s: сотрудник получил %d: %s", name, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// Сбой ChapterWorkID не пропускает проверку закрытости: 500 или 404, записи нет.
+func TestCollectionAddItemChapterLookupFailsClosed(t *testing.T) {
+	owner := testCollectionOwnerClaims.UserID
+	for name, tc := range map[string]struct {
+		err  error
+		want int
+	}{
+		"сбой базы": {errors.New("connection reset"), http.StatusInternalServerError},
+		"главы нет": {errors.New("chapter 100 not found"), http.StatusNotFound},
+	} {
+		store := collectionFixture()
+		store.collections[0].OwnerID = &owner
+		store.collections[0].AuthorNickname = testCollectionOwnerClaims.Nickname
+		store.chapterWorkErr = tc.err
+		h := closedCollectionHandler(store, closedWorks41())
+		// work_id присылается заведомо открытым: запасной ход на него пропустил бы закрытую главу.
+		req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"kind":"chapter","chapter_id":100,"work_id":5}`))
+		req = mux.SetURLVars(req, map[string]string{"nickname": owner2nick(), "slug": "materializm"})
+		rec := httptest.NewRecorder()
+		withClaims(testCollectionOwnerClaims, h.AddItem)(rec, req)
+		if rec.Code != tc.want || store.addedKind != "" {
+			t.Fatalf("%s: код %d, добавлено %q; ожидался %d без записи", name, rec.Code, store.addedKind, tc.want)
 		}
 	}
 }
@@ -274,7 +302,7 @@ func TestDocumentCutFetchClosedIs404(t *testing.T) {
 	newHandler := func() *DocumentCutHandler {
 		return NewDocumentCutHandler(
 			&fakeDocumentStore{doc: &models.Document{ID: 7, Slug: "razbor-7", MarkdownContent: `<cut id="9">`,
-				PublishedAt: ptrTime(time.Now())}},
+				PublishedAt: ptrTime(time.Now()), PublishedMarkdown: `<cut id="9">`}},
 			&fakeCutFullStore{cut: cut, pages: pages},
 			&fakeWorkStore{}, &fakePageStore{}, markdown.NewRenderer(),
 		).WithClosed(closedWorks41())
@@ -284,6 +312,20 @@ func TestDocumentCutFetchClosedIs404(t *testing.T) {
 	newHandler().Full(rec, newCutFullRequest("razbor-7", "9", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("код %d, ожидался 404; тело: %s", rec.Code, rec.Body.String())
+	}
+
+	// Вклейка, которую тело не называет (черновик), отвечает 410 одинаково —
+	// закрыта ли её работа, снаружи не видно.
+	unnamed := NewDocumentCutHandler(
+		&fakeDocumentStore{doc: &models.Document{ID: 7, Slug: "razbor-7", MarkdownContent: `<cut id="9">`,
+			PublishedAt: ptrTime(time.Now()), PublishedMarkdown: "без вклеек"}},
+		&fakeCutFullStore{cut: cut, pages: pages},
+		&fakeWorkStore{}, &fakePageStore{}, markdown.NewRenderer(),
+	).WithClosed(closedWorks41())
+	rec = httptest.NewRecorder()
+	unnamed.Full(rec, newCutFullRequest("razbor-7", "9", nil))
+	if rec.Code != http.StatusGone {
+		t.Fatalf("неназванная вклейка закрытой работы: код %d, ожидался 410", rec.Code)
 	}
 
 	rec = httptest.NewRecorder()

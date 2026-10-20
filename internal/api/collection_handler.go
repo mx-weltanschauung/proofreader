@@ -511,10 +511,18 @@ func (h *CollectionHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 	if !isStaffRequest(r) {
 		targetWork := req.WorkID
 		if req.Kind == models.CollectionItemKindChapter {
+			// Без запасного хода на присланный work_id: сбой базы не должен
+			// пропускать проверку закрытости (fail closed).
 			workID, err := h.collectionStore.ChapterWorkID(ctx, *req.ChapterID)
-			if err == nil {
-				targetWork = &workID
+			if err != nil {
+				if storageNotFound(err) {
+					writeError(w, http.StatusNotFound, "Не найдено")
+				} else {
+					writeError(w, http.StatusInternalServerError, "Не удалось проверить доступность источника")
+				}
+				return
 			}
+			targetWork = &workID
 		}
 		if targetWork != nil {
 			closed, err := closedSetFor(r, h.closed)

@@ -22,11 +22,12 @@ import (
 )
 
 type fakeCollectionStore struct {
-	collections []*models.Collection
-	rows        []repository.ItemRow
-	chapters    []*models.Chapter
-	item        *models.CollectionItem
-	chapterWork map[int64]int64
+	collections    []*models.Collection
+	rows           []repository.ItemRow
+	chapters       []*models.Chapter
+	item           *models.CollectionItem
+	chapterWork    map[int64]int64
+	chapterWorkErr error
 
 	addedKind      string
 	addedChapterID *int64
@@ -193,6 +194,9 @@ func (f *fakeCollectionStore) ChaptersForWorks(ctx context.Context, ids []int64)
 }
 
 func (f *fakeCollectionStore) ChapterWorkID(ctx context.Context, chapterID int64) (int64, error) {
+	if f.chapterWorkErr != nil {
+		return 0, f.chapterWorkErr
+	}
 	if w, ok := f.chapterWork[chapterID]; ok {
 		return w, nil
 	}

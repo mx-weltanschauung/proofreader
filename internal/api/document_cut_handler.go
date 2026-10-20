@@ -345,20 +345,6 @@ func (h *DocumentCutHandler) Full(w http.ResponseWriter, r *http.Request) {
 	}
 	cut := cuts[0]
 
-	// Вклейка закрытой работы не-сотруднику не отдаётся и не признаётся
-	// существующей — 404, а не 410: «снята» подтвердило бы, что она была.
-	if cut.WorkID != nil {
-		closed, err := closedSetFor(r, h.closed)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "Не удалось прочитать вклейку")
-			return
-		}
-		if closed.Has(*cut.WorkID) {
-			writeError(w, http.StatusNotFound, "Не найдено")
-			return
-		}
-	}
-
 	// Отдаём только вклейку, НАЗВАННУЮ той редакцией, которую видит
 	// пришедший. Принадлежности разбору тут мало: у разбора две редакции
 	// разом, и вклейка, на которую ссылается только неодобренный черновик,
@@ -376,6 +362,22 @@ func (h *DocumentCutHandler) Full(w http.ResponseWriter, r *http.Request) {
 	if !named {
 		writeError(w, http.StatusGone, "Вклейка снята")
 		return
+	}
+
+	// Закрытая работа — ПОСЛЕ проверки «названа ли вклейка»: иначе статус 404
+	// против 410 выдавал бы перебором id, что вклейка черновика указывает на
+	// закрытое. Названная вклейка закрытой работы не-сотруднику — 404, а не
+	// 410: «снята» подтвердило бы, что она была.
+	if cut.WorkID != nil {
+		closed, err := closedSetFor(r, h.closed)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать вклейку")
+			return
+		}
+		if closed.Has(*cut.WorkID) {
+			writeError(w, http.StatusNotFound, "Не найдено")
+			return
+		}
 	}
 
 	// Тот же guard, что renderCutState ставит перед renderCut: сама renderCut
