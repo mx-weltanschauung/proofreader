@@ -102,6 +102,15 @@ type PageSuggestionHandler struct {
 	cuts        DocumentCutStore
 	jwtSecret   string
 	trustProxy  bool
+	// closed — закрытые работы: «моё» читателя не называет правок на полосах
+	// закрытого. nil — ничего не закрыто.
+	closed ClosedStore
+}
+
+// WithClosed подключает хранилище закрытых работ.
+func (h *PageSuggestionHandler) WithClosed(c ClosedStore) *PageSuggestionHandler {
+	h.closed = c
+	return h
 }
 
 // NewPageSuggestionHandler creates a new suggestion handler
@@ -292,6 +301,23 @@ func (h *PageSuggestionHandler) Mine(w http.ResponseWriter, r *http.Request) {
 	// на то, что вернул стор.
 	if rows == nil {
 		rows = []repository.SuggestionRow{}
+	}
+	// Правка на полосе закрытой работы несёт её заглавие: закрытое для
+	// читателя не существует, и его правки там — тоже.
+	closed, err := closedSetFor(r, h.closed)
+	if err != nil {
+		log.Printf("list reader suggestions: closed: %v", err)
+		writeError(w, http.StatusInternalServerError, "Не удалось получить список правок")
+		return
+	}
+	if closed != nil {
+		open := rows[:0]
+		for _, s := range rows {
+			if !closed.Has(s.WorkID) {
+				open = append(open, s)
+			}
+		}
+		rows = open
 	}
 
 	writeJSONStatus(w, http.StatusOK, rows)

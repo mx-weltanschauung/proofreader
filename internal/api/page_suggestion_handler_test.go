@@ -1093,3 +1093,34 @@ func TestRejectStoresReason(t *testing.T) {
 		t.Fatalf("причина не сохранена: %v", store.resolvedReason)
 	}
 }
+
+// TestMineHidesSuggestionsOnClosedWorks — правка на полосе закрытой работы
+// несёт её заглавие (work_title): читателю «моё» её не называет, сотруднику —
+// называет, а сбой проверки закрытости — отказ, а не полный список.
+func TestMineHidesSuggestionsOnClosedWorks(t *testing.T) {
+	rows := []repository.SuggestionRow{{ID: 1, WorkID: 41, WorkTitle: "закрытый"}, {ID: 2, WorkID: 42, WorkTitle: "открытый"}}
+	mine := func(claims *auth.Claims, closed *fakeClosedStore) *httptest.ResponseRecorder {
+		store := &fakeSuggestionStore{recentIPs: map[string]int{}, rows: append([]repository.SuggestionRow{}, rows...)}
+		h := NewPageSuggestionHandler(store, &fakePageStore{}, &fakePageVersions{},
+			&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false).WithClosed(closed)
+		rec := httptest.NewRecorder()
+		withClaims(claims, h.Mine)(rec, httptest.NewRequest(http.MethodGet, "/api/suggestions/mine", nil))
+		return rec
+	}
+	closed := func() *fakeClosedStore { return &fakeClosedStore{works: map[int64]string{41: "work"}} }
+
+	rec := mine(testReaderClaims, closed())
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "закрытый") ||
+		!strings.Contains(rec.Body.String(), "открытый") {
+		t.Errorf("читатель: %d %s — ждали только правку открытой работы", rec.Code, rec.Body.String())
+	}
+	rec = mine(&auth.Claims{UserID: 5, Role: models.RoleEditor}, closed())
+	if !strings.Contains(rec.Body.String(), "закрытый") {
+		t.Errorf("сотрудник: %s — закрытую правку обязан видеть", rec.Body.String())
+	}
+	broken := closed()
+	broken.err = fmt.Errorf("база недоступна")
+	if rec = mine(testReaderClaims, broken); rec.Code != http.StatusInternalServerError {
+		t.Errorf("сбой проверки закрытости: %d, ждали 500", rec.Code)
+	}
+}
