@@ -230,20 +230,29 @@ func main() {
 		workRepo, chapterRepo, pageRepo, editionRepo, collectionRepo,
 		markdownRenderer, cfg.Server.PublicBaseURL,
 	)
-	downloadHandler := api.NewDownloadHandler(downloadSource).WithClosed(closedRepo).
+	// Открытый вид работ и изданий и выгрузка над ним — для каналов без
+	// токена (краулер, тексты для нейросетей, MCP, OPDS) и для выгрузки
+	// не-сотруднику: закрытое там выглядит несуществующим для всех.
+	openWorks := api.NewOpenWorks(workRepo, closedRepo)
+	openEditions := api.NewOpenEditions(editionRepo, closedRepo)
+	openDownload := api.NewDownloadSource(
+		openWorks, chapterRepo, pageRepo, openEditions, collectionRepo,
+		markdownRenderer, cfg.Server.PublicBaseURL,
+	)
+	downloadHandler := api.NewDownloadHandler(downloadSource).WithOpen(openDownload).WithClosed(closedRepo).
 		WithAudio(api.NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, chapterRepo, cfg.Server.PublicBaseURL))
 	audioHandler := api.NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, chapterRepo, audioStore, closedRepo)
 	seoRepo := repository.NewSEORepository(db.Pool)
 	seoHandler := seo.NewHandler(&seo.Source{
-		Works:       workRepo,
+		Works:       openWorks,
 		Chapters:    chapterRepo,
 		Pages:       pageRepo,
-		Editions:    editionRepo,
+		Editions:    openEditions,
 		Concepts:    tokenlessIndex,
 		Collections: api.NewSEOCollectionSource(collectionRepo).WithClosed(closedRepo),
 		Documents: api.NewSEODocumentSource(
-			documentRepo, documentCutRepo, workRepo, markdownRenderer).WithClosed(closedRepo),
-		Books:        api.NewSEOBookSource(downloadSource),
+			documentRepo, documentCutRepo, openWorks, markdownRenderer).WithClosed(closedRepo),
+		Books:        api.NewSEOBookSource(openDownload),
 		ConceptBooks: api.NewConceptBookSource(tokenlessIndex, pageRepo, chapterRepo, cfg.Server.PublicBaseURL),
 		Catalog:      seoRepo,
 		Renderer:     markdownRenderer,
@@ -304,15 +313,15 @@ func main() {
 		Search:      searchRepo,
 		SearchSlots: searchHandler.Slots(),
 		Text:        seoHandler,
-		Works:       workRepo,
+		Works:       openWorks,
 		Chapters:    chapterRepo,
-		Library:     api.NewMCPSource(downloadSource),
+		Library:     api.NewMCPSource(openDownload),
 		Stats:       statsRecorder,
 	})
 	// Каталог OPDS: поиск тот же (те же слоты и таймаут), файлы — тот же
 	// /api/.../download.
 	opdsHandler := opds.NewHandler(api.NewOPDSSource(
-		editionRepo, workRepo, chapterRepo, repository.NewOPDSRepository(db.Pool), searchHandler,
+		openEditions, openWorks, chapterRepo, repository.NewOPDSRepository(db.Pool), searchHandler,
 	), cfg.Server.PublicBaseURL)
 	appMetrics.RegisterSlots("heavy", seoHandler.HeavySlots())
 	for name, s := range mcpGates {

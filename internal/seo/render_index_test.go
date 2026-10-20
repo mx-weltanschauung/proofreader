@@ -714,3 +714,37 @@ func TestConceptPageLinksTextForLLM(t *testing.T) {
 		t.Errorf("alternate списка %q, или в теле нет ссылки на .md", list.Alternate)
 	}
 }
+
+// Пункт подборки на закрытом источнике (Unavailable): ни заглавия, ни ссылки —
+// строка «Источник недоступен», и в счёт «Пунктов в подборке» он не идёт:
+// счёт живых пунктов выдал бы меньше, чем раскрыл бы счёт всех.
+func TestCollectionDocUnavailableItemUnlinkedAndUncounted(t *testing.T) {
+	s := indexSource()
+	c := s.Collections.(*fakeCollections).bySlug["o-gosudarstve"]
+	c.Items = append(c.Items, &models.CollectionEntry{ID: 3, Kind: models.CollectionItemKindChapter, Unavailable: true})
+
+	doc, err := s.Collection(context.Background(), "", "o-gosudarstve")
+	if err != nil {
+		t.Fatalf("Collection: %v", err)
+	}
+	if strings.Contains(doc.Body, `read/3"`) {
+		t.Errorf("недоступный пункт стал ссылкой:\n%s", doc.Body)
+	}
+	if strings.Contains(doc.Body, "<a></a>") || strings.Contains(doc.Body, "<li></li>") {
+		t.Errorf("пустая строка вместо недоступного пункта:\n%s", doc.Body)
+	}
+	if !strings.Contains(doc.Body, "<li>Источник недоступен</li>") {
+		t.Errorf("нет строки «Источник недоступен»:\n%s", doc.Body)
+	}
+	if !strings.Contains(doc.Description, "Пунктов в подборке: 1") {
+		t.Errorf("описание = %q, ждали счёт одного живого пункта", doc.Description)
+	}
+
+	in, _, err := s.cardInput(context.Background(), "collection", "o-gosudarstve")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.Footer != "Пунктов: 2" {
+		t.Errorf("подпись карточки = %q, ждали «Пунктов: 2» (недоступный не считается)", in.Footer)
+	}
+}

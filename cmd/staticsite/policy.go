@@ -16,7 +16,7 @@ import (
 // policy — что идёт в архив, сведённое из -exclude и -only. Одно на build и
 // check: самопроверка обязана судить ровно тот состав, что собран.
 type policy struct {
-	// exclude — снятые работы вместе с их передними листами.
+	// exclude — снятые работы вместе с их передними листами и закрытые.
 	exclude map[int64]bool
 	// only — каталог боевого вместе с передними листами; nil — все работы.
 	only map[int64]bool
@@ -40,6 +40,18 @@ func loadPolicy(ctx context.Context, pool *pgxpool.Pool, excludeFile, onlyFile s
 		return nil, err
 	}
 	for _, id := range append(works, kids...) {
+		p.exclude[id] = true
+	}
+	// Закрытые работы — по признаку локальной базы, независимо от списка и
+	// от -only: архив раздают всем, а закрытое не видит никто, кроме
+	// сотрудника. closed_works уже включает служебные работы закрытого тома
+	// и тома закрытого издания. Попав в exclude, работа и сборкой
+	// пропускается, и самопроверкой (checkExcluded) роняет выпуск.
+	closed, err := closedWorks(ctx, pool)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range closed {
 		p.exclude[id] = true
 	}
 
@@ -108,6 +120,24 @@ func (p *policy) onlyIDs() []int64 {
 		return nil
 	}
 	return sortedKeys(p.only)
+}
+
+// closedWorks — работы, закрытые любым путём.
+func closedWorks(ctx context.Context, pool *pgxpool.Pool) ([]int64, error) {
+	rows, err := pool.Query(ctx, `SELECT id FROM closed_works ORDER BY id`)
+	if err != nil {
+		return nil, fmt.Errorf("закрытые работы: %w", err)
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // childrenOf — служебные работы (передние листы) данных томов.

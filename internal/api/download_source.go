@@ -25,7 +25,7 @@ type DownloadSource struct {
 	works       WorkStore
 	chapters    ChapterStore
 	pages       PageStore
-	editions    EditionStore
+	editions    DownloadEditions
 	collections CollectionStore
 	renderer    *markdown.Renderer
 	baseURL     string
@@ -35,8 +35,15 @@ type DownloadSource struct {
 	chapterAnchors bool
 }
 
+// DownloadEditions — что выгрузке нужно от изданий: заглавие для титула.
+// Уже, чем EditionStore, чтобы выгрузку можно было собрать и над открытым видом
+// (OpenEditions), у которого записи нет.
+type DownloadEditions interface {
+	GetByID(ctx context.Context, id int64) (*models.Edition, error)
+}
+
 func NewDownloadSource(
-	works WorkStore, chapters ChapterStore, pages PageStore, editions EditionStore,
+	works WorkStore, chapters ChapterStore, pages PageStore, editions DownloadEditions,
 	collections CollectionStore, renderer *markdown.Renderer, baseURL string,
 ) *DownloadSource {
 	return &DownloadSource{
@@ -245,6 +252,7 @@ func (s *DownloadSource) Collection(ctx context.Context, nickname, slug string, 
 
 		if itemIsClosed(row.Item, closed) {
 			b.Meta.Missing = append(b.Meta.Missing, unavailableSourceLabel)
+			b.Meta.CacheVariant += fmt.Sprintf("u%d.", row.Item.ID)
 			continue
 		}
 

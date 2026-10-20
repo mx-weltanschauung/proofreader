@@ -399,20 +399,22 @@ func (s *Source) cardInput(ctx context.Context, kind, id string) (CardInput, tim
 		if chapter == nil {
 			return CardInput{}, time.Time{}, notFound("глава %d", chapterID)
 		}
-		author, footer := "", ""
-		// Та же осторожность, что у издания в кейсе "work" выше: не найдено —
-		// молчим, отказ базы — логируем, не проглатываем.
+		// Работа главы — не украшение, а допуск: глава живёт, только пока
+		// жива её работа (каскад), поэтому «работы нет» значит «работа
+		// закрыта» (Works — открытый вид, api.OpenWorks), и карточка с
+		// заглавием главы выдала бы закрытое. Отказ базы — тоже отказ: о
+		// закрытости он ничего не сказал.
 		work, err := s.Works.GetByID(ctx, chapter.WorkID)
-		switch {
-		case isNotFound(err):
-		case err != nil:
-			log.Printf("карточка chapter %d: не удалось получить работу %d: %v",
-				chapterID, chapter.WorkID, err)
-		case work != nil:
-			author = work.Author
-			footer = work.Title
+		if err != nil {
+			if isNotFound(err) {
+				return CardInput{}, time.Time{}, notFound("работа %d главы %d", chapter.WorkID, chapterID)
+			}
+			return CardInput{}, time.Time{}, fmt.Errorf("работа %d главы %d: %w", chapter.WorkID, chapterID, err)
 		}
-		return CardInput{Title: chapter.Title, Subtitle: author, Footer: footer},
+		if work == nil {
+			return CardInput{}, time.Time{}, notFound("работа %d главы %d", chapter.WorkID, chapterID)
+		}
+		return CardInput{Title: chapter.Title, Subtitle: work.Author, Footer: work.Title},
 			chapter.UpdatedAt, nil
 
 	case "edition":
@@ -491,10 +493,18 @@ func (s *Source) cardInput(ctx context.Context, kind, id string) (CardInput, tim
 			// может.
 			subtitle = "Подборка · собрал читатель " + c.AuthorNickname
 		}
+		// Пункты закрытых источников не считаются: страница подборки их тоже
+		// не считает (Collection), и счёт всех выдал бы, что закрытое есть.
+		items := 0
+		for _, item := range c.Items {
+			if !item.Unavailable {
+				items++
+			}
+		}
 		return CardInput{
 			Title:    c.Title,
 			Subtitle: subtitle,
-			Footer:   fmt.Sprintf("Пунктов: %d", len(c.Items)),
+			Footer:   fmt.Sprintf("Пунктов: %d", items),
 		}, c.UpdatedAt, nil
 
 	case "document":

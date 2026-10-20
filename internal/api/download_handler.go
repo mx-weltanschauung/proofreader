@@ -24,10 +24,35 @@ import (
 const downloadWriteDeadline = 10 * time.Minute
 
 // DownloadHandler отдаёт главу, работу или подборка файлом.
+//
+// Источников два: source — полный, им собирает файл только сотрудник; open —
+// над открытым видом работ и изданий (OpenWorks, OpenEditions), им — все
+// остальные. Закрытый том анониму не отдаёт уже closedGate маршрута, а
+// открытый источник — второй слой на случай маршрута мимо него.
 type DownloadHandler struct {
 	source *DownloadSource
+	open   *DownloadSource
 	audio  *AudioPlaylist
 	closed ClosedStore
+}
+
+// WithOpen подключает открытый источник для не-сотрудника. nil — всем полный
+// (экземпляр без закрытых работ, подделки тестов).
+func (h *DownloadHandler) WithOpen(open *DownloadSource) *DownloadHandler {
+	h.open = open
+	return h
+}
+
+// sourceFor — источник, которым собирается файл пришедшему.
+//
+// Отдельной метки источника в ETag нет: том и глава закрытой работы открытым
+// источником не собираются вовсе (404, ETag нет), а единственная разница
+// файлов подборки — какие пункты недоступны — уже в Meta.CacheVariant.
+func (h *DownloadHandler) sourceFor(r *http.Request) *DownloadSource {
+	if isStaffRequest(r) || h.open == nil {
+		return h.source
+	}
+	return h.open
 }
 
 // WithClosed подключает хранилище закрытых работ: выгрузка подборки не
@@ -60,6 +85,7 @@ func NewDownloadHandler(source *DownloadSource) *DownloadHandler {
 
 // Work отдаёт том целиком.
 func (h *DownloadHandler) Work(w http.ResponseWriter, r *http.Request) {
+	varyOnViewer(w)
 	id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 64)
 	if err != nil {
 		http.Error(w, "Неверный идентификатор работы", http.StatusBadRequest)
@@ -69,13 +95,15 @@ func (h *DownloadHandler) Work(w http.ResponseWriter, r *http.Request) {
 		h.m3u(w, r, id, 0)
 		return
 	}
+	source := h.sourceFor(r)
 	h.serve(w, r, fmt.Sprintf("work-%d", id), func(ctx context.Context) (*book.Book, error) {
-		return h.source.Work(ctx, id)
+		return source.Work(ctx, id)
 	})
 }
 
 // Chapter отдаёт одну главу вместе с её поддеревом.
 func (h *DownloadHandler) Chapter(w http.ResponseWriter, r *http.Request) {
+	varyOnViewer(w)
 	vars := mux.Vars(r)
 	workID, err := strconv.ParseInt(vars["workId"], 10, 64)
 	if err != nil {
@@ -91,8 +119,9 @@ func (h *DownloadHandler) Chapter(w http.ResponseWriter, r *http.Request) {
 		h.m3u(w, r, workID, chapterID)
 		return
 	}
+	source := h.sourceFor(r)
 	h.serve(w, r, fmt.Sprintf("chapter-%d", chapterID), func(ctx context.Context) (*book.Book, error) {
-		return h.source.Chapter(ctx, workID, chapterID)
+		return source.Chapter(ctx, workID, chapterID)
 	})
 }
 
@@ -104,6 +133,7 @@ func (h *DownloadHandler) Chapter(w http.ResponseWriter, r *http.Request) {
 // оставалась бы доступна по адресу скачивания — ссылка получается из
 // разосланной дописыванием одного сегмента, угадывать нечего.
 func (h *DownloadHandler) Collection(w http.ResponseWriter, r *http.Request) {
+	varyOnViewer(w)
 	if r.URL.Query().Get("format") == formatM3U {
 		http.Error(w, "Плейлист есть у тома и у главы, у подборки его нет", http.StatusBadRequest)
 		return
@@ -131,9 +161,17 @@ func (h *DownloadHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	source := h.sourceFor(r)
 	h.serve(w, r, "collection-"+asciiSlug(slug), func(ctx context.Context) (*book.Book, error) {
-		return h.source.Collection(ctx, nickname, slug, closed)
+		return source.Collection(ctx, nickname, slug, closed)
 	})
+}
+
+// varyOnViewer — по одному адресу сотрудник и остальные получают разное
+// (файл и 404, файл с пунктом и с «недоступным источником»), поэтому общий кэш
+// обязан различать их по заголовку входа. Ставится до любого отказа.
+func varyOnViewer(w http.ResponseWriter) {
+	w.Header().Add("Vary", "Authorization")
 }
 
 // serve — общая часть всех трёх маршрутов: разбор формата, сборка книги,
@@ -169,7 +207,15 @@ func (h *DownloadHandler) serve(
 	// правка состава подборки меняют байты файла, не трогая ни одной
 	// страницы, и Modified в одиночку эти правки не увидел бы (см.
 	// DownloadSource.Work/Chapter/Collection в download_source.go).
-	etag := downloadETag(asciiBase, format, b.Meta.CacheKey)
+	// CacheVariant добавляет то, чего времени не выразить: какие пункты
+	// подборки недоступны пришедшему — закрытие и открытие работы не двигают
+	// ни одного UpdatedAt, а сотрудник и аноним по одному адресу получают
+	// разные файлы. Пустая добавка ETag не меняет: прежние метки остаются.
+	key := asciiBase
+	if b.Meta.CacheVariant != "" {
+		key += "|" + b.Meta.CacheVariant
+	}
+	etag := downloadETag(key, format, b.Meta.CacheKey)
 	w.Header().Set("ETag", etag)
 	if match := r.Header.Get("If-None-Match"); match != "" && strings.Contains(match, etag) {
 		w.WriteHeader(http.StatusNotModified)
