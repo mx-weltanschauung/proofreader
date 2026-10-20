@@ -20,6 +20,9 @@ type Router struct {
 	// opdsHandler — каталог OPDS (internal/opds). nil — /opds отвечает 404:
 	// так собран роутер в тестах, которым каталог не нужен.
 	opdsHandler http.Handler
+	// closedStore — закрытые работы; nil — слой closedGate пропускает всё
+	// (тесты роутера, экземпляр без хранилища).
+	closedStore ClosedStore
 	// statsHandler — посещаемость (internal/stats). nil — маячок отвечает 204
 	// и ничего не пишет, серверные каналы молчат: так собран роутер в тестах.
 	statsHandler *StatsHandler
@@ -66,6 +69,13 @@ type Router struct {
 // полдюжины вызовов в тестах.
 func (rt *Router) WithMCP(h http.Handler) *Router {
 	rt.mcpHandler = h
+	return rt
+}
+
+// WithClosed подключает хранилище закрытых работ: closedGate на подроутерах
+// public и reader прячет закрытое от не-сотрудников. Вызывается до Setup.
+func (rt *Router) WithClosed(store ClosedStore) *Router {
+	rt.closedStore = store
 	return rt
 }
 
@@ -268,6 +278,9 @@ func (rt *Router) Setup() *mux.Router {
 	reader.Use(middleware.AuthMiddleware(rt.authService))
 	reader.Use(middleware.RequireRole(
 		models.RoleReader, models.RoleEditor, models.RoleAdministrator))
+	// Закрытая работа читателю не видна и правки к ней он не предложит;
+	// слой стоит после AuthMiddleware — claims уже в контексте.
+	reader.Use(closedGate(rt.closedStore))
 
 	// staffEarly — сотруднические маршруты с ЛИТЕРАЛЬНЫМ путём, который иначе
 	// перехватил бы публичный шаблон с переменной. mux перебирает подроутеры
@@ -283,6 +296,9 @@ func (rt *Router) Setup() *mux.Router {
 	// present (so handlers can vary behavior for logged-in users later).
 	public := api.PathPrefix("").Subrouter()
 	public.Use(middleware.OptionalAuth(rt.authService))
+	// После OptionalAuth (сотрудника узнаём по токену) и до обработчиков с
+	// их кэшем глав: закрытый том не должен отдаваться готовым файлом.
+	public.Use(closedGate(rt.closedStore))
 
 	// Authenticated routes: any valid token, any role.
 	authRequired := api.PathPrefix("").Subrouter()

@@ -343,6 +343,7 @@ func main() {
 		authService,
 	).WithMCP(mcpHandler).
 		WithOPDS(opdsHandler).
+		WithClosed(repository.NewClosedRepository(db.Pool)).
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
 		WithSite(api.NewSiteHandler(cfg.Site)).

@@ -289,3 +289,12 @@ type CreditStore interface {
 	CreditLister
 	ReplaceCredits(ctx context.Context, chapterID int64, credits []models.CreditInput) error
 }
+
+// ClosedStore — срез репозитория закрытых работ: чем закрыта работа, какие
+// работы и издания закрыты целиком. Объявлен здесь, на стороне потребителя;
+// *repository.ClosedRepository удовлетворяет ему как есть.
+type ClosedStore interface {
+	ClosedBy(ctx context.Context, workID int64) (string, error)
+	ClosedIDs(ctx context.Context) (map[int64]bool, error)
+	ClosedEditionIDs(ctx context.Context) (map[int64]bool, error)
+}
