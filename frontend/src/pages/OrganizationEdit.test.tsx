@@ -104,4 +104,81 @@ describe('OrganizationEdit', () => {
       }),
     );
   });
+
+  const fullEvent = (id: number, slug: string, title: string) =>
+    ({
+      id,
+      kind_id: 1,
+      slug,
+      title,
+      dates: '',
+      place: '',
+      description: '',
+      position: 9,
+      organization: ORG,
+      kind_title: 'Съезды',
+      sections: [],
+    }) as never;
+
+  function stubEvents() {
+    vi.spyOn(eventsApi, 'event').mockImplementation((_o, slug) =>
+      ok(slug === 'e1' ? fullEvent(5, 'e1', 'I съезд') : fullEvent(6, 'e2', 'II съезд')),
+    );
+  }
+
+  it('перестановка события пишет ровно два с обменянными позициями и перечитывает', async () => {
+    stubEvents();
+    const upd = vi.spyOn(eventsApi, 'updateEvent').mockReturnValue(ok({} as never));
+    setup();
+    const u = userEvent.setup();
+    await screen.findByText('Правка организации');
+    const loads = vi.mocked(eventsApi.organization).mock.calls.length;
+    await u.click(screen.getByRole('button', { name: 'Событие I съезд вниз' }));
+    await waitFor(() => expect(upd).toHaveBeenCalledTimes(2));
+    expect(upd.mock.calls.map((c) => [c[0], c[1].position])).toEqual([
+      [5, 1],
+      [6, 0],
+    ]);
+    await waitFor(() =>
+      expect(vi.mocked(eventsApi.organization).mock.calls.length).toBeGreaterThan(loads),
+    );
+  });
+
+  it('провал записи при перестановке всё равно перечитывает и показывает ошибку', async () => {
+    stubEvents();
+    vi.spyOn(eventsApi, 'updateEvent').mockRejectedValue({
+      response: { status: 500, data: { message: 'База недоступна' } },
+    });
+    setup();
+    const u = userEvent.setup();
+    await screen.findByText('Правка организации');
+    const loads = vi.mocked(eventsApi.organization).mock.calls.length;
+    await u.click(screen.getByRole('button', { name: 'Событие I съезд вниз' }));
+    expect(await screen.findByText('База недоступна')).toBeInTheDocument();
+    expect(vi.mocked(eventsApi.organization).mock.calls.length).toBeGreaterThan(loads);
+  });
+
+  it('перестановка видов с равными позициями меняет порядок', async () => {
+    const two = {
+      ...ORG,
+      kinds: [
+        { ...ORG.kinds[0], position: 0 },
+        { id: 2, organization_id: 1, title: 'Пленумы', position: 0, events: [] },
+      ],
+    };
+    vi.spyOn(eventsApi, 'organization').mockReturnValue(ok(two));
+    const upd = vi.spyOn(eventsApi, 'updateKind').mockReturnValue(ok({} as never));
+    render(
+      <MemoryRouter initialEntries={['/organizations/org-a/edit']}>
+        <Routes>
+          <Route path="/organizations/:slug/edit" element={<OrganizationEdit />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const u = userEvent.setup();
+    await screen.findByText('Правка организации');
+    await u.click(screen.getByRole('button', { name: 'Вид Съезды вниз' }));
+    await waitFor(() => expect(upd).toHaveBeenCalled());
+    expect(upd.mock.calls.map((c) => [c[0], c[1].position])).toEqual([[1, 1]]);
+  });
 });

@@ -47,45 +47,59 @@ export const OrganizationEdit: React.FC = () => {
   if (loading) return <div className="loading-state">Загружаем организацию…</div>;
   if (loadError || !org) return <div className="error-message">{loadError || 'Не найдено'}</div>;
 
-  // Любая запись: ошибку сервера — на экран, успех — перечитать.
+  // Любая запись: ошибку сервера — на экран; перечитываем и после провала,
+  // иначе экран держал бы прежний порядок при частично записанном.
   const run = async (what: string, f: () => Promise<unknown>, ok?: string) => {
     setError('');
+    let failed = false;
     try {
       await f();
-      await reload();
-      if (ok) toast.success(ok);
     } catch (err: unknown) {
+      failed = true;
       setError(apiErrorMessage(err, what));
     }
+    try {
+      await reload();
+    } catch (err: unknown) {
+      failed = true;
+      setError(apiErrorMessage(err, 'Не удалось перечитать организацию'));
+    }
+    if (ok && !failed) toast.success(ok);
   };
 
+  // Позиции берутся из порядка массива; пишутся только сдвинутые виды.
   const moveKind = (i: number, d: number) => {
-    const a = org.kinds[i];
-    const b = org.kinds[i + d];
-    if (!a || !b) return;
+    const j = i + d;
+    if (!org.kinds[i] || !org.kinds[j]) return;
+    const order = [...org.kinds];
+    [order[i], order[j]] = [order[j], order[i]];
     void run('Не удалось переставить вид', async () => {
-      await eventsApi.updateKind(a.id, { title: a.title, position: b.position });
-      await eventsApi.updateKind(b.id, { title: b.title, position: a.position });
+      for (let p = 0; p < order.length; p++) {
+        if (order[p].position === p) continue;
+        await eventsApi.updateKind(order[p].id, { title: order[p].title, position: p });
+      }
     });
   };
 
+  // Меняются местами ровно два события: их шапки берём свежими, пишем две.
   const moveEvent = (kindId: number, i: number, d: number) => {
     const list = org.kinds.find((k) => k.id === kindId)?.events ?? [];
     const j = i + d;
     if (!list[i] || !list[j]) return;
     void run('Не удалось переставить событие', async () => {
-      // Порядок задаётся позицией; новую расставляем подряд по списку.
-      const order = list.map((e) => e.id);
-      [order[i], order[j]] = [order[j], order[i]];
-      for (let p = 0; p < order.length; p++) {
-        const { data } = await eventsApi.event(org.slug, list.find((e) => e.id === order[p])!.slug);
+      const moved: [(typeof list)[number], number][] = [
+        [list[i], j],
+        [list[j], i],
+      ];
+      for (const [e, position] of moved) {
+        const { data } = await eventsApi.event(org.slug, e.slug);
         await eventsApi.updateEvent(data.id, {
           kind_id: data.kind_id,
           title: data.title,
           dates: data.dates,
           place: data.place,
           description: data.description,
-          position: p,
+          position,
         });
       }
     });
