@@ -771,7 +771,12 @@ func seedClosedSearchFixture(t *testing.T) {
 		WITH c AS (INSERT INTO index_concepts (title, slug, sort_key, title_key)
 		           VALUES ('Зазеркалье', 'zazerkale', 'зазеркалье', 'зазеркалье') RETURNING id)
 		INSERT INTO index_concept_articles (concept_id, edition_id, work_id, title, title_key, kind)
-		SELECT id, 61, 70, 'Зазеркалье', 'зазеркалье', 'article' FROM c`); err != nil {
+		SELECT id, 61, 70, 'Зазеркалье', 'зазеркалье', 'article' FROM c;
+		-- Понятие внешнего указателя закрытого собрания: статья без работы.
+		WITH c AS (INSERT INTO index_concepts (title, slug, sort_key, title_key)
+		           VALUES ('Зазеркалье внешнее', 'zazerkale-ext', 'зазеркалье внешнее', 'зазеркалье внешнее') RETURNING id)
+		INSERT INTO index_concept_articles (concept_id, edition_id, work_id, title, title_key, kind)
+		SELECT id, 62, NULL, 'Зазеркалье внешнее', 'зазеркалье внешнее', 'article' FROM c`); err != nil {
 		t.Fatalf("fixture: %v", err)
 	}
 }
@@ -823,7 +828,7 @@ func TestSearchShowsClosedWhenIncluded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Volumes) != 3 || len(res.Chapters) != 1 || len(res.Concepts) != 1 || res.TotalHits != 3 {
+	if len(res.Volumes) != 3 || len(res.Chapters) != 1 || len(res.Concepts) != 2 || res.TotalHits != 3 {
 		t.Fatalf("томов %d, глав %d, понятий %d, total %d",
 			len(res.Volumes), len(res.Chapters), len(res.Concepts), res.TotalHits)
 	}

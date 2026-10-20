@@ -95,6 +95,9 @@ func termsIn(ctx context.Context, tx pgx.Tx, text string) ([]string, error) {
 // Terms — леммы разобранного запроса без исключённых. Пустой срез означает
 // «после разбора ничего не осталось» (одни знаки препинания или одни
 // исключения); обработчик отвечает на это 400.
+//
+// IncludeClosed здесь нарочно не читается: леммы разбираются из текста запроса и
+// данных работ не касаются.
 func (r *SearchRepository) Terms(ctx context.Context, q models.SearchQuery) ([]string, error) {
 	tx, err := r.begin(ctx)
 	if err != nil {
@@ -132,6 +135,11 @@ var searchWorkSlugColumns = strings.ReplaceAll(workSlugColumns, "works.", "w.")
 // читатель, отметивший том, ждёт его титул, содержание и предисловие внутри
 // области. Собрание служебной работы по-прежнему берётся у родителя.
 //
+// Закрытое — НЕКОРРЕЛИРОВАННЫЙ `NOT IN (SELECT id FROM closed_works)`: Postgres
+// считает его множество один раз на запрос (хешированный подплан), а не на
+// каждую совпавшую полосу — `NOT EXISTS` внутри OR в антисоединение не
+// превращается и гнал work_closed_by по строке (замер — отчёт задачи 5).
+//
 // closedParam — номер параметра «показывать закрытое» ($4 у томов, $5 у глав,
 // понятий и отрывков томов): ложь прячет закрытую работу (closed_works уже
 // несёт и родителя, и собрание, и журнал), поэтому передний лист закрытого
@@ -146,7 +154,7 @@ func scopeConditionFor(editionExpr, closedParam string) string {
 	    OR w.id = ANY($3::bigint[])
 	    OR w.parent_work_id = ANY($3::bigint[])
 	  )
-	  AND (` + closedParam + ` OR NOT EXISTS (SELECT 1 FROM closed_works cw WHERE cw.id = w.id))`
+	  AND (` + closedParam + ` OR w.id IS NULL OR w.id NOT IN (SELECT id FROM closed_works))`
 }
 
 // Собрание строки, у которой работа есть всегда: главы, тома, полосы тома.
@@ -209,6 +217,9 @@ var searchConceptsQuery = `
 	    LEFT JOIN works p ON p.id = w.parent_work_id
 	    WHERE a.concept_id = ic.id
 	    ` + scopeConditionFor(`coalesce(w.edition_id, p.edition_id, a.edition_id)`, "$5") + `
+	    -- Статья без работы (внешний указатель) держится собранием: закрытое
+	    -- собрание прячет и такое понятие, иначе его заглавие уходило бы анониму.
+	    AND ($5 OR NOT EXISTS (SELECT 1 FROM editions ae WHERE ae.id = a.edition_id AND ae.closed))
 	  )
 	ORDER BY ts_rank(to_tsvector('ru', ic.title), q.tsq) DESC, ic.sort_key, ic.id
 	LIMIT $4
@@ -417,7 +428,7 @@ const searchPagesQuery = `
 	CROSS JOIN q
 	JOIN works w ON w.id = pg.work_id` + pageHitChapterJoin + `
 	WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq` + chapterCondition + `
-	  AND ($6 OR NOT EXISTS (SELECT 1 FROM closed_works cw WHERE cw.id = pg.work_id))
+	  AND ($6 OR pg.work_id NOT IN (SELECT id FROM closed_works))
 	ORDER BY pg.page_number
 	LIMIT $4 OFFSET $5
 `
@@ -498,7 +509,7 @@ const searchPagesFacetQuery = `
 	  SELECT pg.page_number
 	  FROM pages pg CROSS JOIN q
 	  WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq
-	    AND ($4 OR NOT EXISTS (SELECT 1 FROM closed_works cw WHERE cw.id = pg.work_id))
+	    AND ($4 OR pg.work_id NOT IN (SELECT id FROM closed_works))
 	)
 	SELECT ch.id, ch.title, count(*)::int AS hits, (count(*) OVER ())::int AS total
 	FROM hits h
@@ -516,7 +527,7 @@ const searchPagesCountQuery = `
 	WITH q AS (SELECT websearch_to_tsquery('ru', $1) AS tsq)
 	SELECT count(*)::int FROM pages pg CROSS JOIN q
 	WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq` + chapterCondition + `
-	  AND ($4 OR NOT EXISTS (SELECT 1 FROM closed_works cw WHERE cw.id = pg.work_id))
+	  AND ($4 OR pg.work_id NOT IN (SELECT id FROM closed_works))
 `
 
 // SearchPages — полосы одного тома в порядке чтения. Неизвестный том — пустой
