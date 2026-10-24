@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -454,5 +455,73 @@ func TestDownloadCollectionHidesClosedSubchapterHeading(t *testing.T) {
 	}
 	if body := get(editorClaims()); !strings.Contains(body, "СЕКРЕТНАЯПОДГЛАВА") {
 		t.Fatalf("сотрудник: %s", body)
+	}
+}
+
+// ---- избранное собрания и «мои правки» (сквозной сторож, задача 10) ----
+
+// TestHighlightsHideClosedChapter — пункт избранного на закрытой главе
+// открытой работы несёт её заглавие и подпись: не-сотрудник его не видит,
+// сотрудник видит, сбой проверки — 500, а не полный список.
+func TestHighlightsHideClosedChapter(t *testing.T) {
+	store := &fakeHighlightStore{edition: &models.Edition{ID: 4}, list: []models.EditionHighlight{
+		{ChapterID: 7, WorkID: 1, ChapterTitle: "Речь закрытая", Label: "закрытый пункт"},
+		{ChapterID: 8, WorkID: 1, ChapterTitle: "Речь открытая", Label: "открытый пункт"},
+	}}
+	get := func(claims *auth.Claims, chapters closedChapterLister) *httptest.ResponseRecorder {
+		h := NewHighlightHandler(store).WithClosedChapters(chapters)
+		req := mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/api/editions/4/highlights", nil), map[string]string{"id": "4"})
+		rec := httptest.NewRecorder()
+		withClaims(claims, h.Get)(rec, req)
+		return rec
+	}
+	closed := chapterSet{chapters: map[int64]bool{7: true}}
+	rec := get(nil, closed)
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "закрыт") ||
+		!strings.Contains(rec.Body.String(), "открытый пункт") {
+		t.Errorf("аноним: %d %s — ждали только открытый пункт", rec.Code, rec.Body.String())
+	}
+	if rec = get(testReaderClaims, closed); strings.Contains(rec.Body.String(), "закрыт") {
+		t.Errorf("читатель: %s — закрытый пункт виден", rec.Body.String())
+	}
+	if rec = get(editorClaims(), closed); !strings.Contains(rec.Body.String(), "закрытый пункт") {
+		t.Errorf("сотрудник: %s — закрытый пункт обязан видеть", rec.Body.String())
+	}
+	if rec = get(nil, failingChapterLister{}); rec.Code != http.StatusInternalServerError {
+		t.Errorf("сбой проверки закрытых глав: %d, ждали 500", rec.Code)
+	}
+}
+
+type failingChapterLister struct{}
+
+func (failingChapterLister) AllClosedChapterIDs(context.Context) (map[int64]bool, error) {
+	return nil, errors.New("база недоступна")
+}
+
+// TestMineHidesSuggestionsOnClosedChapterPages — правка на полосе закрытой
+// главы открытой работы называет номер полосы и заглавие тома, то есть место
+// закрытой речи: читателю «моё» её не называет, правку на открытой полосе той
+// же работы — называет; сотруднику — обе.
+func TestMineHidesSuggestionsOnClosedChapterPages(t *testing.T) {
+	rows := []repository.SuggestionRow{
+		{ID: 1, WorkID: 42, PageNumber: 3, Note: "на закрытой"},
+		{ID: 2, WorkID: 42, PageNumber: 1, Note: "на открытой"},
+	}
+	spans := chapterSet{spans: map[int64][]models.PageSpan{42: {{Start: 2, End: 3}}}}
+	mine := func(claims *auth.Claims) *httptest.ResponseRecorder {
+		store := &fakeSuggestionStore{recentIPs: map[string]int{}, rows: append([]repository.SuggestionRow{}, rows...)}
+		h := NewPageSuggestionHandler(store, NewViewPages(&fakePageStore{}, spans), &fakePageVersions{},
+			&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
+		rec := httptest.NewRecorder()
+		withClaims(claims, h.Mine)(rec, httptest.NewRequest(http.MethodGet, "/api/suggestions/mine", nil))
+		return rec
+	}
+	rec := mine(testReaderClaims)
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "на закрытой") ||
+		!strings.Contains(rec.Body.String(), "на открытой") {
+		t.Errorf("читатель: %d %s — ждали только правку на открытой полосе", rec.Code, rec.Body.String())
+	}
+	if rec = mine(editorClaims()); !strings.Contains(rec.Body.String(), "на закрытой") {
+		t.Errorf("сотрудник: %s — правку на закрытой полосе обязан видеть", rec.Body.String())
 	}
 }

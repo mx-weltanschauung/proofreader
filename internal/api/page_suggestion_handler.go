@@ -312,15 +312,29 @@ func (h *PageSuggestionHandler) Mine(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить список правок")
 		return
 	}
-	if closed != nil {
-		open := rows[:0]
-		for _, s := range rows {
-			if !closed.Has(s.WorkID) {
-				open = append(open, s)
-			}
+	// Правка на полосе закрытой главы открытой работы называет номер полосы и
+	// заглавие тома — место закрытой речи. Диапазоны берутся по зрителю
+	// (ViewPages.HiddenSpans): сотруднику их нет.
+	spans := map[int64][]models.PageSpan{}
+	open := rows[:0]
+	for _, s := range rows {
+		if closed.Has(s.WorkID) {
+			continue
 		}
-		rows = open
+		hidden, seen := spans[s.WorkID]
+		if !seen {
+			if hidden, err = hiddenSpansOf(r.Context(), h.pages, s.WorkID); err != nil {
+				log.Printf("list reader suggestions: closed spans: %v", err)
+				writeError(w, http.StatusInternalServerError, "Не удалось получить список правок")
+				return
+			}
+			spans[s.WorkID] = hidden
+		}
+		if !inSpans(hidden, s.PageNumber) {
+			open = append(open, s)
+		}
 	}
+	rows = open
 
 	writeJSONStatus(w, http.StatusOK, rows)
 }

@@ -106,7 +106,7 @@ func NewServer(d ServerDeps) *mux.Router {
 	exportHandler := NewExportHandler(workRepo, chapterRepo, pageRepo)
 	editionHandler := NewEditionHandler(editionRepo)
 	shelfHandler := NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo).WithClosedChapters(closedRepo).WithEvents(eventRepo)
-	highlightHandler := NewHighlightHandler(editionRepo).WithClosed(closedRepo)
+	highlightHandler := NewHighlightHandler(editionRepo).WithClosed(closedRepo).WithClosedChapters(closedRepo)
 	searchRepo := repository.NewSearchRepository(pool)
 	searchHandler := NewSearchHandler(searchRepo)
 
