@@ -115,7 +115,7 @@ func scanWork(row rowScanner) (*models.Work, error) {
 }
 
 // Create creates a new work
-func (r *WorkRepository) Create(ctx context.Context, work *models.Work) error {
+func (r *WorkRepository) Create(ctx context.Context, work *models.Work, actor models.ClosureActor, reason string) error {
 	// role/numbering_style — NOT NULL с CHECK, а не полагаемся на DEFAULT в
 	// колонке: Create перечисляет обе колонки явно (нужно для служебных
 	// работ), поэтому DEFAULT 'volume'/'arabic' в схеме не подхватывается —
@@ -124,8 +124,8 @@ func (r *WorkRepository) Create(ctx context.Context, work *models.Work) error {
 	// знающие о ролях (текущий POST /api/works), оставляют оба поля пустыми
 	// и должны получать том, как до этой миграции.
 	cols, args := prepareWorkInsert(work)
-	if err := insertRow(ctx, r.pool, "works", work.ID, cols, args,
-		&work.ID, &work.CreatedAt, &work.UpdatedAt); err != nil {
+	if err := insertRowClosure(ctx, r.pool, "works", ClosureWork, work.Title, work.Closed, actor, reason,
+		work.ID, cols, args, &work.ID, &work.CreatedAt, &work.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create work: %w", err)
 	}
 	return nil

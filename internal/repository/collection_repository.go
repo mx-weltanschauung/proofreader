@@ -676,11 +676,12 @@ func (r *CollectionRepository) ChaptersForWorks(
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, work_id, parent_id, title, type, order_number,
-		       start_page, end_page, created_at, updated_at
-		FROM chapters
-		WHERE work_id = ANY($1)
-		ORDER BY work_id, order_number`, workIDs)
+		SELECT c.id, c.work_id, c.parent_id, c.title, c.type, c.order_number,
+		       c.start_page, c.end_page, c.created_at, c.updated_at, c.closed,
+		       CASE WHEN c.closed THEN 'chapter' WHEN cc.id IS NOT NULL THEN 'parent' ELSE '' END
+		FROM chapters c LEFT JOIN closed_chapters cc ON cc.id = c.id
+		WHERE c.work_id = ANY($1)
+		ORDER BY c.work_id, c.order_number`, workIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list chapters for works: %w", err)
 	}
@@ -691,7 +692,7 @@ func (r *CollectionRepository) ChaptersForWorks(
 		var c models.Chapter
 		if err := rows.Scan(
 			&c.ID, &c.WorkID, &c.ParentID, &c.Title, &c.Type, &c.OrderNumber,
-			&c.StartPage, &c.EndPage, &c.CreatedAt, &c.UpdatedAt,
+			&c.StartPage, &c.EndPage, &c.CreatedAt, &c.UpdatedAt, &c.Closed, &c.ClosedBy,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan chapter: %w", err)
 		}

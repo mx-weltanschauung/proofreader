@@ -46,7 +46,7 @@ func seedOPDSFixture(t *testing.T, pool *pgxpool.Pool) opdsFixture {
 	var f opdsFixture
 
 	ed := &models.Edition{Title: "Сочинения в 13 томах", Slug: "stalin-sochineniya", URLSlug: "stalin"}
-	if err := repository.NewEditionRepository(pool).Create(ctx, ed); err != nil {
+	if err := repository.NewEditionRepository(pool).Create(ctx, ed, models.ClosureActor{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.edition = ed.ID
@@ -57,7 +57,7 @@ func seedOPDSFixture(t *testing.T, pool *pgxpool.Pool) opdsFixture {
 		Status: models.WorkStatusDraft, Role: models.WorkRoleVolume, NumberingStyle: models.NumberingArabic,
 		OwnerID: 1, EditionID: &f.edition, VolumeNumber: ptr(1), PageOffset: 2,
 	}
-	if err := works.Create(ctx, vol); err != nil {
+	if err := works.Create(ctx, vol, models.ClosureActor{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.volume = vol.ID
@@ -66,7 +66,7 @@ func seedOPDSFixture(t *testing.T, pool *pgxpool.Pool) opdsFixture {
 		Status: models.WorkStatusDraft, Role: models.WorkRoleFrontMatter, NumberingStyle: models.NumberingArabic,
 		OwnerID: 1, ParentWorkID: &f.volume,
 	}
-	if err := works.Create(ctx, front); err != nil {
+	if err := works.Create(ctx, front, models.ClosureActor{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.front = front.ID

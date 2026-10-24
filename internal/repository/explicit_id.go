@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"proofreader/internal/models"
 )
 
 // ErrIDTaken — явный id уже занят другой строкой.
@@ -77,4 +79,27 @@ func insertRowTx(ctx context.Context, tx pgx.Tx, table string, id int64,
 		return fmt.Errorf("подтяжка последовательности %s_id_seq: %w", table, err)
 	}
 	return nil
+}
+
+// insertRowClosure — insertRow для сущности с признаком «закрыт»: закрытая при
+// создании пишет строку журнала закрытий той же транзакцией (без неё запись
+// о закрытии пропала бы, а причину потом не восстановить). Открытая ведёт
+// себя как insertRow, журнал не трогает.
+func insertRowClosure(ctx context.Context, pool *pgxpool.Pool, table, kind, title string, closed bool,
+	actor models.ClosureActor, reason string, id int64, cols []string, args []any, dest ...any) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck // после Commit это no-op
+	if err := insertRowTx(ctx, tx, table, id, cols, args, dest...); err != nil {
+		return err
+	}
+	if closed {
+		// dest[0] — id по контракту RETURNING id, created_at, updated_at.
+		if err := insertClosureTx(ctx, tx, kind, *dest[0].(*int64), title, true, actor, reason); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }

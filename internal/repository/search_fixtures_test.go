@@ -24,7 +24,7 @@ func seedWorkWithPages(t *testing.T, pool *pgxpool.Pool, title string, markdowns
 		Status: models.WorkStatusDraft, Role: models.WorkRoleVolume,
 		NumberingStyle: models.NumberingArabic, OwnerID: 1,
 	}
-	if err := workRepo.Create(ctx, w); err != nil {
+	if err := workRepo.Create(ctx, w, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("seedWorkWithPages: create work: %v", err)
 	}
 	t.Cleanup(func() { _ = workRepo.Delete(context.Background(), w.ID) })
@@ -47,7 +47,7 @@ func seedChildWorkWithPages(t *testing.T, pool *pgxpool.Pool, parent int64, titl
 		Status: models.WorkStatusDraft, Role: models.WorkRoleFrontMatter,
 		ParentWorkID: &parent, NumberingStyle: models.NumberingArabic, OwnerID: 1,
 	}
-	if err := workRepo.Create(ctx, w); err != nil {
+	if err := workRepo.Create(ctx, w, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("seedChildWorkWithPages: create work: %v", err)
 	}
 

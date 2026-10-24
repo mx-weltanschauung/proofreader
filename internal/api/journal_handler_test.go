@@ -56,7 +56,7 @@ func (f *fakeJournalStore) Detail(_ context.Context, slug string, includeClosed 
 	}
 	return &models.JournalDetail{Journal: f.journal, Years: []models.JournalYear{}}, nil
 }
-func (f *fakeJournalStore) Create(_ context.Context, j *models.Journal) error {
+func (f *fakeJournalStore) Create(_ context.Context, j *models.Journal, _ models.ClosureActor, _ string) error {
 	if f.createErr != nil {
 		return f.createErr
 	}
@@ -70,7 +70,7 @@ func (f *fakeJournalStore) Update(_ context.Context, j *models.Journal) error {
 	f.journal = j
 	return nil
 }
-func (f *fakeJournalStore) CreateIssue(_ context.Context, i *models.JournalIssue, w *models.Work) error {
+func (f *fakeJournalStore) CreateIssue(_ context.Context, i *models.JournalIssue, w *models.Work, _ models.ClosureActor, _ string) error {
 	if f.issueErr != nil {
 		return f.issueErr
 	}

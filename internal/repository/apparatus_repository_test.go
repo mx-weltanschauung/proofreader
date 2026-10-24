@@ -464,7 +464,7 @@ func TestApparatusRemoveDropsOwnConceptArticleKeepsForeign(t *testing.T) {
 	vol := apparatusFixture(t, works, chapters, pages)
 
 	edition := &models.Edition{Title: "проба-аппарат-издание", Slug: "proba-apparatus-edition"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -486,7 +486,7 @@ func TestApparatusRemoveDropsOwnConceptArticleKeepsForeign(t *testing.T) {
 	seedArticle(t, pool, shared, edition.ID, &vol.ID, "Прибавочная стоимость")
 
 	otherEdition := &models.Edition{Title: "проба-чужое-издание", Slug: "proba-foreign-edition"}
-	if err := editions.Create(ctx, otherEdition); err != nil {
+	if err := editions.Create(ctx, otherEdition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create foreign edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, otherEdition.ID) })
@@ -580,7 +580,7 @@ func TestApparatusRemoveDoesNotSweepUnrelatedOrphanConcept(t *testing.T) {
 	vol := apparatusFixture(t, works, chapters, pages)
 
 	edition := &models.Edition{Title: "проба-аппарат-издание-2", Slug: "proba-apparatus-edition-2"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -597,7 +597,7 @@ func TestApparatusRemoveDoesNotSweepUnrelatedOrphanConcept(t *testing.T) {
 	// удаления издания, статья ушла каскадом, понятие осталось без единой
 	// статьи. Со снимаемым томом не связано никак.
 	strandedEdition := &models.Edition{Title: "проба-исчезнувшее-издание", Slug: "proba-vanished-edition"}
-	if err := editions.Create(ctx, strandedEdition); err != nil {
+	if err := editions.Create(ctx, strandedEdition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create stranded edition: %v", err)
 	}
 	stranded := seedConcept(t, pool, "Меновая стоимость", "menovaya-stoimost-apparatus")

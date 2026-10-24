@@ -195,7 +195,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	if err := h.workRepo.Create(ctx, work); err != nil {
+	if err := h.workRepo.Create(ctx, work, closureActor(r), closedAtCreation); err != nil {
 		if errors.Is(err, repository.ErrIDTaken) {
 			http.Error(w, fmt.Sprintf("work id %d is already taken", req.ID), http.StatusConflict)
 			return

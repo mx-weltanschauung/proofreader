@@ -107,7 +107,7 @@ func (h *JournalHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	j := &models.Journal{ID: req.ID, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description, Closed: req.Closed}
-	if err := h.store.Create(r.Context(), j); err != nil {
+	if err := h.store.Create(r.Context(), j, closureActor(r), closedAtCreation); err != nil {
 		h.writeStoreError(w, err, "Не удалось завести журнал")
 		return
 	}
@@ -199,7 +199,7 @@ func (h *JournalHandler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		NumberTo: req.NumberTo, Label: label, Months: req.Months}
 	work := &models.Work{ID: req.WorkID, Title: models.IssueTitle(j.Title, req.Year, label), Language: "ru",
 		Status: models.WorkStatusDraft, OwnerID: claims.UserID, Closed: req.Closed}
-	if err := h.store.CreateIssue(r.Context(), issue, work); err != nil {
+	if err := h.store.CreateIssue(r.Context(), issue, work, closureActor(r), closedAtCreation); err != nil {
 		h.writeStoreError(w, err, "Не удалось завести номер")
 		return
 	}

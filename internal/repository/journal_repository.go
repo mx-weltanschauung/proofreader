@@ -46,10 +46,11 @@ func isUnique(err error, constraint string) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == constraint
 }
 
-func (r *JournalRepository) Create(ctx context.Context, j *models.Journal) error {
+func (r *JournalRepository) Create(ctx context.Context, j *models.Journal, actor models.ClosureActor, reason string) error {
 	cols := []string{"slug", "title", "subtitle", "description", "closed"}
 	args := []any{j.Slug, j.Title, j.Subtitle, j.Description, j.Closed}
-	err := insertRow(ctx, r.pool, "journals", j.ID, cols, args, &j.ID, &j.CreatedAt, &j.UpdatedAt)
+	err := insertRowClosure(ctx, r.pool, "journals", ClosureJournal, j.Title, j.Closed, actor, reason,
+		j.ID, cols, args, &j.ID, &j.CreatedAt, &j.UpdatedAt)
 	if isUnique(err, "journals_slug_key") {
 		return fmt.Errorf("%w: %s", ErrJournalSlugTaken, j.Slug)
 	}
@@ -144,7 +145,8 @@ func (r *JournalRepository) Detail(ctx context.Context, slug string, includeClos
 // CreateIssue заводит работу номера и строку номера одной транзакцией;
 // у обеих допустим явный id. Роль и пустые издание/родитель работы
 // выставляются здесь, а не вызывающим.
-func (r *JournalRepository) CreateIssue(ctx context.Context, issue *models.JournalIssue, work *models.Work) error {
+func (r *JournalRepository) CreateIssue(ctx context.Context, issue *models.JournalIssue, work *models.Work,
+	actor models.ClosureActor, reason string) error {
 	work.Role = models.WorkRoleJournalIssue
 	work.EditionID, work.ParentWorkID, work.VolumeNumber, work.VolumePart = nil, nil, nil, nil
 	work.PageOffset = 0
@@ -156,6 +158,11 @@ func (r *JournalRepository) CreateIssue(ctx context.Context, issue *models.Journ
 	cols, args := prepareWorkInsert(work)
 	if err := insertRowTx(ctx, tx, "works", work.ID, cols, args, &work.ID, &work.CreatedAt, &work.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create issue work: %w", err)
+	}
+	if work.Closed {
+		if err := insertClosureTx(ctx, tx, ClosureWork, work.ID, work.Title, true, actor, reason); err != nil {
+			return err
+		}
 	}
 	issue.WorkID = work.ID
 	err = insertRowTx(ctx, tx, "journal_issues", issue.ID,

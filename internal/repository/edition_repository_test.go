@@ -20,7 +20,7 @@ func TestListWorkSummariesPutsEditionFrontMatterFirst(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "проба", Slug: "proba-efm"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -90,7 +90,7 @@ func TestListCatalogueSkipsEditionFrontMatter(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "проба", Slug: "proba-efm-cat"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -138,7 +138,7 @@ func TestListWorkSummariesExcludesApparatus(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "проба-аппарат", Slug: "proba-apparat"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -199,7 +199,7 @@ func TestListWorkSummariesReturnsFourLargestInOrder(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "проба-четвёрка", Slug: "proba-chetverka"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -249,7 +249,7 @@ func TestListWorkSummariesEmptyForVolumeWithoutChapters(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "проба-пусто", Slug: "proba-pusto"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -283,13 +283,13 @@ func TestListAllWorkSummariesMatchesPerEdition(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	first := &models.Edition{Title: "проба-все-1", Slug: "proba-vse-1"}
-	if err := editions.Create(ctx, first); err != nil {
+	if err := editions.Create(ctx, first, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, first.ID) })
 
 	second := &models.Edition{Title: "проба-все-2", Slug: "proba-vse-2"}
-	if err := editions.Create(ctx, second); err != nil {
+	if err := editions.Create(ctx, second, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, second.ID) })
@@ -373,7 +373,7 @@ func TestListWorkSummariesApparatusColumn(t *testing.T) {
 	chapters := NewChapterRepository(pool)
 
 	edition := &models.Edition{Title: "проба-признак", Slug: "proba-priznak"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -445,7 +445,7 @@ func TestEditionRoundTripsVolumesPlanned(t *testing.T) {
 
 	planned := 55
 	edition := &models.Edition{Title: "проба", Slug: "proba-planned", VolumesPlanned: &planned}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -470,7 +470,7 @@ func TestEditionWithoutPlanKeepsVolumesPlannedEmpty(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "проба", Slug: "proba-no-plan"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -492,7 +492,7 @@ func TestEditionUpdateSavesVolumesPlanned(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "проба", Slug: "proba-plan-update"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })

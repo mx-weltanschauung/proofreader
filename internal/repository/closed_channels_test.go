@@ -17,6 +17,7 @@ import (
 	"proofreader/internal/config"
 	"proofreader/internal/limit"
 	"proofreader/internal/mcp"
+	"proofreader/internal/models"
 	"proofreader/internal/opds"
 	"proofreader/internal/repository"
 	"proofreader/internal/seo"
@@ -142,7 +143,7 @@ func TestClosedVolumeAbsentFromTokenlessChannels(t *testing.T) {
 		}
 	}
 
-	if _, err := repository.NewClosedRepository(pool).SetWorkClosed(ctx, f.volume, true); err != nil {
+	if _, err := repository.NewClosedRepository(pool).SetWorkClosed(ctx, f.volume, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	purge()
@@ -199,7 +200,7 @@ func TestClosedEditionAbsentFromTokenlessChannels(t *testing.T) {
 			t.Fatalf("открытое собрание: %s отвечает %d", path, rec.Code)
 		}
 	}
-	if _, err := repository.NewClosedRepository(pool).SetEditionClosed(context.Background(), f.edition, true); err != nil {
+	if _, err := repository.NewClosedRepository(pool).SetEditionClosed(context.Background(), f.edition, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	purge()

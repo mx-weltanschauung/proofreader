@@ -9,6 +9,8 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"proofreader/internal/middleware"
+	"proofreader/internal/models"
 	"proofreader/internal/repository"
 )
 
@@ -16,9 +18,9 @@ import (
 // *repository.ClosedRepository удовлетворяет ему как есть. Каждый метод
 // возвращает id работ, чья действующая закрытость могла смениться.
 type ClosedWriter interface {
-	SetWorkClosed(ctx context.Context, id int64, closed bool) ([]int64, error)
-	SetEditionClosed(ctx context.Context, id int64, closed bool) ([]int64, error)
-	SetJournalClosed(ctx context.Context, id int64, closed bool) ([]int64, error)
+	SetWorkClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error)
+	SetEditionClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error)
+	SetJournalClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error)
 }
 
 // ClosedHandler — маршруты «закрыть/открыть» работу, издание и журнал.
@@ -35,6 +37,32 @@ func NewClosedHandler(store ClosedWriter, cache *ServingCache) *ClosedHandler {
 
 type closedBody struct {
 	Closed *bool `json:"closed"`
+	// Reason — причина закрытия или открытия; журнал закрытий хранит её
+	// обязательной (задача 2 отвечает на пустую 400 до похода в базу).
+	Reason string `json:"reason"`
+}
+
+// closedAtCreation — причина строки журнала, когда работа, издание или журнал
+// заведены сразу закрытыми и своей причины в запросе нет.
+const closedAtCreation = "закрыто при создании"
+
+// closureActor — кто пишет в журнал закрытий: учётная запись из JWT. Подпись —
+// email сотрудника, у читателя — ник; без claims — «неизвестно», чтобы строка
+// журнала не осталась безымянной.
+func closureActor(r *http.Request) models.ClosureActor {
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok || claims == nil {
+		return models.ClosureActor{Name: "неизвестно"}
+	}
+	name := claims.Email
+	if name == "" {
+		name = claims.Nickname
+	}
+	if name == "" {
+		name = "неизвестно"
+	}
+	id := claims.UserID
+	return models.ClosureActor{ID: &id, Name: name}
 }
 
 type closedResponse struct {
@@ -56,7 +84,7 @@ func (h *ClosedHandler) Journal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClosedHandler) set(w http.ResponseWriter, r *http.Request,
-	write func(ctx context.Context, id int64, closed bool) ([]int64, error)) {
+	write func(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error)) {
 	id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 64)
 	if err != nil || id <= 0 {
 		writeError(w, http.StatusBadRequest, "Неверный номер")
@@ -67,7 +95,7 @@ func (h *ClosedHandler) set(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusBadRequest, "Тело запроса — {\"closed\": true|false}")
 		return
 	}
-	affected, err := write(r.Context(), id, *body.Closed)
+	affected, err := write(r.Context(), id, *body.Closed, closureActor(r), body.Reason)
 	if errors.Is(err, repository.ErrClosedTargetNotFound) {
 		writeError(w, http.StatusNotFound, "Не найдено")
 		return

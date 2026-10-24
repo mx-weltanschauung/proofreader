@@ -29,13 +29,13 @@ func (f *fakeClosedWriter) do(m map[int64][]int64, id int64, closed bool) ([]int
 	}
 	return ids, nil
 }
-func (f *fakeClosedWriter) SetWorkClosed(_ context.Context, id int64, c bool) ([]int64, error) {
+func (f *fakeClosedWriter) SetWorkClosed(_ context.Context, id int64, c bool, _ models.ClosureActor, _ string) ([]int64, error) {
 	return f.do(f.works, id, c)
 }
-func (f *fakeClosedWriter) SetEditionClosed(_ context.Context, id int64, c bool) ([]int64, error) {
+func (f *fakeClosedWriter) SetEditionClosed(_ context.Context, id int64, c bool, _ models.ClosureActor, _ string) ([]int64, error) {
 	return f.do(f.editions, id, c)
 }
-func (f *fakeClosedWriter) SetJournalClosed(_ context.Context, id int64, c bool) ([]int64, error) {
+func (f *fakeClosedWriter) SetJournalClosed(_ context.Context, id int64, c bool, _ models.ClosureActor, _ string) ([]int64, error) {
 	return f.do(f.journals, id, c)
 }
 

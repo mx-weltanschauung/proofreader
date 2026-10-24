@@ -6,6 +6,8 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"proofreader/internal/models"
 )
 
@@ -35,11 +37,11 @@ func newClosedFixture(t *testing.T) (*closedFixture, *ClosedRepository) {
 	f.closedEdition = &models.Edition{Title: "закрытое", Slug: "closed-ed"}
 	f.openEdit = &models.Edition{Title: "открытое", Slug: "open-ed"}
 	for _, e := range []*models.Edition{f.closedEdition, f.openEdit} {
-		if err := editions.Create(ctx, e); err != nil {
+		if err := editions.Create(ctx, e, models.ClosureActor{}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := closed.SetEditionClosed(ctx, f.closedEdition.ID, true); err != nil {
+	if _, err := closed.SetEditionClosed(ctx, f.closedEdition.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,14 +58,14 @@ func newClosedFixture(t *testing.T) (*closedFixture, *ClosedRepository) {
 		}
 	}
 	for _, w := range []*models.Work{f.closedSelf, f.closedSelfAndEdition} {
-		if _, err := closed.SetWorkClosed(ctx, w.ID, true); err != nil {
+		if _, err := closed.SetWorkClosed(ctx, w.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	f.closedJournal = newJournal(t, journals, "closed-jr")
 	_, f.inClosedJournal = newIssue(t, journals, f.closedJournal, 1925, 1, 1)
-	if _, err := closed.SetJournalClosed(ctx, f.closedJournal.ID, true); err != nil {
+	if _, err := closed.SetJournalClosed(ctx, f.closedJournal.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	return f, closed
@@ -75,7 +77,7 @@ func newChild(t *testing.T, repo *WorkRepository, parent *models.Work, title str
 		Title: title, Language: "ru", Status: models.WorkStatusDraft,
 		Role: models.WorkRoleFrontMatter, ParentWorkID: &parent.ID, OwnerID: 1,
 	}
-	if err := repo.Create(context.Background(), w); err != nil {
+	if err := repo.Create(context.Background(), w, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create child: %v", err)
 	}
 	return w
@@ -160,7 +162,7 @@ func TestSetEditionClosedReturnsAllWorks(t *testing.T) {
 	closed := NewClosedRepository(pool)
 
 	e := &models.Edition{Title: "проба-закрытие", Slug: "proba-closing"}
-	if err := editions.Create(ctx, e); err != nil {
+	if err := editions.Create(ctx, e, models.ClosureActor{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	a := newVolume(t, works, "том 1")
@@ -176,7 +178,7 @@ func TestSetEditionClosedReturnsAllWorks(t *testing.T) {
 
 	want := sortedIDs([]int64{a.ID, b.ID, child.ID})
 	for i := 0; i < 2; i++ {
-		got, err := closed.SetEditionClosed(ctx, e.ID, true)
+		got, err := closed.SetEditionClosed(ctx, e.ID, true, models.ClosureActor{Name: "test"}, "test")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,13 +187,13 @@ func TestSetEditionClosedReturnsAllWorks(t *testing.T) {
 			t.Fatalf("вызов %d: вернулись %v, ждали %v", i+1, got, want)
 		}
 	}
-	if _, err := closed.SetEditionClosed(ctx, 999999, true); !errors.Is(err, ErrClosedTargetNotFound) {
+	if _, err := closed.SetEditionClosed(ctx, 999999, true, models.ClosureActor{Name: "test"}, "test"); !errors.Is(err, ErrClosedTargetNotFound) {
 		t.Errorf("нет издания: %v, ждали ErrClosedTargetNotFound", err)
 	}
-	if _, err := closed.SetWorkClosed(ctx, 999999, true); !errors.Is(err, ErrClosedTargetNotFound) {
+	if _, err := closed.SetWorkClosed(ctx, 999999, true, models.ClosureActor{Name: "test"}, "test"); !errors.Is(err, ErrClosedTargetNotFound) {
 		t.Errorf("нет работы: %v", err)
 	}
-	if _, err := closed.SetJournalClosed(ctx, 999999, true); !errors.Is(err, ErrClosedTargetNotFound) {
+	if _, err := closed.SetJournalClosed(ctx, 999999, true, models.ClosureActor{Name: "test"}, "test"); !errors.Is(err, ErrClosedTargetNotFound) {
 		t.Errorf("нет журнала: %v", err)
 	}
 }
@@ -205,7 +207,7 @@ func TestSetWorkAndJournalClosedReturnAffected(t *testing.T) {
 
 	vol := newVolume(t, works, "том")
 	child := newChild(t, works, vol, "служебная")
-	got, err := closed.SetWorkClosed(ctx, vol.ID, true)
+	got, err := closed.SetWorkClosed(ctx, vol.ID, true, models.ClosureActor{Name: "test"}, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +219,7 @@ func TestSetWorkAndJournalClosedReturnAffected(t *testing.T) {
 	j := newJournal(t, journals, "aff-jr")
 	_, w1 := newIssue(t, journals, j, 1925, 1, 1)
 	_, w2 := newIssue(t, journals, j, 1925, 2, 2)
-	got, err = closed.SetJournalClosed(ctx, j.ID, true)
+	got, err = closed.SetJournalClosed(ctx, j.ID, true, models.ClosureActor{Name: "test"}, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +239,7 @@ func TestCreateCarriesClosed(t *testing.T) {
 
 	w := &models.Work{Title: "закрытая с рождения", Language: "ru", Status: models.WorkStatusDraft,
 		Role: models.WorkRoleVolume, NumberingStyle: models.NumberingArabic, OwnerID: 1, Closed: true}
-	if err := works.Create(ctx, w); err != nil {
+	if err := works.Create(ctx, w, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = works.Delete(ctx, w.ID) })
@@ -250,7 +252,7 @@ func TestCreateCarriesClosed(t *testing.T) {
 	}
 
 	e := &models.Edition{Title: "закрытое с рождения", Slug: "closed-born", Closed: true}
-	if err := editions.Create(ctx, e); err != nil {
+	if err := editions.Create(ctx, e, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	ge, err := editions.GetByID(ctx, e.ID)
@@ -259,7 +261,7 @@ func TestCreateCarriesClosed(t *testing.T) {
 	}
 
 	j := &models.Journal{Slug: "closed-born-jr", Title: "Проба", Closed: true}
-	if err := journals.Create(ctx, j); err != nil {
+	if err := journals.Create(ctx, j, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	gj, err := journals.GetByID(ctx, j.ID)
@@ -270,7 +272,7 @@ func TestCreateCarriesClosed(t *testing.T) {
 	open := newJournal(t, journals, "open-born-jr")
 	issue := &models.JournalIssue{JournalID: open.ID, Year: 1926, NumberFrom: 1, NumberTo: 1, Label: "1"}
 	iw := &models.Work{Title: "номер", Language: "ru", Status: models.WorkStatusDraft, OwnerID: 1, Closed: true}
-	if err := journals.CreateIssue(ctx, issue, iw); err != nil {
+	if err := journals.CreateIssue(ctx, issue, iw, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	gi, err := works.GetByID(ctx, iw.ID)
@@ -337,10 +339,10 @@ func TestUpdateLeavesClosedAlone(t *testing.T) {
 	closed := NewClosedRepository(pool)
 
 	e := &models.Edition{Title: "правка", Slug: "upd-closed"}
-	if err := editions.Create(ctx, e); err != nil {
+	if err := editions.Create(ctx, e, models.ClosureActor{}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := closed.SetEditionClosed(ctx, e.ID, true); err != nil {
+	if _, err := closed.SetEditionClosed(ctx, e.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	e.Title = "правка 2" // модель из тела запроса: Closed в ней false
@@ -352,7 +354,7 @@ func TestUpdateLeavesClosedAlone(t *testing.T) {
 	}
 
 	j := newJournal(t, journals, "upd-closed-jr")
-	if _, err := closed.SetJournalClosed(ctx, j.ID, true); err != nil {
+	if _, err := closed.SetJournalClosed(ctx, j.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	j.Title = "правка 2"
@@ -380,7 +382,7 @@ func TestJournalClosedHiddenUnlessIncluded(t *testing.T) {
 	closed := NewClosedRepository(pool)
 	j := newJournal(t, journals, "cl-list")
 	newIssue(t, journals, j, 1925, 1, 1)
-	if _, err := closed.SetJournalClosed(ctx, j.ID, true); err != nil {
+	if _, err := closed.SetJournalClosed(ctx, j.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -419,7 +421,7 @@ func TestJournalClosedIssueLeavesCountsAndYears(t *testing.T) {
 	j := newJournal(t, journals, "cl-issue")
 	newIssue(t, journals, j, 1925, 1, 1)
 	_, w2 := newIssue(t, journals, j, 1926, 1, 1)
-	if _, err := closed.SetWorkClosed(ctx, w2.ID, true); err != nil {
+	if _, err := closed.SetWorkClosed(ctx, w2.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -478,7 +480,7 @@ func TestPersonDetailDropsClosedArticles(t *testing.T) {
 		}
 	}
 
-	if _, err := closed.SetWorkClosed(ctx, w2.ID, true); err != nil {
+	if _, err := closed.SetWorkClosed(ctx, w2.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	d, err := persons.Detail(ctx, p.Slug, false)
@@ -489,7 +491,7 @@ func TestPersonDetailDropsClosedArticles(t *testing.T) {
 		t.Fatalf("Detail(true): %+v, %v", d, err)
 	}
 
-	if _, err := closed.SetWorkClosed(ctx, w1.ID, true); err != nil {
+	if _, err := closed.SetWorkClosed(ctx, w1.ID, true, models.ClosureActor{Name: "test"}, "test"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := persons.Detail(ctx, p.Slug, false); !errors.Is(err, ErrPersonNotFound) {
@@ -624,5 +626,271 @@ func TestClosedBySetMatchesFunction(t *testing.T) {
 				t.Errorf("сводка издания %d, том %d: ClosedBy %q, функция %q", ed, s.ID, s.ClosedBy, want[s.ID])
 			}
 		}
+	}
+}
+
+// --- закрытые главы -------------------------------------------------------
+
+var testActor = models.ClosureActor{Name: "админ"}
+
+func newPages(t *testing.T, pool *pgxpool.Pool, workID int64, from, to int) {
+	t.Helper()
+	pages := NewPageRepository(pool)
+	for n := from; n <= to; n++ {
+		p := &models.Page{WorkID: workID, PageNumber: n, PreviewPath: "p.png",
+			ContentMarkdown: "x", Status: models.PageStatusNotProofread}
+		if err := pages.Create(context.Background(), p); err != nil {
+			t.Fatalf("page %d: %v", n, err)
+		}
+	}
+}
+
+func newChapter(t *testing.T, chapters *ChapterRepository, workID int64, parent *int64, title string, start, end, order int) *models.Chapter {
+	t.Helper()
+	c := &models.Chapter{WorkID: workID, ParentID: parent, Title: title, Type: "chapter",
+		OrderNumber: order, StartPage: start, EndPage: end}
+	if err := chapters.Create(context.Background(), c); err != nil {
+		t.Fatalf("chapter %q: %v", title, err)
+	}
+	return c
+}
+
+func closedPageNumbers(t *testing.T, pool *pgxpool.Pool, workID int64) []int {
+	t.Helper()
+	rows, err := pool.Query(context.Background(),
+		`SELECT page_number FROM closed_pages WHERE work_id = $1 ORDER BY page_number`, workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []int
+	for rows.Next() {
+		var n int
+		if err := rows.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+func TestClosedPagesChapterRange(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	works, chapters, closed := NewWorkRepository(pool), NewChapterRepository(pool), NewClosedRepository(pool)
+	w := newVolume(t, works, "главы")
+	newPages(t, pool, w.ID, 8, 22)
+	first := newChapter(t, chapters, w.ID, nil, "первая", 10, 14, 1)
+	newChapter(t, chapters, w.ID, nil, "вторая", 14, 20, 2)
+
+	got, err := closed.SetChapterClosed(ctx, first.ID, true, testActor, "письмо")
+	if err != nil || len(got) != 1 || got[0] != w.ID {
+		t.Fatalf("SetChapterClosed = %v, %v; ждали [%d]", got, err, w.ID)
+	}
+	nums := closedPageNumbers(t, pool, w.ID)
+	want := []int{10, 11, 12, 13, 14}
+	if len(nums) != len(want) {
+		t.Fatalf("closed_pages = %v, ждали %v", nums, want)
+	}
+	for i := range want {
+		if nums[i] != want[i] {
+			t.Fatalf("closed_pages = %v, ждали %v", nums, want)
+		}
+	}
+	spans, err := closed.ClosedSpans(ctx, w.ID)
+	if err != nil || len(spans) != 1 || spans[0] != (models.PageSpan{Start: 10, End: 14}) {
+		t.Fatalf("ClosedSpans = %v, %v", spans, err)
+	}
+	ids, err := closed.ClosedChapterIDs(ctx, w.ID)
+	if err != nil || len(ids) != 1 || !ids[first.ID] {
+		t.Fatalf("ClosedChapterIDs = %v, %v", ids, err)
+	}
+	if _, err := closed.SetChapterClosed(ctx, 999999, true, testActor, "r"); !errors.Is(err, ErrClosedTargetNotFound) {
+		t.Fatalf("нет главы: %v, ждали ErrClosedTargetNotFound", err)
+	}
+}
+
+func TestClosedChapterClosesDescendants(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	works, chapters, closed := NewWorkRepository(pool), NewChapterRepository(pool), NewClosedRepository(pool)
+	w := newVolume(t, works, "дерево")
+	newPages(t, pool, w.ID, 1, 10)
+	parent := newChapter(t, chapters, w.ID, nil, "родитель", 1, 8, 1)
+	child := newChapter(t, chapters, w.ID, &parent.ID, "потомок", 3, 5, 1)
+	other := newChapter(t, chapters, w.ID, nil, "соседка", 9, 10, 2)
+
+	if _, err := closed.SetChapterClosed(ctx, parent.ID, true, testActor, "письмо"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		id   int64
+		want string
+	}{{parent.ID, "chapter"}, {child.ID, "parent"}, {other.ID, ""}} {
+		got, err := chapters.GetByID(ctx, c.id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.ClosedBy != c.want {
+			t.Errorf("глава %d: ClosedBy = %q, ждали %q", c.id, got.ClosedBy, c.want)
+		}
+		if got.Closed != (c.id == parent.ID) {
+			t.Errorf("глава %d: Closed = %v", c.id, got.Closed)
+		}
+	}
+	ids, err := closed.ClosedChapterIDs(ctx, w.ID)
+	if err != nil || len(ids) != 2 || !ids[parent.ID] || !ids[child.ID] {
+		t.Fatalf("ClosedChapterIDs = %v, %v", ids, err)
+	}
+	list, err := chapters.ListByWork(ctx, w.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[int64]string{}
+	for _, c := range list {
+		by[c.ID] = c.ClosedBy
+	}
+	if by[parent.ID] != "chapter" || by[child.ID] != "parent" || by[other.ID] != "" {
+		t.Errorf("ListByWork closed_by = %v", by)
+	}
+}
+
+func TestOpeningEditionKeepsChapterClosed(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	works, editions := NewWorkRepository(pool), NewEditionRepository(pool)
+	chapters, closed := NewChapterRepository(pool), NewClosedRepository(pool)
+	e := &models.Edition{Title: "ed", Slug: "ed-keep"}
+	if err := editions.Create(ctx, e, testActor, ""); err != nil {
+		t.Fatal(err)
+	}
+	w := newVolume(t, works, "в издании")
+	if _, err := pool.Exec(ctx, `UPDATE works SET edition_id = $2 WHERE id = $1`, w.ID, e.ID); err != nil {
+		t.Fatal(err)
+	}
+	newPages(t, pool, w.ID, 1, 10)
+	ch := newChapter(t, chapters, w.ID, nil, "глава", 2, 4, 1)
+	if _, err := closed.SetEditionClosed(ctx, e.ID, true, testActor, "издание"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetChapterClosed(ctx, ch.ID, true, testActor, "глава"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetEditionClosed(ctx, e.ID, false, testActor, "открыли"); err != nil {
+		t.Fatal(err)
+	}
+	if nums := closedPageNumbers(t, pool, w.ID); len(nums) != 3 || nums[0] != 2 || nums[2] != 4 {
+		t.Fatalf("после открытия издания closed_pages = %v, ждали 2..4", nums)
+	}
+
+	// Обратно: глава открыта внутри закрытого тома — полосы всё равно закрыты.
+	if _, err := closed.SetChapterClosed(ctx, ch.ID, false, testActor, "открыли главу"); err != nil {
+		t.Fatal(err)
+	}
+	if nums := closedPageNumbers(t, pool, w.ID); len(nums) != 0 {
+		t.Fatalf("всё открыто, а closed_pages = %v", nums)
+	}
+	if _, err := closed.SetWorkClosed(ctx, w.ID, true, testActor, "том"); err != nil {
+		t.Fatal(err)
+	}
+	if nums := closedPageNumbers(t, pool, w.ID); len(nums) != 10 {
+		t.Fatalf("закрытый том: closed_pages = %v, ждали все 10", nums)
+	}
+}
+
+func TestSetChapterClosedWritesClosureInTx(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	works, chapters, closed := NewWorkRepository(pool), NewChapterRepository(pool), NewClosedRepository(pool)
+	w := newVolume(t, works, "журнал")
+	ch := newChapter(t, chapters, w.ID, nil, "Глава про X", 1, 3, 1)
+
+	uid := int64(1)
+	actor := models.ClosureActor{ID: &uid, Name: "admin@test.local"}
+	if _, err := closed.SetChapterClosed(ctx, ch.ID, true, actor, "письмо от А"); err != nil {
+		t.Fatal(err)
+	}
+	var kind, title, reason, name string
+	var isClosed bool
+	var actorID *int64
+	if err := pool.QueryRow(ctx, `SELECT entity_kind, title_snapshot, closed, reason, actor_id, actor_name
+		FROM closures WHERE entity_id = $1`, ch.ID).Scan(&kind, &title, &isClosed, &reason, &actorID, &name); err != nil {
+		t.Fatal(err)
+	}
+	if kind != "chapter" || title != "Глава про X" || !isClosed || reason != "письмо от А" ||
+		actorID == nil || *actorID != 1 || name != "admin@test.local" {
+		t.Fatalf("строка журнала: %s %q %v %q %v %q", kind, title, isClosed, reason, actorID, name)
+	}
+
+	// Пустая причина: CHECK откатывает транзакцию, признак не меняется.
+	if _, err := closed.SetChapterClosed(ctx, ch.ID, false, actor, "  "); err == nil {
+		t.Fatal("пустая причина принята")
+	}
+	got, err := chapters.GetByID(ctx, ch.ID)
+	if err != nil || !got.Closed {
+		t.Fatalf("признак изменился после отказа: %+v, %v", got, err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM closures WHERE entity_id = $1`, ch.ID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("строк журнала %d, ждали 1 (%v)", n, err)
+	}
+	// Повтор того же значения тоже пишет строку.
+	if _, err := closed.SetChapterClosed(ctx, ch.ID, true, actor, "ещё раз"); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM closures WHERE entity_id = $1`, ch.ID).Scan(&n); err != nil || n != 2 {
+		t.Fatalf("после повтора строк журнала %d, ждали 2 (%v)", n, err)
+	}
+}
+
+func TestCreateClosedWritesClosure(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	works := NewWorkRepository(pool)
+	w := &models.Work{Title: "сразу закрыт", Language: "ru", Status: models.WorkStatusDraft,
+		Role: models.WorkRoleVolume, OwnerID: 1, Closed: true}
+	if err := works.Create(ctx, w, testActor, "закрыто при создании"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = works.Delete(ctx, w.ID) })
+	var n int
+	var closedFlag bool
+	var reason string
+	if err := pool.QueryRow(ctx, `SELECT count(*), bool_and(closed), min(reason) FROM closures
+		WHERE entity_kind = 'work' AND entity_id = $1`, w.ID).Scan(&n, &closedFlag, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || !closedFlag || reason != "закрыто при создании" {
+		t.Fatalf("журнал: n=%d closed=%v reason=%q", n, closedFlag, reason)
+	}
+	// Открытая работа журнала не пишет.
+	o := newVolume(t, works, "открытая")
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM closures WHERE entity_id = $1`, o.ID).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("открытая работа оставила %d строк журнала (%v)", n, err)
+	}
+}
+
+func TestLatestClosure(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	works, closed := NewWorkRepository(pool), NewClosedRepository(pool)
+	w := newVolume(t, works, "последняя")
+	got, err := closed.LatestClosure(ctx, "work", w.ID)
+	if err != nil || got != nil {
+		t.Fatalf("без строк: %v, %v; ждали nil, nil", got, err)
+	}
+	if _, err := closed.SetWorkClosed(ctx, w.ID, true, testActor, "первая"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetWorkClosed(ctx, w.ID, false, testActor, "вторая"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = closed.LatestClosure(ctx, "work", w.ID)
+	if err != nil || got == nil || got.Reason != "вторая" || got.Closed || got.ActorName != "админ" || got.Title != w.Title {
+		t.Fatalf("LatestClosure = %+v, %v", got, err)
+	}
+	list, err := closed.ListClosures(ctx, 10, 0)
+	if err != nil || len(list) != 2 || list[0].Reason != "вторая" {
+		t.Fatalf("ListClosures = %+v, %v", list, err)
 	}
 }

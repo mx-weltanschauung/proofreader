@@ -340,7 +340,7 @@ func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int6
 func (f *fakeWorkRepo) GetByID(_ context.Context, id int64) (*models.Work, error) {
 	return &models.Work{ID: id, Role: f.role, Closed: f.closed}, nil
 }
-func (f *fakeWorkRepo) Create(_ context.Context, w *models.Work) error {
+func (f *fakeWorkRepo) Create(_ context.Context, w *models.Work, _ models.ClosureActor, _ string) error {
 	f.created = w
 	return f.createErr
 }

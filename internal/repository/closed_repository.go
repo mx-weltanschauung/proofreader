@@ -8,6 +8,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"proofreader/internal/models"
 )
 
 // ErrClosedTargetNotFound — у признака «закрыт» нет цели: работы, издания или
@@ -99,44 +101,65 @@ func (r *ClosedRepository) idSet(ctx context.Context, query string) (map[int64]b
 	return ids, rows.Err()
 }
 
+// Виды сущностей в журнале закрытий (closures.entity_kind).
+const (
+	ClosureWork    = "work"
+	ClosureEdition = "edition"
+	ClosureJournal = "journal"
+	ClosureChapter = "chapter"
+)
+
 // SetWorkClosed меняет собственный признак работы и возвращает id работ,
 // чья действующая закрытость могла смениться: саму работу и её служебные.
-func (r *ClosedRepository) SetWorkClosed(ctx context.Context, id int64, closed bool) ([]int64, error) {
-	return r.set(ctx, `UPDATE works SET closed = $2 WHERE id = $1 RETURNING id`,
-		`SELECT id FROM works WHERE id = $1 OR parent_work_id = $1 ORDER BY id`, id, closed)
+// Признак и строка журнала — одной транзакцией; пустая причина откатывает обе.
+func (r *ClosedRepository) SetWorkClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.set(ctx, ClosureWork, `UPDATE works SET closed = $2 WHERE id = $1 RETURNING title`,
+		`SELECT id FROM works WHERE id = $1 OR parent_work_id = $1 ORDER BY id`, id, closed, actor, reason)
 }
 
 // SetEditionClosed — то же для издания: возвращает все его работы и их
 // служебные.
-func (r *ClosedRepository) SetEditionClosed(ctx context.Context, id int64, closed bool) ([]int64, error) {
-	return r.set(ctx, `UPDATE editions SET closed = $2 WHERE id = $1 RETURNING id`,
+func (r *ClosedRepository) SetEditionClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.set(ctx, ClosureEdition, `UPDATE editions SET closed = $2 WHERE id = $1 RETURNING title`,
 		`SELECT w.id FROM works w
 		 WHERE w.edition_id = $1
 		    OR w.parent_work_id IN (SELECT id FROM works WHERE edition_id = $1)
-		 ORDER BY w.id`, id, closed)
+		 ORDER BY w.id`, id, closed, actor, reason)
 }
 
 // SetJournalClosed — то же для журнала: возвращает работы его номеров.
-func (r *ClosedRepository) SetJournalClosed(ctx context.Context, id int64, closed bool) ([]int64, error) {
-	return r.set(ctx, `UPDATE journals SET closed = $2 WHERE id = $1 RETURNING id`,
-		`SELECT work_id FROM journal_issues WHERE journal_id = $1 ORDER BY work_id`, id, closed)
+func (r *ClosedRepository) SetJournalClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.set(ctx, ClosureJournal, `UPDATE journals SET closed = $2 WHERE id = $1 RETURNING title`,
+		`SELECT work_id FROM journal_issues WHERE journal_id = $1 ORDER BY work_id`, id, closed, actor, reason)
 }
 
-// set пишет признак и собирает затронутые работы одной транзакцией. Нет цели —
-// ErrClosedTargetNotFound, ничего не записано. Повтор с тем же значением
-// безвреден и возвращает те же работы: вызывающему нужно сбросить по ним кэши.
-func (r *ClosedRepository) set(ctx context.Context, update, affected string, id int64, closed bool) ([]int64, error) {
+// SetChapterClosed — то же для главы: возвращает работу главы (закрытость
+// потомков и полос выводится представлениями, других работ она не задевает).
+func (r *ClosedRepository) SetChapterClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.set(ctx, ClosureChapter, `UPDATE chapters SET closed = $2 WHERE id = $1 RETURNING title`,
+		`SELECT work_id FROM chapters WHERE id = $1`, id, closed, actor, reason)
+}
+
+// set пишет признак, строку журнала и собирает затронутые работы одной
+// транзакцией. Нет цели — ErrClosedTargetNotFound, ничего не записано. Повтор
+// с тем же значением безвреден, тоже пишет строку и возвращает те же работы:
+// вызывающему нужно сбросить по ним кэши.
+func (r *ClosedRepository) set(ctx context.Context, kind, update, affected string, id int64, closed bool,
+	actor models.ClosureActor, reason string) ([]int64, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var got int64
-	if err := tx.QueryRow(ctx, update, id, closed).Scan(&got); err != nil {
+	var title string
+	if err := tx.QueryRow(ctx, update, id, closed).Scan(&title); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrClosedTargetNotFound
 		}
 		return nil, fmt.Errorf("set closed: %w", err)
+	}
+	if err := insertClosureTx(ctx, tx, kind, id, title, closed, actor, reason); err != nil {
+		return nil, err
 	}
 	rows, err := tx.Query(ctx, affected, id)
 	if err != nil {
@@ -159,4 +182,99 @@ func (r *ClosedRepository) set(ctx context.Context, update, affected string, id 
 		return nil, err
 	}
 	return ids, nil
+}
+
+// insertClosureTx пишет строку журнала в чужой транзакции — её зовут и
+// Set…Closed, и Create закрытой сущности. Пустая причина отвергается CHECK
+// таблицы, то есть откатывает всю транзакцию вызывающего.
+func insertClosureTx(ctx context.Context, tx pgx.Tx, kind string, id int64, title string, closed bool,
+	actor models.ClosureActor, reason string) error {
+	if _, err := tx.Exec(ctx, `INSERT INTO closures
+		(entity_kind, entity_id, title_snapshot, closed, reason, actor_id, actor_name)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		kind, id, title, closed, reason, actor.ID, actor.Name); err != nil {
+		return fmt.Errorf("closures: %w", err)
+	}
+	return nil
+}
+
+// ClosedSpans — диапазоны полос закрытых глав работы (сами закрытые и их
+// потомки), по началу диапазона.
+func (r *ClosedRepository) ClosedSpans(ctx context.Context, workID int64) ([]models.PageSpan, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT start_page, end_page FROM closed_chapters WHERE work_id = $1 ORDER BY start_page, end_page`, workID)
+	if err != nil {
+		return nil, fmt.Errorf("closed spans: %w", err)
+	}
+	defer rows.Close()
+	spans := []models.PageSpan{}
+	for rows.Next() {
+		var s models.PageSpan
+		if err := rows.Scan(&s.Start, &s.End); err != nil {
+			return nil, err
+		}
+		spans = append(spans, s)
+	}
+	return spans, rows.Err()
+}
+
+// ClosedChapterIDs — главы работы, закрытые действующе (своим признаком или
+// закрытым предком).
+func (r *ClosedRepository) ClosedChapterIDs(ctx context.Context, workID int64) (map[int64]bool, error) {
+	rows, err := r.pool.Query(ctx, `SELECT id FROM closed_chapters WHERE work_id = $1`, workID)
+	if err != nil {
+		return nil, fmt.Errorf("closed chapter ids: %w", err)
+	}
+	defer rows.Close()
+	ids := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = true
+	}
+	return ids, rows.Err()
+}
+
+const closureColumns = `entity_kind, entity_id, title_snapshot, closed, reason, actor_name, created_at`
+
+func scanClosure(row rowScanner) (*models.Closure, error) {
+	var c models.Closure
+	if err := row.Scan(&c.Kind, &c.EntityID, &c.Title, &c.Closed, &c.Reason, &c.ActorName, &c.At); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// LatestClosure — последняя строка журнала по сущности; nil, nil — строк нет.
+func (r *ClosedRepository) LatestClosure(ctx context.Context, kind string, id int64) (*models.Closure, error) {
+	c, err := scanClosure(r.pool.QueryRow(ctx, `SELECT `+closureColumns+` FROM closures
+		WHERE entity_kind = $1 AND entity_id = $2 ORDER BY created_at DESC, id DESC LIMIT 1`, kind, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("latest closure: %w", err)
+	}
+	return c, nil
+}
+
+// ListClosures — журнал закрытий, новые сверху.
+func (r *ClosedRepository) ListClosures(ctx context.Context, limit, offset int) ([]models.Closure, error) {
+	rows, err := r.pool.Query(ctx, `SELECT `+closureColumns+` FROM closures
+		ORDER BY created_at DESC, id DESC LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list closures: %w", err)
+	}
+	defer rows.Close()
+	out := []models.Closure{}
+	for rows.Next() {
+		c, err := scanClosure(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
+	}
+	return out, rows.Err()
 }
