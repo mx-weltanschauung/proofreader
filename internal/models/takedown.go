@@ -99,6 +99,11 @@ type ApparatusPlan struct {
 	TrackPaths []string `json:"-"`
 	// TrackCount — число таких дорожек, для счёта в плане.
 	TrackCount int `json:"track_count"`
+	// ClosedChapters — сколько глав из уносимых сносом (главы аппарата с
+	// поддеревьями и главы служебных работ) закрыто действующе — своим
+	// признаком или предком. Ненулевое — отказ: удаление закрытой главы
+	// снесло бы и признак, и строку журнала о ней.
+	ClosedChapters int `json:"closed_chapters"`
 }
 
 // Empty отвечает, нечего ли снимать.

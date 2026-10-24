@@ -141,6 +141,34 @@ func TestDeleteApparatusRefusesEmptyPlan(t *testing.T) {
 	}
 }
 
+// Закрытая глава среди уносимых сносом — отказ 409 с общим словом закрытой
+// главы, и сноса нет; то же, если её закрыли между планом и сносом.
+func TestDeleteApparatusRefusesClosedChapter(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		store *fakeApparatusStore
+	}{
+		{"закрыта до плана", &fakeApparatusStore{plan: func() models.ApparatusPlan {
+			p := fullPlan()
+			p.ClosedChapters = 1
+			return p
+		}()}},
+		{"закрыта между планом и сносом", &fakeApparatusStore{plan: fullPlan(), removeErr: repository.ErrApparatusClosed}},
+	} {
+		h, _, _ := apparatusHandler(t, c.store)
+		req := httptest.NewRequest(http.MethodDelete, "/api/works/45/apparatus", nil)
+		req = mux.SetURLVars(req, map[string]string{"id": "45"})
+		rec := httptest.NewRecorder()
+		h.DeleteApparatus(rec, req)
+		if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "Глава закрыта — сначала откройте её") {
+			t.Errorf("%s: %d %s, ждали 409 «Глава закрыта — сначала откройте её»", c.name, rec.Code, rec.Body.String())
+		}
+		if len(c.store.removed) != 0 {
+			t.Errorf("%s: снос всё же прошёл: %v", c.name, c.store.removed)
+		}
+	}
+}
+
 func TestDeleteApparatusRemovesPreviewsAndChildFiles(t *testing.T) {
 	plan := fullPlan()
 	store := &fakeApparatusStore{plan: plan}

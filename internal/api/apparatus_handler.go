@@ -70,7 +70,19 @@ func (h *WorkHandler) DeleteApparatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Закрытая глава — своим признаком или предком — сносом не уносится:
+	// удаление сняло бы и признак, и запись о закрытии. Сперва её открывают
+	// (тот же отказ, что у правки и удаления закрытой главы).
+	if plan.ClosedChapters > 0 {
+		writeError(w, http.StatusConflict, chapterClosedMessage)
+		return
+	}
+
 	plan, err = h.apparatus.Remove(ctx, id)
+	if errors.Is(err, repository.ErrApparatusClosed) {
+		writeError(w, http.StatusConflict, chapterClosedMessage)
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось снять аппарат тома")
 		return
