@@ -29,13 +29,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
-	"proofreader/internal/api"
 	"proofreader/internal/config"
 	"proofreader/internal/database"
 	"proofreader/internal/repository"
 	"proofreader/internal/staticsite"
 	"proofreader/internal/staticsite/sitecheck"
-	"proofreader/pkg/markdown"
 )
 
 func usage() {
@@ -102,39 +100,25 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 		return err
 	}
 
-	works := repository.NewWorkRepository(pool)
-	chapters := repository.NewChapterRepository(pool)
-	pages := repository.NewPageRepository(pool)
-	editions := repository.NewEditionRepository(pool)
-	collections := repository.NewCollectionRepository(pool)
 	closedRepo := repository.NewClosedRepository(pool)
-	renderer := markdown.NewRenderer()
-
-	// Архив раздают всем, токена у него нет: работы и издания — открытым
-	// видом, закрытое для сборки не существует. Кроме того, loadPolicy кладёт
-	// закрытые работы в exclude, и самопроверка роняет выпуск, если они всё
-	// же попали в сборку.
-	openWorks := api.NewOpenWorks(works, closedRepo)
-	openEditions := api.NewOpenEditions(editions, closedRepo)
-	// Полосы и главы — той же обёрткой зрителя, что у сайта: контекст сборки
-	// без claims, поэтому закрытых глав и их полос в архиве нет.
-	// Закрытые диапазоны — локальные плюс полосы, которых нет на боевом.
 	spans := &prodSpans{base: closedRepo, extra: pol.closedPages}
-	// Тот же набор закрытого — указателю и разборам: вклейка из закрытой
-	// главы и статья указателя с закрытым источником в архив не идут.
 	whole, err := pol.wholeWorksOut(ctx, pool)
 	if err != nil {
 		return err
 	}
-	closed := &prodClosed{closedBase: closedRepo, spans: spans, whole: whole}
-	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), closed)
-	viewPages := api.NewViewPages(pages, spans)
-	viewChapters := api.NewViewChapters(chapters, spans)
-	books := api.NewDownloadSource(openWorks, viewChapters, viewPages, openEditions, collections, renderer, *base).WithChapterAnchors()
-	documents := api.NewSEODocumentSource(
-		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closed).WithClosedSpans(spans)
-	src := api.NewStaticSource(openEditions, openWorks, books, viewPages, index, repository.NewSEORepository(pool),
-		collections, documents, renderer).WithClosed(closed)
+	arch := newArchive(archiveInputs{
+		Works:       repository.NewWorkRepository(pool),
+		Editions:    repository.NewEditionRepository(pool),
+		Chapters:    repository.NewChapterRepository(pool),
+		Pages:       repository.NewPageRepository(pool),
+		Collections: repository.NewCollectionRepository(pool),
+		Index:       repository.NewIndexRepository(pool),
+		Concepts:    repository.NewSEORepository(pool),
+		Documents:   repository.NewDocumentRepository(pool),
+		Cuts:        repository.NewDocumentCutRepository(pool),
+		Closed:      closedRepo,
+	}, spans, whole, *base)
+	src := arch.Static
 
 	g := &staticsite.Generator{Src: src, Out: *out, BaseURL: *base, BuildDate: *date, EditionID: *edition,
 		Exclude: pol.exclude, Only: pol.only, Apparatus: pol.apparatus, Logf: log.Printf}
