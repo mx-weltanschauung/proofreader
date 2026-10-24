@@ -261,3 +261,55 @@ func mcpFetch(t *testing.T, cs *sdk.ClientSession, args map[string]any) (string,
 	}
 	return b.String(), res.IsError
 }
+
+// Закрытая глава в конце тома: каталог OPDS не называет её полос (диапазон
+// страниц тома, updated, число полос) и не двигает метку правкой закрытой
+// полосы — метка обязана совпадать с CacheKey выгрузки анониму, которая
+// закрытых полос не видит (боевая проводка: ViewPages и ViewChapters).
+func TestOPDSStampsIgnoreClosedChapterPages(t *testing.T) {
+	pool := repository.SharedTestPool(t)
+	f := seedOPDSFixture(t, pool)
+	ctx := context.Background()
+	if err := repository.NewPageRepository(pool).Create(ctx, &models.Page{WorkID: f.volume, PageNumber: 7,
+		ContentMarkdown: "Закрытый хвост.", Status: models.PageStatusNotProofread}); err != nil {
+		t.Fatal(err)
+	}
+	var closedCh int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page, closed)
+		VALUES ($1, 'Закрытый хвост', 'chapter', 6, 7, 7, true) RETURNING id`, f.volume).Scan(&closedCh); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE pages SET updated_at = now() + interval '1 day' WHERE work_id = $1 AND page_number = 7`, f.volume); err != nil {
+		t.Fatal(err)
+	}
+
+	works := repository.NewWorkRepository(pool)
+	closed := repository.NewClosedRepository(pool)
+	viewChapters := api.NewViewChapters(repository.NewChapterRepository(pool), closed)
+	viewPages := api.NewViewPages(repository.NewPageRepository(pool), closed)
+	editions := repository.NewEditionRepository(pool)
+	download := api.NewDownloadSource(works, viewChapters, viewPages, editions,
+		repository.NewCollectionRepository(pool), markdown.NewRenderer(), sweepBase)
+	src := api.NewOPDSSource(editions, works, viewChapters, repository.NewOPDSRepository(pool),
+		api.NewSearchHandler(repository.NewSearchRepository(pool)))
+
+	tree, err := src.Tree(ctx, f.volume)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := download.Work(ctx, f.volume)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tree.Volume.Updated.Equal(b.Meta.CacheKey) {
+		t.Errorf("updated тома %v, CacheKey выгрузки %v: закрытая полоса двинула метку", tree.Volume.Updated, b.Meta.CacheKey)
+	}
+	if tree.Volume.PageTo != 6+2 { // полосы 1—6, смещение тома 2
+		t.Errorf("диапазон тома заканчивается на с. %d: закрытая полоса 7 в нём", tree.Volume.PageTo)
+	}
+	for _, n := range tree.Nodes {
+		if n.ID == closedCh {
+			t.Errorf("закрытая глава в дереве: %+v", n)
+		}
+	}
+}

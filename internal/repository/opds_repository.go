@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -30,13 +31,14 @@ type PageStamp struct {
 	Pages   int       // сколько полос; 0 — выгрузка ответит 404
 }
 
-// VolumeStamps — метки томов по их полосам. Тома без полос в ответе нет.
+// VolumeStamps — метки томов по их полосам; закрытые полосы не считаются
+// (OPDS — канал без токена, выгрузка их тоже не отдаёт). Тома без полос в ответе нет.
 // Замер 03.10.2026 на локальном корпусе: все 175 томов — 63 мс.
 func (r *OPDSRepository) VolumeStamps(ctx context.Context, workIDs []int64) (map[int64]PageStamp, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT work_id, max(updated_at), min(page_number), max(page_number), count(*)
-		FROM pages
-		WHERE work_id = ANY($1)
+		FROM pages pg
+		WHERE work_id = ANY($1) AND `+pageOpenSQL+`
 		GROUP BY work_id`, workIDs)
 	if err != nil {
 		return nil, fmt.Errorf("метки томов: %w", err)
@@ -64,6 +66,7 @@ func (r *OPDSRepository) ChapterStamps(ctx context.Context, workID int64) (map[i
 		FROM chapters c
 		LEFT JOIN pages p
 		  ON p.work_id = c.work_id AND p.page_number BETWEEN c.start_page AND c.end_page
+		 AND `+strings.ReplaceAll(pageOpenSQL, "pg.", "p.")+`
 		WHERE c.work_id = $1
 		GROUP BY c.id`, workID)
 	if err != nil {

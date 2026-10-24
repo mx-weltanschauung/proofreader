@@ -195,15 +195,17 @@ func scopeConditionFor(editionExpr, closedParam string) string {
 // closed_pages обходит ВСЕ полосы корпуса с проверкой глав на каждой —
 // подзапрос по нему на частом слове стоил 1,38 с против 0,11 с без него
 // (замер на 320 тыс. полос). Диапазоны с end < start полос не накрывают (как
-// BETWEEN в closed_pages) и в значение не входят. Номер полосы меньше
+// BETWEEN в closed_pages) и в значение не входят; границы глав зажаты в
+// [0, band-1], чтобы кривая глава не вылезала в соседнюю работу. Номер полосы меньше
 // closedSpanBand — с запасом на порядки.
 const (
 	closedSpanBand = "10000000"
 	closedSpansAgg = `coalesce(range_agg(int8range(
-	      cc.work_id * ` + closedSpanBand + ` + cc.start_page,
-	      cc.work_id * ` + closedSpanBand + ` + cc.end_page, '[]')), '{}'::int8multirange)`
-	closedSpansFrom = `FROM closed_chapters cc WHERE cc.end_page >= cc.start_page`
-	closedSpansSQL  = `(SELECT ` + closedSpansAgg + ` ` + closedSpansFrom + `)`
+	      cc.work_id * ` + closedSpanBand + ` + greatest(cc.start_page, 0),
+	      cc.work_id * ` + closedSpanBand + ` + least(cc.end_page, ` + closedSpanBand + ` - 1), '[]')), '{}'::int8multirange)`
+	closedSpansFrom = `FROM closed_chapters cc WHERE cc.end_page >= cc.start_page
+	      AND cc.end_page >= 0 AND cc.start_page < ` + closedSpanBand
+	closedSpansSQL = `(SELECT ` + closedSpansAgg + ` ` + closedSpansFrom + `)`
 )
 
 // closedSpansCTE — то же значение именованным материализованным CTE

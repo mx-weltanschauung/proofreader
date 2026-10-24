@@ -1039,7 +1039,9 @@ func TestPersonClosedArticleHidden(t *testing.T) {
 	}
 }
 
-// indexClosedFixture — том с закрытой главой [3,4]; открытое собрание.
+// indexClosedFixture — том с закрытой главой [3,4] (полосы скана) и сдвигом
+// печатной нумерации page_offset = 10: адреса указателя печатные, полоса =
+// печатный номер - 10. Открытое собрание.
 func indexClosedFixture(t *testing.T) (editionID, workID int64) {
 	t.Helper()
 	pool := testPool(t)
@@ -1048,7 +1050,7 @@ func indexClosedFixture(t *testing.T) (editionID, workID int64) {
 	if err := pool.QueryRow(ctx, `INSERT INTO editions (title, slug) VALUES ('Собрание', 'idx-closed-ch') RETURNING id`).Scan(&editionID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE works SET edition_id = $1, volume_number = 1 WHERE id = $2`, editionID, workID); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE works SET edition_id = $1, volume_number = 1, page_offset = 10 WHERE id = $2`, editionID, workID); err != nil {
 		t.Fatal(err)
 	}
 	closeChapter(t, seedChapter(t, pool, workID, "Закрытая", 3, 4))
@@ -1110,12 +1112,12 @@ func TestConceptAddressIntoClosedPageHidden(t *testing.T) {
 	ed, work := indexClosedFixture(t)
 	_ = work
 	// Статья без текста и без работы-указателя: у неё одни адреса.
-	addArticle(t, ed, nil, "adr-zakryt", "", 0, 0, 3)
-	addArticle(t, ed, nil, "adr-smeshan", "", 0, 0, 3, 1)
-	addArticle(t, ed, nil, "adr-otkryt", "", 0, 0, 1)
+	addArticle(t, ed, nil, "adr-zakryt", "", 0, 0, 13)
+	addArticle(t, ed, nil, "adr-smeshan", "", 0, 0, 13, 11)
+	addArticle(t, ed, nil, "adr-otkryt", "", 0, 0, 11)
 	// Адрес-диапазон 2—3: закрыта только его последняя полоса.
-	addArticle(t, ed, nil, "adr-diapazon", "", 0, 0, 2)
-	if _, err := testPool(t).Exec(context.Background(), `UPDATE index_references SET page_end = 3
+	addArticle(t, ed, nil, "adr-diapazon", "", 0, 0, 12)
+	if _, err := testPool(t).Exec(context.Background(), `UPDATE index_references SET page_end = 13
 		WHERE article_id = (SELECT a.id FROM index_concept_articles a JOIN index_concepts c ON c.id = a.concept_id WHERE c.slug = 'adr-diapazon')`); err != nil {
 		t.Fatal(err)
 	}
@@ -1133,5 +1135,70 @@ func TestConceptAddressIntoClosedPageHidden(t *testing.T) {
 	}
 	if _, ok := places["adr-zakryt"]; ok || places["adr-smeshan"] != 1 || places["adr-otkryt"] != 1 {
 		t.Fatalf("витрина, число адресов: %v", places)
+	}
+}
+
+// pageOpenSQL (диапазоны int8multirange) обязан задавать то же множество
+// закрытых полос, что представление closed_pages: вложенные главы под
+// закрытым родителем (в том числе потомок вне диапазона родителя),
+// перекрывающиеся и смыкающиеся диапазоны с общей граничной полосой,
+// перевёрнутый диапазон, закрытая работа.
+func TestPageOpenSQLMatchesClosedPages(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	work := seedWorkWithPages(t, pool, "Том", make([]string, 40)...)
+	closedWork := seedWorkWithPages(t, pool, "Закрытая работа", "а", "б")
+	if _, err := pool.Exec(ctx, `UPDATE works SET closed = true WHERE id = $1`, closedWork); err != nil {
+		t.Fatal(err)
+	}
+	order := 1
+	ch := func(parent *int64, from, to int, closed bool) {
+		t.Helper()
+		order++
+		if _, err := pool.Exec(ctx, `INSERT INTO chapters (work_id, parent_id, title, type, order_number, start_page, end_page, closed)
+			VALUES ($1, $2, 'г', 'chapter', $6, $3, $4, $5)`, work, parent, from, to, closed, order); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var parent int64
+	if err := pool.QueryRow(ctx, `INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page, closed)
+		VALUES ($1, 'р', 'chapter', 1, 1, 6, true) RETURNING id`, work).Scan(&parent); err != nil {
+		t.Fatal(err)
+	}
+	ch(&parent, 2, 3, false)   // потомок внутри закрытого
+	ch(&parent, 35, 36, false) // потомок вне диапазона родителя
+	ch(nil, 10, 12, true)
+	ch(nil, 12, 14, true) // общая граничная полоса 12
+	ch(nil, 20, 21, true)
+	ch(nil, 22, 23, true) // смыкается, без пересечения
+	ch(nil, 31, 30, true) // перевёрнутый: полос не накрывает
+	ch(nil, 25, 26, false)
+
+	ids := func(q string) []int64 {
+		rows, err := pool.Query(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []int64
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, id)
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+		return out
+	}
+	want := ids(`SELECT id FROM closed_pages`)
+	got := ids(`SELECT pg.id FROM pages pg WHERE NOT ` + pageOpenSQL)
+	if len(want) == 0 || len(got) != len(want) {
+		t.Fatalf("закрытых полос: фрагмент %d, closed_pages %d", len(got), len(want))
+	}
+	for i := range want {
+		if want[i] != got[i] {
+			t.Fatalf("множества расходятся: %v против %v", got, want)
+		}
 	}
 }
