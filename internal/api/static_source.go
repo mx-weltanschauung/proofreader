@@ -172,6 +172,9 @@ func (s *StaticSource) volumeMap(ctx context.Context, editionID int64) (map[volu
 
 func (s *StaticSource) Concept(ctx context.Context, slug string) (*staticsite.Concept, error) {
 	c, err := s.index.GetConceptBySlug(ctx, slug)
+	if errors.Is(err, errConceptHidden) {
+		return nil, fmt.Errorf("%w: %q", staticsite.ErrConceptHidden, slug)
+	}
 	if err != nil {
 		return nil, err
 	}

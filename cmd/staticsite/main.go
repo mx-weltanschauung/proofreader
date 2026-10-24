@@ -40,6 +40,7 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: staticsite build -out DIR [-edition ID] [-date YYYY-MM-DD] [-base URL] [-exclude FILE] [-only FILE] [-only-pages FILE] [-built FILE]")
+	fmt.Fprintln(os.Stderr, "       staticsite children ONLY_FILE")
 	fmt.Fprintln(os.Stderr, "       staticsite check [-edition ID] [-allow URL] [-exclude FILE] [-only FILE] [-only-pages FILE] DIR")
 	os.Exit(2)
 }
@@ -69,6 +70,11 @@ func main() {
 		err = build(ctx, db.Pool, os.Args[2:])
 	case "check":
 		err = check(ctx, db.Pool, os.Args[2:])
+	case "children":
+		if len(os.Args) != 3 {
+			usage()
+		}
+		err = printChildren(ctx, db.Pool, os.Args[2])
 	default:
 		usage()
 	}
@@ -102,7 +108,6 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	editions := repository.NewEditionRepository(pool)
 	collections := repository.NewCollectionRepository(pool)
 	closedRepo := repository.NewClosedRepository(pool)
-	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), closedRepo)
 	renderer := markdown.NewRenderer()
 
 	// Архив раздают всем, токена у него нет: работы и издания — открытым
@@ -115,11 +120,15 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	// без claims, поэтому закрытых глав и их полос в архиве нет.
 	// Закрытые диапазоны — локальные плюс полосы, которых нет на боевом.
 	spans := &prodSpans{base: closedRepo, extra: pol.closedPages}
+	// Тот же набор закрытого — указателю и разборам: вклейка из закрытой
+	// главы и статья указателя с закрытым источником в архив не идут.
+	closed := &prodClosed{closedBase: closedRepo, spans: spans}
+	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), closed)
 	viewPages := api.NewViewPages(pages, spans)
 	viewChapters := api.NewViewChapters(chapters, spans)
 	books := api.NewDownloadSource(openWorks, viewChapters, viewPages, openEditions, collections, renderer, *base).WithChapterAnchors()
 	documents := api.NewSEODocumentSource(
-		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closedRepo)
+		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closedRepo).WithClosedSpans(spans)
 	src := api.NewStaticSource(openEditions, openWorks, books, viewPages, index, repository.NewSEORepository(pool),
 		collections, documents, renderer).WithClosed(closedRepo)
 

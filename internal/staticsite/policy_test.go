@@ -152,3 +152,17 @@ func TestChapterWithoutPagesIsNotEmitted(t *testing.T) {
 		t.Error("подглава с полосами пропала вместе с пустой")
 	}
 }
+
+// Понятие из списка, скрытое закрытым целиком, не пишется и не роняет сборку.
+func TestHiddenConceptIsSkipped(t *testing.T) {
+	src := fixture()
+	src.conceptList = []ConceptEntry{{Slug: "skryto", Title: "Скрытое"}}
+	src.hiddenConcepts = map[string]bool{"skryto": true}
+	g, out := runWith(t, src, func(*Generator) {})
+	if exists(out, ConceptFile("skryto")) {
+		t.Error("скрытое понятие записано в архив")
+	}
+	if g.concepts["skryto"] {
+		t.Error("скрытое понятие занесено в карту — на него будут ссылки")
+	}
+}

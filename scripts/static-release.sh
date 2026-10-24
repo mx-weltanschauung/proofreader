@@ -74,22 +74,38 @@ merge_page_maps() {
   printf '%s\n' "$acc"
 }
 
-# fetch_work_pages <список работ боевого> <файл> — полосы боевого по каждой
-# работе списка (-only) в файл для -only-pages: {"N": [номера…]}. Архив не
-# должен опережать сайт и на уровне полосы: закрытую на боевом главу
-# анонимная карта не показывает, и её полос в архиве нет. Сбой запроса и 404
-# — отказ: «карты нет» нельзя читать как «закрытого нет».
+# fetch_work_pages <список работ боевого> <файл> [<файл с номерами служебных
+# работ>] — полосы боевого по каждой работе списка (-only) в файл для
+# -only-pages: {"N": [номера…]}. Архив не должен опережать сайт и на уровне
+# полосы: закрытую на боевом главу анонимная карта не показывает, и её полос в
+# архиве нет. У работы списка сбой запроса и 404 — отказ: «карты нет» нельзя
+# читать как «закрытого нет». Служебные работы (передние листы; в
+# GET /api/works их нет, номера даёт `staticsite children`) спрашиваются так
+# же, но их 404 значит «закрыта на боевом или ещё не выложена»: работа просто
+# не попадает в файл, и сборка исключает её из архива. Любой другой сбой — отказ.
 fetch_work_pages() {
-  local list="$1" out="$2" one="$2.one" id
+  local list="$1" out="$2" kids_file="${3:-}" one="$2.one" id code
   local -a args=()
   for id in $(jq -r '.[].id' "$list"); do
-    curl -fsS --max-time 60 -o "$one" "$PROD_API_URL/api/works/$id/page-map" ||
+    code="$(curl -sS --max-time 60 -o "$one" -w '%{http_code}' "$PROD_API_URL/api/works/$id/page-map")" ||
       die "полосы работы $id на боевом не получены ($PROD_API_URL/api/works/$id/page-map)"
+    [[ "$code" == 200 ]] || die "полосы работы $id на боевом: HTTP $code ($PROD_API_URL/api/works/$id/page-map)"
     args+=("$id" "$one.$id")
     mv "$one" "$one.$id"
   done
+  if [[ -n "$kids_file" ]]; then
+    for id in $(cat "$kids_file"); do
+      code="$(curl -sS --max-time 60 -o "$one" -w '%{http_code}' "$PROD_API_URL/api/works/$id/page-map")" ||
+        die "полосы служебной работы $id на боевом не получены ($PROD_API_URL/api/works/$id/page-map)"
+      case "$code" in
+        200) args+=("$id" "$one.$id"); mv "$one" "$one.$id" ;;
+        404) log "служебная работа $id: на боевом её нет (закрыта или не выложена) — в архив не идёт" ;;
+        *) die "полосы служебной работы $id на боевом: HTTP $code" ;;
+      esac
+    done
+  fi
   merge_page_maps "${args[@]}" > "$out" || { rm -f "$one".*; die "карты полос боевого не разобраны"; }
-  rm -f "$one".*
+  rm -f "$one" "$one".*
 }
 
 # build_json <дата> <коммит> <zip> <число файлов> <состав> <исключения> —
@@ -148,7 +164,8 @@ main() {
   log "состав боевого: $PROD_API_URL"
   fetch_prod_works "$PROD"
   fetch_apparatus_pages "$EXCLUDE" "$PRODPAGES"
-  fetch_work_pages "$PROD" "$ONLYPAGES"
+  (cd "$REPO_ROOT" && go run ./cmd/staticsite children "$PROD") > "$ONLYPAGES.kids"
+  fetch_work_pages "$PROD" "$ONLYPAGES" "$ONLYPAGES.kids"
 
   log "генерация → $PARTIAL"
   (cd "$REPO_ROOT" && go run ./cmd/staticsite build -out "$PARTIAL" -date "$DATE" -base "$(prod_base)" -exclude "$EXCLUDE" \
@@ -176,7 +193,7 @@ main() {
     && sha256sum "$NAME.zip" > "$NAME.zip.sha256")
   build_json "$DATE" "$(git -C "$REPO_ROOT" rev-parse --short HEAD)" "$DEST/$NAME.zip" \
     "$(find "$OUT" -type f | wc -l)" "$BUILT" "$EXCLUDE" > "$DEST/$NAME.build.json"
-  rm -f "$PROD" "$BUILT" "$PRODPAGES" "$ONLYPAGES"
+  rm -f "$PROD" "$BUILT" "$PRODPAGES" "$ONLYPAGES" "$ONLYPAGES.kids"
   log "готово: $DEST/$NAME.zip ($(du -h "$DEST/$NAME.zip" | cut -f1)), файлов: $(find "$OUT" -type f | wc -l), работ каталога: $(jq .works "$DEST/$NAME.build.json")"
 }
 

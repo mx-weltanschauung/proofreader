@@ -124,7 +124,7 @@ func loadPolicy(ctx context.Context, pool *pgxpool.Pool, excludeFile, onlyFile, 
 	if onlyPagesFile == "" {
 		return p, nil
 	}
-	if err := p.addMissingOnProd(ctx, pool, onlyPagesFile, only); err != nil {
+	if err := p.addMissingOnProd(ctx, pool, onlyPagesFile, only, kids); err != nil {
 		return nil, err
 	}
 	return p, nil
@@ -155,10 +155,11 @@ func (p *policy) addLocalClosedPages(ctx context.Context, pool *pgxpool.Pool) er
 
 // addMissingOnProd читает -only-pages (GET /api/works/{id}/page-map боевого,
 // собранный static-release.sh) и кладёт в closedPages локальные полосы
-// работ каталога, которых на боевом нет. Работа каталога без записи в файле —
+// работ каталога и их служебных работ, которых на боевом нет. Работа каталога
+// без записи в файле —
 // отказ: молча считать «все полосы есть» значило бы выпустить архив, который
 // опережает сайт.
-func (p *policy) addMissingOnProd(ctx context.Context, pool *pgxpool.Pool, file string, only []staticsite.OnlyWork) error {
+func (p *policy) addMissingOnProd(ctx context.Context, pool *pgxpool.Pool, file string, only []staticsite.OnlyWork, kids []int64) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return err
@@ -177,6 +178,21 @@ func (p *policy) addMissingOnProd(ctx context.Context, pool *pgxpool.Pool, file 
 			return fmt.Errorf("%s: нет полос боевого у работы %d из -only", file, w.ID)
 		}
 		ids = append(ids, w.ID)
+	}
+	// Служебные работы (передние листы) в GET /api/works не входят: их карту
+	// static-release.sh спрашивает отдельно, и ответ 404 (закрыта на боевом
+	// или не выложена) в файл не попадает. Такая работа из архива уходит
+	// целиком — как исключённая, а не как «все полосы на месте».
+	for _, id := range kids {
+		if p.exclude[id] {
+			continue
+		}
+		if _, ok := prod[id]; !ok {
+			delete(p.only, id)
+			p.exclude[id] = true
+			continue
+		}
+		ids = append(ids, id)
 	}
 	rows, err := pool.Query(ctx, `SELECT work_id, page_number FROM pages WHERE work_id = ANY($1) ORDER BY 1, 2`, ids)
 	if err != nil {
@@ -396,4 +412,30 @@ func sortedKeys[V any](m map[int64]V) []int64 {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// printChildren печатает номера служебных работ (передних листов) работ из
+// -only, по одному в строке: static-release.sh спрашивает боевой о каждой.
+func printChildren(ctx context.Context, pool *pgxpool.Pool, onlyFile string) error {
+	f, err := os.Open(onlyFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	only, err := staticsite.ParseOnlyList(f)
+	if err != nil {
+		return fmt.Errorf("%s: %w", onlyFile, err)
+	}
+	ids := make([]int64, 0, len(only))
+	for _, w := range only {
+		ids = append(ids, w.ID)
+	}
+	kids, err := childrenOf(ctx, pool, ids)
+	if err != nil {
+		return err
+	}
+	for _, id := range kids {
+		fmt.Println(id)
+	}
+	return nil
 }

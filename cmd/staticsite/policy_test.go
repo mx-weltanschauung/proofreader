@@ -235,3 +235,58 @@ func TestPageSpans(t *testing.T) {
 		t.Errorf("pageSpans = %v, хотел %v", got, want)
 	}
 }
+
+// Служебная работа тома (передние листы) — в карте боевого или нет. Нет карты
+// (404: закрыта там или не выложена) — работа из архива уходит целиком; есть —
+// фильтруется по полосам, как любая.
+func TestPolicyFrontMatterMissingOnProdIsLeftOut(t *testing.T) {
+	dsn := os.Getenv("PROOFREADER_TEST_DB_URL")
+	if dsn == "" {
+		t.Skip("set PROOFREADER_TEST_DB_URL to a throwaway DB to run this test")
+	}
+	ctx := context.Background()
+	id, pool := policyWorld(ctx, t, dsn)
+	child := func(title string) int64 {
+		var c int64
+		if err := pool.QueryRow(ctx, `INSERT INTO works (title, file_path, language, status, role, owner_id, parent_work_id)
+			VALUES ($1, '', 'ru', 'draft', 'front_matter', 1, $2) RETURNING id`, title, id).Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		for n := 1; n <= 2; n++ {
+			if _, err := pool.Exec(ctx, `INSERT INTO pages (work_id, page_number, content_markdown, status)
+				VALUES ($1, $2, 'т', 'не_вычитана')`, c, n); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return c
+	}
+	shown, hidden := child("листы открытые"), child("листы закрытые на боевом")
+
+	dir := t.TempDir()
+	only := filepath.Join(dir, "only.json")
+	pages := filepath.Join(dir, "pages.json")
+	if err := os.WriteFile(only, []byte(fmt.Sprintf(`[{"id": %d, "title": "том"}]`, id)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pages, []byte(fmt.Sprintf(`{"%d": [1,2,3,4,5,6], "%d": [1]}`, id, shown)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := loadPolicy(ctx, pool, "", only, pages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.only[shown] || p.exclude[shown] {
+		t.Errorf("служебная работа с картой боевого выпала: only=%v exclude=%v", p.only[shown], p.exclude[shown])
+	}
+	if p.only[hidden] || !p.exclude[hidden] {
+		t.Errorf("служебная работа без карты боевого осталась в составе: only=%v exclude=%v", p.only[hidden], p.exclude[hidden])
+	}
+	for _, x := range p.onlyIDs() {
+		if x == hidden {
+			t.Error("она же в onlyIDs (Allowed самопроверки)")
+		}
+	}
+	if want := (map[int]bool{2: true}); !reflect.DeepEqual(p.closedPages[shown], want) {
+		t.Errorf("полосы служебной работы: %v, хотел %v", p.closedPages[shown], want)
+	}
+}

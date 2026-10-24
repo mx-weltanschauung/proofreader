@@ -185,3 +185,23 @@ func TestForbiddenNamesClosedPages(t *testing.T) {
 		t.Errorf("закрытая полоса не названа закрытой: %v", got)
 	}
 }
+
+// Указатель, разбор и подборка — не works/, и полноту там не сверить; но
+// ссылка из них на закрытую полосу видна по адресу якоря.
+func TestLinkToClosedPageFromOutsideWorksIsFlagged(t *testing.T) {
+	files := good()
+	files["concepts/k.html"] = `<a href="../works/1-a/2-b.html#p12">с. 12</a><a href="../works/1-a/2-b.html#p11">с. 11</a>`
+	problems, err := Run(Options{Dir: writeTree(t, files), AllowedExternal: "https://lib.example.org/", Forbidden: map[int64][]int{1: {12}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits []string
+	for _, p := range problems {
+		if p.File == "concepts/k.html" {
+			hits = append(hits, p.Message)
+		}
+	}
+	if len(hits) != 1 || !strings.Contains(hits[0], "закрытую полосу 12") {
+		t.Errorf("ссылка из указателя на закрытую полосу: %v", hits)
+	}
+}

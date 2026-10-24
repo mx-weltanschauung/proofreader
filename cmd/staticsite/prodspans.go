@@ -6,6 +6,7 @@ import (
 
 	"proofreader/internal/api"
 	"proofreader/internal/models"
+	"proofreader/internal/repository"
 )
 
 // prodSpans — закрытые диапазоны для обёрток зрителя (api.NewViewPages,
@@ -42,4 +43,40 @@ func (s *prodSpans) ClosedSpans(ctx context.Context, workID int64) ([]models.Pag
 
 func (s *prodSpans) ClosedChapterIDs(ctx context.Context, workID int64) (map[int64]bool, error) {
 	return s.base.ClosedChapterIDs(ctx, workID)
+}
+
+// prodClosed — хранилище закрытого для указателя: настоящее, у которого
+// диапазоны закрытых глав дополнены полосами, которых нет на боевом. Указатель
+// сам берёт из него работы с закрытыми главами и их диапазоны (closedView), и
+// статья с закрытым источником и адреса в закрытые полосы уходят, как на боевом.
+type prodClosed struct {
+	closedBase
+	spans *prodSpans
+}
+
+// closedBase — то, что указателю нужно от настоящего хранилища закрытого
+// (*repository.ClosedRepository).
+type closedBase interface {
+	api.ClosedStore
+	api.ClosedSpansStore
+	WorksWithClosedChapters(ctx context.Context) (map[int64]bool, error)
+}
+
+var _ closedBase = (*repository.ClosedRepository)(nil)
+
+func (c *prodClosed) WorksWithClosedChapters(ctx context.Context) (map[int64]bool, error) {
+	works, err := c.closedBase.WorksWithClosedChapters(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for id, set := range c.spans.extra {
+		if len(set) > 0 {
+			works[id] = true
+		}
+	}
+	return works, nil
+}
+
+func (c *prodClosed) ClosedSpans(ctx context.Context, workID int64) ([]models.PageSpan, error) {
+	return c.spans.ClosedSpans(ctx, workID)
 }

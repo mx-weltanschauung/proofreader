@@ -19,8 +19,10 @@ type fakeSource struct {
 	volumes     map[int64]*book.Book
 	conceptList []ConceptEntry
 	concepts    map[string]*Concept
-	collections []Collection
-	documents   []Document
+	// hiddenConcepts — понятия из списка, скрытые закрытым целиком.
+	hiddenConcepts map[string]bool
+	collections    []Collection
+	documents      []Document
 }
 
 func (f *fakeSource) Shelf(context.Context) (*models.Shelf, error) { return f.shelf, nil }
@@ -36,6 +38,9 @@ func (f *fakeSource) Volume(_ context.Context, id int64) (*book.Book, error) {
 }
 func (f *fakeSource) ConceptList(context.Context) ([]ConceptEntry, error) { return f.conceptList, nil }
 func (f *fakeSource) Concept(_ context.Context, slug string) (*Concept, error) {
+	if f.hiddenConcepts[slug] {
+		return nil, ErrConceptHidden
+	}
 	return f.concepts[slug], nil
 }
 func (f *fakeSource) Collections(context.Context) ([]Collection, error) { return f.collections, nil }
