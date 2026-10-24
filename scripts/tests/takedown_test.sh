@@ -263,6 +263,21 @@ test_script_never_calls_delete_on_works() {
   fi
 }
 
+# Общая полоса закрывается ЦЕЛИКОМ (спека, ClosedSpans): план обязан
+# говорить, что сосед потеряет на ней кусок, а не что она «остаётся видна
+# через соседа» — так оператор думал бы, что текст на ней жив.
+test_chapter_plan_says_shared_page_closes_whole() {
+  STUB_CODE=200
+  STUB_BODY='{"chapters":1,"pages":3,"shared":[{"page_number":19,"neighbors":["Сосед"]}]}'
+  ACTION_TITLE="Закрытие"
+  REOPENING=0
+  local out
+  out="$(chapter_plan 145 9923)"
+  [[ "$out" == *"закрывается целиком"* && "$out" == *"потеряют"* && "$out" == *"Сосед"* ]] ||
+    fail "план главы не говорит, что общая полоса закрывается целиком: $out"
+  [[ "$out" != *"остаются видны"* ]] || fail "план главы обещает, что общая полоса видна через соседа: $out"
+}
+
 test_static_after_takedown_withdraws_without_exclude_line() {
   STATIC_EXCLUDE="$TMPROOT/exclude.txt"
   printf '# шапка\n' > "$STATIC_EXCLUDE"
