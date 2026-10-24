@@ -325,3 +325,12 @@ type EventStore interface {
 	ReplaceAgenda(ctx context.Context, eventID int64, in models.AgendaInput) error
 	ChapterEvents(ctx context.Context, workID, chapterID int64) ([]models.ChapterEventLink, error)
 }
+
+// ClosedSpansStore — срез репозитория закрытости, нужный обработчикам глав:
+// диапазоны закрытых полос работы и множество действительно закрытых глав
+// (своим признаком или через предка-главу).
+// *repository.ClosedRepository удовлетворяет ему как есть.
+type ClosedSpansStore interface {
+	ClosedSpans(ctx context.Context, workID int64) ([]models.PageSpan, error)
+	ClosedChapterIDs(ctx context.Context, workID int64) (map[int64]bool, error)
+}

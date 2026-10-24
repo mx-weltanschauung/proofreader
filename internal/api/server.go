@@ -83,10 +83,11 @@ func NewServer(d ServerDeps) *mux.Router {
 		cfg.JWT.Secret, cfg.Server.TrustProxyHeaders)
 	categoryHandler := NewCategoryHandler(categoryRepo)
 	pageHandler := NewPageHandler(pageRepo, pageVersionRepo, fragmentRepo, documentCutRepo, markdownRenderer, scans, cfg.S3.PresignTTL)
+	closedRepo := repository.NewClosedRepository(pool)
 	chapterHandler := NewChapterHandler(chapterRepo, pageRepo, markdownRenderer, rangeCache).
 		WithRecordings(audioRecordingRepo).
-		WithCredits(personRepo)
-	closedRepo := repository.NewClosedRepository(pool)
+		WithCredits(personRepo).
+		WithClosedChapters(closedRepo)
 	eventRepo := repository.NewEventRepository(pool)
 	readingHandler := NewReadingHandler(pageRepo, markdownRenderer)
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же

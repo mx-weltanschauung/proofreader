@@ -25,6 +25,7 @@ type ChapterHandler struct {
 	cache       *RangeCache
 	recordings  RecordingCounter
 	credits     CreditLister
+	closed      ClosedSpansStore
 }
 
 // RecordingCounter — сколько записей человека у главы и её подглав.
@@ -36,6 +37,62 @@ type RecordingCounter interface {
 func (h *ChapterHandler) WithRecordings(c RecordingCounter) *ChapterHandler {
 	h.recordings = c
 	return h
+}
+
+// WithClosedChapters включает отказ менять, переносить и удалять закрытые
+// главы (409). Без хранилища охраны нет.
+func (h *ChapterHandler) WithClosedChapters(s ClosedSpansStore) *ChapterHandler {
+	h.closed = s
+	return h
+}
+
+const chapterClosedMessage = "Глава закрыта — сначала откройте её"
+
+// refuseClosed пишет 409 и сообщает true, если хоть одна из глав ids в
+// множестве закрытых главы workID. Ошибка проверки — 500: молча пропустить
+// правку нельзя.
+func (h *ChapterHandler) refuseClosed(ctx context.Context, w http.ResponseWriter, workID int64, ids ...*int64) bool {
+	if h.closed == nil {
+		return false
+	}
+	set, err := h.closed.ClosedChapterIDs(ctx, workID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить закрытость главы")
+		return true
+	}
+	for _, id := range ids {
+		if id != nil && set[*id] {
+			writeError(w, http.StatusConflict, chapterClosedMessage)
+			return true
+		}
+	}
+	return false
+}
+
+// subtreeHasClosed — есть ли среди глав поддерева корня id закрытая.
+func (h *ChapterHandler) subtreeHasClosed(ctx context.Context, w http.ResponseWriter, workID, id int64) bool {
+	if h.closed == nil {
+		return false
+	}
+	tree, err := h.chapterRepo.ListByWorkHierarchical(ctx, workID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить закрытость главы")
+		return true
+	}
+	var ids []*int64
+	var collect func(cs []*models.Chapter, in bool)
+	collect = func(cs []*models.Chapter, in bool) {
+		for _, c := range cs {
+			here := in || c.ID == id
+			if here {
+				cid := c.ID
+				ids = append(ids, &cid)
+			}
+			collect(c.Children, here)
+		}
+	}
+	collect(tree, false)
+	return h.refuseClosed(ctx, w, workID, ids...)
 }
 
 // WithCredits подключает подписи статей журнала к ответам глав.
@@ -267,6 +324,9 @@ func (h *ChapterHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
 		return
 	}
+	if h.refuseClosed(ctx, w, chapter.WorkID, &chapterID, req.ParentID) {
+		return
+	}
 
 	chapter.ParentID = req.ParentID
 	chapter.Title = req.Title
@@ -334,6 +394,9 @@ func (h *ChapterHandler) Move(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Chapter does not belong to this work", http.StatusBadRequest)
 		return
 	}
+	if h.refuseClosed(ctx, w, workID, &chapterID, req.ParentID) {
+		return
+	}
 
 	if err := h.chapterRepo.Move(ctx, chapterID, req.ParentID, req.OrderNumber); err != nil {
 		http.Error(w, "Failed to move chapter", http.StatusInternalServerError)
@@ -360,6 +423,16 @@ func (h *ChapterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
+	if h.closed != nil {
+		chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
+		if err != nil {
+			http.Error(w, "Chapter not found", http.StatusNotFound)
+			return
+		}
+		if h.subtreeHasClosed(ctx, w, chapter.WorkID, chapterID) {
+			return
+		}
+	}
 	// Каскад унёс бы строки записей человека, а файлы в аудиобакете остались
 	// бы сиротами молча. Публикатор тома главы на боевом не удаляет, так что
 	// отказ задевает только ручное удаление.
