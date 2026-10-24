@@ -397,6 +397,17 @@ func (s *DownloadSource) collectionItemSection(
 	node := book.Node{Title: itemLabel(row), Start: start, End: end}
 	if item.Kind == models.CollectionItemKindChapter && item.ChapterID != nil {
 		if chapters, err := s.collections.ChaptersForWorks(ctx, []int64{*item.WorkID}); err == nil {
+			if !staffContext(ctx) {
+				// Закрытые подглавы не-сотрудника: полосы уже отфильтрованы,
+				// но пустая секция напечатала бы заголовок.
+				open := make([]*models.Chapter, 0, len(chapters))
+				for _, c := range chapters {
+					if !chapterIsClosed(c) {
+						open = append(open, c)
+					}
+				}
+				chapters = open
+			}
 			if found := findChapter(buildTree(chapters), *item.ChapterID); found != nil {
 				node = chaptersToNodes([]*models.Chapter{found}, s.chapterAnchors)[0]
 				node.Title = itemLabel(row)

@@ -160,10 +160,9 @@ type audioFile struct {
 	ascii  string // запаска filename= для браузеров без filename*
 	human  string
 	ext    string
-	// start, end — диапазон полос дорожки; chapterID — глава записи (у дорожки
-	// 0). По ним закрытое прячется и у адреса файла.
+	// start, end — диапазон полос дорожки или главы записи: по нему закрытое
+	// прячется и у адреса файла.
 	start, end int
-	chapterID  int64
 }
 
 // Точка в конце имени дала бы «..opus»: у заголовка («Товар.») и у
@@ -185,7 +184,7 @@ func recordingFile(x models.AudioRecording) audioFile {
 	// Расширение — из ключа: его ставит RecordingKey по типу при заливке.
 	ext := strings.TrimPrefix(path.Ext(x.S3Key), ".")
 	return audioFile{workID: x.WorkID, key: x.S3Key, ascii: fmt.Sprintf("recording-%d", x.ID), human: trimTitle(human), ext: ext,
-		chapterID: x.ChapterID}
+		start: x.ChapterStartPage, end: x.ChapterEndPage}
 }
 
 // redirect — 302 на подписанную ссылку; строки нет — 410: адрес дорожки

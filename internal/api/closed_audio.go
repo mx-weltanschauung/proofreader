@@ -39,13 +39,15 @@ func (v audioView) recordings(ctx context.Context, workID int64, in []models.Aud
 	if !v.active(ctx) {
 		return in, nil
 	}
-	ids, err := v.closed.ClosedChapterIDs(ctx, workID)
-	if err != nil || len(ids) == 0 {
+	spans, err := v.closed.ClosedSpans(ctx, workID)
+	if err != nil || len(spans) == 0 {
 		return in, err
 	}
+	// Запись открытой родительской главы озвучивает и текст закрытой
+	// подглавы, поэтому прячется по пересечению диапазона, как дорожка.
 	out := make([]models.AudioRecording, 0, len(in))
 	for _, x := range in {
-		if !ids[x.ChapterID] {
+		if !spansOverlap(spans, x.ChapterStartPage, x.ChapterEndPage) {
 			out = append(out, x)
 		}
 	}
@@ -57,10 +59,6 @@ func (v audioView) recordings(ctx context.Context, workID int64, in []models.Aud
 func (v audioView) fileHidden(ctx context.Context, f audioFile) (bool, error) {
 	if !v.active(ctx) {
 		return false, nil
-	}
-	if f.chapterID != 0 {
-		ids, err := v.closed.ClosedChapterIDs(ctx, f.workID)
-		return ids[f.chapterID], err
 	}
 	spans, err := v.closed.ClosedSpans(ctx, f.workID)
 	return spansOverlap(spans, f.start, f.end), err

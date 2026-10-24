@@ -123,6 +123,8 @@ func audioClosedFixture() (*AudioHandler, *fakeAudio) {
 		recs: []models.AudioRecording{
 			{ID: 7, WorkID: 8, ChapterID: 70, ChapterTitle: "Закрытая", S3Key: "works/8/rec/70/x.mp3", ChapterStartPage: 5, ChapterEndPage: 5},
 			{ID: 8, WorkID: 8, ChapterID: 71, ChapterTitle: "Открытая", S3Key: "works/8/rec/71/x.mp3", ChapterStartPage: 1, ChapterEndPage: 2},
+			// Запись открытой родительской главы, внутри которой закрытая полоса 5.
+			{ID: 9, WorkID: 8, ChapterID: 72, ChapterTitle: "Родитель", S3Key: "works/8/rec/72/x.mp3", ChapterStartPage: 3, ChapterEndPage: 8},
 		},
 	}
 	cs := chapterSet{chapters: map[int64]bool{70: true}, spans: map[int64][]models.PageSpan{8: {{Start: 5, End: 5}}}}
@@ -146,12 +148,12 @@ func TestAudioTrackOverClosedPageHidden(t *testing.T) {
 		return len(out.Tracks), len(out.Recordings)
 	}
 	for name, claims := range map[string]*auth.Claims{"аноним": nil, "читатель": readerClaims(5, "чтец")} {
-		if tr, rc := get(claims); tr != 1 || rc != 1 {
+		if tr, rc := get(claims); tr != 1 || rc != 1 { // запись родителя (id 9) тоже скрыта
 			t.Errorf("%s: дорожек %d, записей %d, ожидалось по 1", name, tr, rc)
 		}
 	}
-	if tr, rc := get(editorClaims()); tr != 2 || rc != 2 {
-		t.Errorf("сотрудник: дорожек %d, записей %d, ожидалось по 2", tr, rc)
+	if tr, rc := get(editorClaims()); tr != 2 || rc != 3 {
+		t.Errorf("сотрудник: дорожек %d, записей %d, ожидалось 2 и 3", tr, rc)
 	}
 
 	redirect := func(fn http.HandlerFunc, id string, claims *auth.Claims) int {
@@ -172,6 +174,12 @@ func TestAudioTrackOverClosedPageHidden(t *testing.T) {
 	if c := redirect(h.RecordingRedirect, "7", nil); c != http.StatusNotFound {
 		t.Errorf("запись в закрытой главе: %d", c)
 	}
+	if c := redirect(h.RecordingRedirect, "9", nil); c != http.StatusNotFound {
+		t.Errorf("запись открытого родителя над закрытой полосой: %d", c)
+	}
+	if c := redirect(h.RecordingRedirect, "9", editorClaims()); c != http.StatusFound {
+		t.Errorf("сотрудник, запись родителя: %d", c)
+	}
 	if c := redirect(h.RecordingRedirect, "8", nil); c != http.StatusFound {
 		t.Errorf("открытая запись: %d", c)
 	}
@@ -188,7 +196,9 @@ func TestAudioPlaylistSkipsClosed(t *testing.T) {
 		{ID: 3, WorkID: 47, Title: "Через закрытую", StartPage: 13, EndPage: 16},
 	}
 	f.recs = []models.AudioRecording{{ID: 7, WorkID: 47, ChapterID: 70, ChapterTitle: "Закрытая",
-		ChapterStartPage: 15, ChapterEndPage: 15, Position: 1}}
+		ChapterStartPage: 15, ChapterEndPage: 15, Position: 1},
+		{ID: 8, WorkID: 47, ChapterID: 72, ChapterTitle: "Родитель",
+			ChapterStartPage: 10, ChapterEndPage: 20, Position: 1}}
 	h := NewDownloadHandler(nil).WithAudio(
 		NewAudioPlaylist(f, f, fakePlaylistWorks{}, fakePlaylistChapters{}, "https://lib.example").WithClosedSpans(cs))
 	get := func(claims *auth.Claims) string {
@@ -197,10 +207,10 @@ func TestAudioPlaylistSkipsClosed(t *testing.T) {
 		withClaims(claims, h.Work)(rec, req)
 		return rec.Body.String()
 	}
-	if b := get(nil); !strings.Contains(b, "/api/audio/2.opus") || strings.Contains(b, "/api/audio/3.opus") || strings.Contains(b, "/rec/7") {
+	if b := get(nil); !strings.Contains(b, "/api/audio/2.opus") || strings.Contains(b, "/api/audio/3.opus") || strings.Contains(b, "/rec/7") || strings.Contains(b, "/rec/8") {
 		t.Errorf("аноним:\n%s", b)
 	}
-	if b := get(editorClaims()); !strings.Contains(b, "/api/audio/3.opus") || !strings.Contains(b, "/rec/7") {
+	if b := get(editorClaims()); !strings.Contains(b, "/api/audio/3.opus") || !strings.Contains(b, "/rec/7") || !strings.Contains(b, "/rec/8") {
 		t.Errorf("сотрудник:\n%s", b)
 	}
 }
@@ -418,5 +428,31 @@ func TestDownloadCollectionClosedChapterItemUnnamed(t *testing.T) {
 	}
 	if body := get(editorClaims()); strings.Contains(body, "недоступный источник") || !strings.Contains(body, "Начало главы") {
 		t.Fatalf("сотруднику: %s", body)
+	}
+}
+
+func TestDownloadCollectionHidesClosedSubchapterHeading(t *testing.T) {
+	src := downloadCollectionFixture()
+	src.collections.(*fakeCollectionStoreForDownload).chapters = []*models.Chapter{
+		{ID: 10, WorkID: 1, Title: "Глава", StartPage: 2, EndPage: 4},
+		{ID: 11, WorkID: 1, ParentID: ptrInt64(10), Title: "СЕКРЕТНАЯПОДГЛАВА", StartPage: 3, EndPage: 3,
+			Closed: true, ClosedBy: models.ChapterClosedBySelf},
+	}
+	src.pages = NewViewPages(src.pages, spanStore{1: {{Start: 3, End: 3}}})
+	h := NewDownloadHandler(src)
+	get := func(claims *auth.Claims) string {
+		req := mux.SetURLVars(httptest.NewRequest(http.MethodGet, "/x?format=html", nil), map[string]string{"slug": "moi"})
+		rec := httptest.NewRecorder()
+		withClaims(claims, h.Collection)(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("код %d: %s", rec.Code, rec.Body)
+		}
+		return rec.Body.String()
+	}
+	if body := get(nil); strings.Contains(body, "СЕКРЕТНАЯПОДГЛАВА") || !strings.Contains(body, "Начало главы") {
+		t.Fatalf("аноним: %s", body)
+	}
+	if body := get(editorClaims()); !strings.Contains(body, "СЕКРЕТНАЯПОДГЛАВА") {
+		t.Fatalf("сотрудник: %s", body)
 	}
 }
