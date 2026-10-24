@@ -15,4 +15,5 @@ END $$;
 DROP VIEW closed_pages;
 DROP VIEW closed_chapters;
 DROP TABLE closures;
+DROP INDEX chapters_closed_idx;
 ALTER TABLE chapters DROP COLUMN closed;
