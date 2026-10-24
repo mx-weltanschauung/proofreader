@@ -900,3 +900,238 @@ func TestLatestClosure(t *testing.T) {
 		t.Fatalf("ListClosures = %+v, %v", list, err)
 	}
 }
+
+// closeChapter ставит собственный признак главы напрямую: тесты каналов
+// проверяют чтение, а не охрану записи.
+func closeChapter(t *testing.T, id int64) {
+	t.Helper()
+	if _, err := testPool(t).Exec(context.Background(), `UPDATE chapters SET closed = true WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Закрытая глава [2,3] и открытая соседка [3,4] делят полосу 3: она закрыта.
+// Полоса 4 открыта и находится; закрытые 1... см. слова в тексте.
+func TestSearchHidesClosedChapterPages(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	repo := NewSearchRepository(pool)
+	work := seedWorkWithPages(t, pool, "Том", "открытая полоса", "квазаропрятный текст аргонный", "общая пульсарная полоса", "туманностный сосед аргонный")
+	closed := seedChapter(t, pool, work, "Закрытая", 2, 3)
+	_ = seedChapter(t, pool, work, "Соседка", 3, 4)
+	closeChapter(t, closed)
+
+	for q, wantOpen := range map[string]int{"квазаропрятный": 0, "пульсарная": 0, "туманностный": 1} {
+		res, err := repo.Search(ctx, models.SearchQuery{Text: q})
+		if err != nil {
+			t.Fatal(err)
+		}
+		hits := 0
+		for _, v := range res.Volumes {
+			if v.WorkID == work {
+				hits += v.TextHits + v.ApparatusHits
+				if wantOpen == 0 && len(v.Pages) != 0 {
+					t.Errorf("%s: отрывок закрытой полосы в выдаче тома: %+v", q, v.Pages)
+				}
+			}
+		}
+		if hits != wantOpen || res.TotalHits != wantOpen {
+			t.Errorf("%s: счёт тома %d, total %d, ждали %d", q, hits, res.TotalHits, wantOpen)
+		}
+		pr, err := repo.SearchPages(ctx, models.SearchQuery{Text: q}, work, nil, 50, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pr.Pages) != wantOpen || pr.Total != wantOpen || (wantOpen == 0 && len(pr.Chapters) != 0) {
+			t.Errorf("%s: полос %d, всего %d, фасет %d, ждали %d", q, len(pr.Pages), pr.Total, len(pr.Chapters), wantOpen)
+		}
+	}
+	// Отрывки тома: закрытая полоса 2 не попадает в первые полосы выдачи,
+	// хотя том совпал и открытой полосой 4.
+	res, err := repo.Search(ctx, models.SearchQuery{Text: "аргонный"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range res.Volumes {
+		if v.WorkID != work {
+			continue
+		}
+		if v.TextHits != 1 || len(v.Pages) != 1 || v.Pages[0].PageNumber != 4 {
+			t.Errorf("аргонный: счёт %d, отрывки %+v; ждали одну открытую полосу 4", v.TextHits, v.Pages)
+		}
+	}
+	// Сотрудник видит всё.
+	for q, want := range map[string]int{"квазаропрятный": 1, "пульсарная": 1, "туманностный": 1} {
+		res, err := repo.Search(ctx, models.SearchQuery{Text: q, IncludeClosed: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.TotalHits != want {
+			t.Errorf("сотрудник, %s: total %d, ждали %d", q, res.TotalHits, want)
+		}
+		pr, err := repo.SearchPages(ctx, models.SearchQuery{Text: q, IncludeClosed: true}, work, nil, 50, 0)
+		if err != nil || pr.Total != want {
+			t.Errorf("сотрудник, %s: полос %v, %v", q, pr, err)
+		}
+	}
+}
+
+func TestSearchHidesClosedChapterTitle(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	repo := NewSearchRepository(pool)
+	work := seedWorkWithPages(t, pool, "Том", "один", "два")
+	closed := seedChapter(t, pool, work, "Хризантемная закрытая", 1, 1)
+	_ = seedChapter(t, pool, work, "Хризантемная открытая", 2, 2)
+	closeChapter(t, closed)
+
+	res, err := repo.Search(ctx, models.SearchQuery{Text: "хризантемная"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Chapters) != 1 || res.Chapters[0].Title != "Хризантемная открытая" {
+		t.Fatalf("заглавия: %+v", res.Chapters)
+	}
+	res, err = repo.Search(ctx, models.SearchQuery{Text: "хризантемная", IncludeClosed: true})
+	if err != nil || len(res.Chapters) != 2 {
+		t.Fatalf("сотрудник: %+v, %v", res.Chapters, err)
+	}
+}
+
+func TestSEOChaptersSkipClosed(t *testing.T) {
+	repo, pool, ctx := newSEOTestRepo(t)
+	work := seedWorkWithPages(t, pool, "Том", "один", "два", "три")
+	closed := seedChapter(t, pool, work, "Закрытая", 1, 2)
+	open := seedChapter(t, pool, work, "Открытая", 3, 3)
+	sub := seedChapter(t, pool, work, "Подглава закрытой", 1, 1)
+	if _, err := pool.Exec(ctx, `UPDATE chapters SET parent_id = $1 WHERE id = $2`, closed, sub); err != nil {
+		t.Fatal(err)
+	}
+	closeChapter(t, closed)
+	rows, err := repo.Chapters(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	for _, r := range rows {
+		if r.WorkID == work {
+			ids = append(ids, r.ID)
+		}
+	}
+	if len(ids) != 1 || ids[0] != open {
+		t.Fatalf("карта сайта: %v, ждали только %d", ids, open)
+	}
+}
+
+func TestPersonClosedArticleHidden(t *testing.T) {
+	ctx := context.Background()
+	f := newCreditFixture(t, "cr-closed-art")
+	p := &models.Person{Name: "Закрытый Автор"}
+	_ = f.persons.Create(ctx, p)
+	_ = f.persons.ReplaceCredits(ctx, f.article.ID, []models.CreditInput{{Role: "author", Printed: "З. А.", PersonID: &p.ID}})
+	closeChapter(t, f.article.ID)
+	if _, err := f.persons.Detail(ctx, p.Slug, false); !errors.Is(err, ErrPersonNotFound) {
+		t.Fatalf("статья закрытой главы видна: %v", err)
+	}
+	d, err := f.persons.Detail(ctx, p.Slug, true)
+	if err != nil || len(d.Articles) != 1 {
+		t.Fatalf("сотрудник: %+v, %v", d, err)
+	}
+}
+
+// indexClosedFixture — том с закрытой главой [3,4]; открытое собрание.
+func indexClosedFixture(t *testing.T) (editionID, workID int64) {
+	t.Helper()
+	pool := testPool(t)
+	ctx := context.Background()
+	workID = seedWorkWithPages(t, pool, "Том указателя", "а", "б", "в", "г", "д")
+	if err := pool.QueryRow(ctx, `INSERT INTO editions (title, slug) VALUES ('Собрание', 'idx-closed-ch') RETURNING id`).Scan(&editionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE works SET edition_id = $1, volume_number = 1 WHERE id = $2`, editionID, workID); err != nil {
+		t.Fatal(err)
+	}
+	closeChapter(t, seedChapter(t, pool, workID, "Закрытая", 3, 4))
+	return editionID, workID
+}
+
+func addArticle(t *testing.T, editionID int64, workID *int64, slug, text string, srcStart, srcEnd int, refPages ...int) {
+	t.Helper()
+	pool := testPool(t)
+	ctx := context.Background()
+	var cid, aid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO index_concepts (title, slug, sort_key, title_key) VALUES ($1, $1, $1, $1) RETURNING id`, slug).Scan(&cid); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO index_concept_articles (concept_id, edition_id, work_id, title, title_key, kind, article_markdown, source_page_start, source_page_end)
+		VALUES ($1, $2, $3, $4, $4, 'article', $5, $6, $7) RETURNING id`, cid, editionID, workID, slug, text, srcStart, srcEnd).Scan(&aid); err != nil {
+		t.Fatal(err)
+	}
+	for i, p := range refPages {
+		if _, err := pool.Exec(ctx, `INSERT INTO index_references (article_id, volume_number, page_start, page_end, order_number) VALUES ($1, 1, $2, $2, $3)`, aid, p, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func visibleSlugs(t *testing.T, includeClosed bool) map[string]bool {
+	t.Helper()
+	cs, err := NewIndexRepository(testPool(t)).ListConcepts(context.Background(), "", "", 100, 0, includeClosed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]bool{}
+	for _, c := range cs {
+		out[c.Slug] = true
+	}
+	return out
+}
+
+func TestConceptArticleOnClosedPagesHidden(t *testing.T) {
+	ed, work := indexClosedFixture(t)
+	addArticle(t, ed, &work, "stat-zakryta", "Текст.", 4, 4)
+	addArticle(t, ed, &work, "stat-chast", "Текст.", 2, 3) // хоть одна полоса закрыта
+	addArticle(t, ed, &work, "stat-otkryta", "Текст.", 1, 2)
+	addArticle(t, ed, &work, "stat-bez-polos", "Текст.", 0, 0)
+	got := visibleSlugs(t, false)
+	if got["stat-zakryta"] || got["stat-chast"] || !got["stat-otkryta"] || !got["stat-bez-polos"] {
+		t.Fatalf("видимые понятия: %v", got)
+	}
+	hidden, err := NewIndexRepository(testPool(t)).HiddenConceptSlugs(context.Background(), []string{"stat-zakryta", "stat-chast", "stat-otkryta"})
+	if err != nil || !hidden["stat-zakryta"] || !hidden["stat-chast"] || hidden["stat-otkryta"] {
+		t.Fatalf("HiddenConceptSlugs: %v, %v", hidden, err)
+	}
+	if all := visibleSlugs(t, true); !all["stat-zakryta"] || !all["stat-chast"] {
+		t.Fatalf("сотрудник: %v", all)
+	}
+}
+
+func TestConceptAddressIntoClosedPageHidden(t *testing.T) {
+	ed, work := indexClosedFixture(t)
+	_ = work
+	// Статья без текста и без работы-указателя: у неё одни адреса.
+	addArticle(t, ed, nil, "adr-zakryt", "", 0, 0, 3)
+	addArticle(t, ed, nil, "adr-smeshan", "", 0, 0, 3, 1)
+	addArticle(t, ed, nil, "adr-otkryt", "", 0, 0, 1)
+	// Адрес-диапазон 2—3: закрыта только его последняя полоса.
+	addArticle(t, ed, nil, "adr-diapazon", "", 0, 0, 2)
+	if _, err := testPool(t).Exec(context.Background(), `UPDATE index_references SET page_end = 3
+		WHERE article_id = (SELECT a.id FROM index_concept_articles a JOIN index_concepts c ON c.id = a.concept_id WHERE c.slug = 'adr-diapazon')`); err != nil {
+		t.Fatal(err)
+	}
+	got := visibleSlugs(t, false)
+	if got["adr-zakryt"] || got["adr-diapazon"] || !got["adr-smeshan"] || !got["adr-otkryt"] {
+		t.Fatalf("видимые понятия: %v", got)
+	}
+	shelf, err := NewSEORepository(testPool(t)).ConceptShelf(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	places := map[string]int{}
+	for _, r := range shelf {
+		places[r.Slug] = r.Places
+	}
+	if _, ok := places["adr-zakryt"]; ok || places["adr-smeshan"] != 1 || places["adr-otkryt"] != 1 {
+		t.Fatalf("витрина, число адресов: %v", places)
+	}
+}

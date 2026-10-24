@@ -110,8 +110,8 @@ func (r *PersonRepository) Search(ctx context.Context, q string, limit int) ([]m
 	return out, rows.Err()
 }
 
-// Detail — страница автора. includeClosed == false: статьи закрытых работ
-// отброшены; был хоть один кредит и не осталось ни одного — автор «не найден»
+// Detail — страница автора. includeClosed == false: статьи закрытых работ и
+// закрытых глав отброшены; был хоть один кредит и не осталось ни одного — автор «не найден»
 // (по одной только странице автора закрытый журнал иначе не скрыть).
 func (r *PersonRepository) Detail(ctx context.Context, personSlug string, includeClosed bool) (*models.PersonDetail, error) {
 	p, err := scanPerson(r.pool.QueryRow(ctx, `SELECT `+personColumns+` FROM persons WHERE slug = $1`, personSlug))
@@ -121,7 +121,7 @@ func (r *PersonRepository) Detail(ctx context.Context, personSlug string, includ
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.id, c.title, coalesce(c.article_kind, ''), ac.role, w.id, w.title, w.role,
 		       j.slug, j.title, ji.year, ji.label, c.start_page, c.end_page,
-		       work_closed_by(w.id) <> ''
+		       work_closed_by(w.id) <> '' OR c.id IN (SELECT id FROM closed_chapters)
 		FROM article_credits ac
 		JOIN chapters c ON c.id = ac.chapter_id
 		JOIN works w ON w.id = c.work_id

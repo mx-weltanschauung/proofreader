@@ -387,3 +387,29 @@ func TestOPDSSearchRefusals(t *testing.T) {
 		t.Errorf("занятые слоты: %v", err)
 	}
 }
+
+// Закрытая глава и её поддерево в дерево тома OPDS не попадают: источник
+// читает главы через ViewChapters, а OPDS — канал без токена.
+func TestOPDSTreeSkipsClosedChapter(t *testing.T) {
+	src, _, _ := opdsFixture()
+	parent := int64(10)
+	src.chapters = NewViewChapters(&fakeChapterReader{fakeChapterStore: &fakeChapterStore{
+		listHierarchicalFn: func(context.Context, int64) ([]*models.Chapter, error) {
+			return []*models.Chapter{
+				{ID: 10, Title: "Открытая группа", StartPage: 1, EndPage: 370, Children: []*models.Chapter{
+					{ID: 11, ParentID: &parent, Title: "Закрытое письмо", StartPage: 54, EndPage: 56, Closed: true, ClosedBy: "chapter",
+						Children: []*models.Chapter{{ID: 12, ParentID: int64p(11), Title: "Подглава", StartPage: 55, EndPage: 55, ClosedBy: "parent"}}},
+					{ID: 13, ParentID: &parent, Title: "Открытое письмо", StartPage: 60, EndPage: 61},
+				}},
+				{ID: 40, Title: "Закрытый аппарат", StartPage: 371, EndPage: 400, Closed: true, ClosedBy: "chapter"},
+			}, nil
+		},
+	}}, nil)
+	tree, err := src.Tree(context.Background(), 252)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tree.Nodes) != 1 || len(tree.Nodes[0].Children) != 1 || tree.Nodes[0].Children[0].ID != 13 {
+		t.Fatalf("дерево: %+v", tree.Nodes)
+	}
+}

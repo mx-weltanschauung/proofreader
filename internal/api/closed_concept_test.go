@@ -43,7 +43,7 @@ var closedConceptVols = map[int64][]models.VolumeLocation{
 }
 
 func TestVisibleConceptDropsClosedEditionArticle(t *testing.T) {
-	got, ok := visibleConcept(closedConceptFixture(), map[int64]bool{2: true}, nil, closedConceptVols)
+	got, ok := visibleConcept(closedConceptFixture(), map[int64]bool{2: true}, nil, closedConceptVols, nil)
 	if !ok || len(got.Articles) != 1 || got.Articles[0].ID != 1 {
 		t.Fatalf("статья закрытого издания осталась: ok=%v %+v", ok, got)
 	}
@@ -56,14 +56,14 @@ func TestVisibleConceptDropsArticleOfClosedWork(t *testing.T) {
 	c := closedConceptFixture()
 	c.Articles[1].EditionID = 1
 	c.Articles[1].WorkID = i64(60)
-	got, ok := visibleConcept(c, nil, ClosedSet{60: true}, closedConceptVols)
+	got, ok := visibleConcept(c, nil, ClosedSet{60: true}, closedConceptVols, nil)
 	if !ok || len(got.Articles) != 1 || got.Articles[0].ID != 1 {
 		t.Fatalf("статья закрытой работы осталась: ok=%v %+v", ok, got)
 	}
 }
 
 func TestVisibleConceptDropsReferenceIntoClosedVolume(t *testing.T) {
-	got, ok := visibleConcept(closedConceptFixture(), nil, ClosedSet{50: true}, closedConceptVols)
+	got, ok := visibleConcept(closedConceptFixture(), nil, ClosedSet{50: true}, closedConceptVols, nil)
 	if !ok {
 		t.Fatal("понятие исчезло, хотя видимое осталось")
 	}
@@ -78,14 +78,14 @@ func TestVisibleConceptDropsReferenceIntoClosedVolume(t *testing.T) {
 
 func TestVisibleConceptAllClosedIsGone(t *testing.T) {
 	c := closedConceptFixture()
-	if _, ok := visibleConcept(c, map[int64]bool{1: true, 2: true}, nil, closedConceptVols); ok {
+	if _, ok := visibleConcept(c, map[int64]bool{1: true, 2: true}, nil, closedConceptVols, nil); ok {
 		t.Error("все статьи закрыты, а понятие осталось")
 	}
 	// Статья без текста, чьи адреса все в закрытом томе, ничего не несёт.
 	c = &models.IndexConcept{ID: 2, Slug: "x", Articles: []*models.IndexArticle{
 		{ID: 5, EditionID: 1, References: []*models.IndexReference{{ID: 1, VolumeNumber: 5, PageStart: 1, PageEnd: 1}}},
 	}}
-	if _, ok := visibleConcept(c, nil, ClosedSet{50: true}, closedConceptVols); ok {
+	if _, ok := visibleConcept(c, nil, ClosedSet{50: true}, closedConceptVols, nil); ok {
 		t.Error("пустая оболочка статьи осталась")
 	}
 }
@@ -93,16 +93,16 @@ func TestVisibleConceptAllClosedIsGone(t *testing.T) {
 func TestVisibleConceptUntouchedWhenNothingRemoved(t *testing.T) {
 	// Понятие без статей и понятие, которого закрытое не касается, — как были.
 	empty := &models.IndexConcept{ID: 3, Slug: "e"}
-	if got, ok := visibleConcept(empty, map[int64]bool{2: true}, ClosedSet{50: true}, nil); !ok || got != empty {
+	if got, ok := visibleConcept(empty, map[int64]bool{2: true}, ClosedSet{50: true}, nil, nil); !ok || got != empty {
 		t.Errorf("пустое понятие тронуто: %v %v", got, ok)
 	}
 	c := closedConceptFixture()
-	if got, ok := visibleConcept(c, nil, nil, closedConceptVols); !ok || got != c {
+	if got, ok := visibleConcept(c, nil, nil, closedConceptVols, nil); !ok || got != c {
 		t.Errorf("nil-множества что-то скрыли: %v %v", got, ok)
 	}
 	// Редирект «см.»: ни адресов, ни текста — и это не потеря.
 	redirect := &models.IndexConcept{ID: 4, Slug: "r", Articles: []*models.IndexArticle{{ID: 9, EditionID: 1, Kind: models.IndexConceptKindRedirect}}}
-	if _, ok := visibleConcept(redirect, map[int64]bool{2: true}, nil, closedConceptVols); !ok {
+	if _, ok := visibleConcept(redirect, map[int64]bool{2: true}, nil, closedConceptVols, nil); !ok {
 		t.Error("редирект без адресов скрыт без причины")
 	}
 }
@@ -325,7 +325,7 @@ func TestBlankArticleTextAgreesWithTrimSpace(t *testing.T) {
 	c := &models.IndexConcept{ID: 2, Slug: "x", Articles: []*models.IndexArticle{
 		{ID: 5, EditionID: 1, ArticleMarkdown: "\n", References: []*models.IndexReference{{ID: 1, VolumeNumber: 5, PageStart: 1, PageEnd: 1}}},
 	}}
-	if _, ok := visibleConcept(c, nil, ClosedSet{50: true}, closedConceptVols); ok {
+	if _, ok := visibleConcept(c, nil, ClosedSet{50: true}, closedConceptVols, nil); ok {
 		t.Error("статья из одного перевода строки считается текстом")
 	}
 }
@@ -380,5 +380,107 @@ func TestTokenlessArticleLinksOneQuery(t *testing.T) {
 func TestHiddenConceptIsGoneForSEOCrawler(t *testing.T) {
 	if !errors.Is(errConceptHidden, seo.ErrNotFound) || !seo.IsNotFound(errConceptHidden) {
 		t.Fatalf("errConceptHidden не распознаётся как отсутствие: %v", errConceptHidden)
+	}
+}
+
+// closedPagesOf — closedPages над готовым набором «работа:страница».
+func closedPagesOf(pairs ...[2]int64) func(int64, int) bool {
+	set := map[[2]int64]bool{}
+	for _, p := range pairs {
+		set[p] = true
+	}
+	return func(w int64, page int) bool { return set[[2]int64{w, int64(page)}] }
+}
+
+// Адрес, разрешающийся в закрытую полосу открытого тома, скрыт; соседний
+// открытый остаётся. Печатный номер возвращается в номер полосы через
+// page_offset тома, как в resolveReference.
+func TestConceptAddressIntoClosedPageHidden(t *testing.T) {
+	vols := map[int64][]models.VolumeLocation{
+		1: {{VolumeNumber: 4, WorkID: 40, PageOffset: 2, MaxPage: 100}, {VolumeNumber: 5, WorkID: 50, MaxPage: 100}},
+	}
+	c := &models.IndexConcept{ID: 1, Slug: "trud", EditionIDs: []int64{1}, Articles: []*models.IndexArticle{{
+		ID: 1, EditionID: 1, Kind: models.IndexConceptKindArticle,
+		References: []*models.IndexReference{
+			{ID: 11, VolumeNumber: 4, PageStart: 8, PageEnd: 9},   // полосы 6—7: 7 закрыта
+			{ID: 12, VolumeNumber: 4, PageStart: 3, PageEnd: 3},   // полоса 1
+			{ID: 13, VolumeNumber: 5, PageStart: 7, PageEnd: 7}}}, // другой том, та же полоса 7
+	}}
+	got, ok := visibleConcept(c, nil, nil, vols, closedPagesOf([2]int64{40, 7}))
+	if !ok || len(got.Articles[0].References) != 2 {
+		t.Fatalf("адреса: ok=%v %+v", ok, got)
+	}
+	for _, r := range got.Articles[0].References {
+		if r.ID == 11 {
+			t.Errorf("адрес в закрытую полосу остался: %+v", r)
+		}
+	}
+	// Все адреса закрыты, текста нет — понятие уходит.
+	c2 := &models.IndexConcept{ID: 2, Articles: []*models.IndexArticle{{
+		ID: 2, EditionID: 1, References: []*models.IndexReference{{ID: 21, VolumeNumber: 4, PageStart: 9, PageEnd: 9}}}}}
+	if _, ok := visibleConcept(c2, nil, nil, vols, closedPagesOf([2]int64{40, 7})); ok {
+		t.Error("понятие из одних закрытых адресов осталось")
+	}
+}
+
+// Статья, выросшая из полос закрытой главы работы-указателя, скрыта.
+func TestConceptArticleOnClosedSourcePagesHidden(t *testing.T) {
+	c := &models.IndexConcept{ID: 1, EditionIDs: []int64{1}, Articles: []*models.IndexArticle{
+		{ID: 1, EditionID: 1, WorkID: i64(90), SourcePageStart: 3, SourcePageEnd: 5, ArticleMarkdown: "закрытая"},
+		{ID: 2, EditionID: 1, WorkID: i64(90), SourcePageStart: 1, SourcePageEnd: 2, ArticleMarkdown: "открытая"},
+		{ID: 3, EditionID: 1, WorkID: i64(90), ArticleMarkdown: "без источника"},
+	}}
+	got, ok := visibleConcept(c, nil, nil, nil, closedPagesOf([2]int64{90, 4}))
+	if !ok || len(got.Articles) != 2 || got.Articles[0].ID != 2 || got.Articles[1].ID != 3 {
+		t.Fatalf("статьи: ok=%v %+v", ok, got)
+	}
+}
+
+// chapterClosedStore — хранилище закрытого, у которого закрыты только главы:
+// closedView.filter обязан дойти до адресов, хотя закрытых работ и изданий нет.
+type chapterClosedStore struct {
+	spanStore
+	works map[int64]bool
+}
+
+func (chapterClosedStore) ClosedBy(context.Context, int64) (string, error) { return "", nil }
+func (chapterClosedStore) ClosedIDs(context.Context) (map[int64]bool, error) {
+	return map[int64]bool{}, nil
+}
+func (chapterClosedStore) ClosedEditionIDs(context.Context) (map[int64]bool, error) {
+	return map[int64]bool{}, nil
+}
+func (s chapterClosedStore) WorksWithClosedChapters(context.Context) (map[int64]bool, error) {
+	return s.works, nil
+}
+
+type fixedVolumes map[int64][]models.VolumeLocation
+
+func (f fixedVolumes) VolumeMap(_ context.Context, id int64) ([]models.VolumeLocation, error) {
+	return f[id], nil
+}
+
+func TestClosedViewFilterHidesAddressInClosedChapter(t *testing.T) {
+	store := chapterClosedStore{spanStore: spanStore{40: {{Start: 6, End: 8}}}, works: map[int64]bool{40: true}}
+	v, err := fullClosedView(context.Background(), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.none() {
+		t.Fatal("закрыта глава — вид не должен быть пустым")
+	}
+	got, ok, err := v.filter(context.Background(), fixedVolumes(closedConceptVols), closedConceptFixture())
+	if err != nil || !ok {
+		t.Fatalf("filter: %v %v", ok, err)
+	}
+	// Адрес 11 — т. 4, с. 3 (полоса 3, открыта); 12 — т. 5 (работа 50, без закрытых глав).
+	if len(got.Articles[0].References) != 2 {
+		t.Fatalf("открытые адреса не должны пострадать: %+v", got.Articles[0].References)
+	}
+	c := closedConceptFixture()
+	c.Articles[0].References[0].PageStart, c.Articles[0].References[0].PageEnd = 7, 7
+	got, _, err = v.filter(context.Background(), fixedVolumes(closedConceptVols), c)
+	if err != nil || len(got.Articles[0].References) != 1 || got.Articles[0].References[0].ID != 12 {
+		t.Fatalf("адрес в закрытую главу остался: %+v %v", got.Articles[0].References, err)
 	}
 }
