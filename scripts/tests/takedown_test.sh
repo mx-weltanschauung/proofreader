@@ -244,6 +244,11 @@ test_probe_ok_verdicts() {
   probe_ok open 200 || fail "200 при ожидании открытого не принят"
   probe_ok open 410 && fail "410 принят за открытое"
   probe_ok open 404 && fail "404 принят за открытое"
+  probe_ok open 000000 && fail "обрыв связи (000000) принят за открытое"
+  probe_ok open 000 && fail "000 принят за открытое"
+  probe_ok open "" && fail "пустой код принят за открытое"
+  probe_ok 410 000000 && fail "обрыв принят за 410"
+  probe_ok open 200000 || fail "первые три знака не отсечены"
   return 0
 }
 
@@ -253,7 +258,7 @@ test_crawler_chapter_path() {
 }
 
 test_script_never_calls_delete_on_works() {
-  if grep -nE '(-X *DELETE|api +DELETE).*/api/works' "$TESTS_DIR/../takedown.sh" | grep -v '^\s*#' | grep -q .; then
+  if grep -vE '^\s*#' "$TESTS_DIR/../takedown.sh" | grep -qE '(-X *DELETE|api +DELETE).*/api/works'; then
     fail "скрипт зовёт DELETE по /api/works"
   fi
 }

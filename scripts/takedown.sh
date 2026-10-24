@@ -84,7 +84,11 @@ closed_body() {
 # probe_ok ОЖИДАНИЕ КОД — сходится ли код анонимной пробы. Ожидание: 410, 404
 # или open (вернулось: не 404 и не 410).
 probe_ok() {
-  local want="$1" code="$2"
+  local want="$1" code="${2:-000}"
+  # curl при обрыве печатает 000 сам; лишнее от `|| echo 000` отсекаем: берём
+  # первые три знака. Пустое и 000 — сервер не ответил, это не «открыто».
+  code="${code:0:3}"
+  [[ -n "$code" ]] || code=000
   if [[ "$want" == open ]]; then
     [[ "$code" != 404 && "$code" != 410 && "$code" != 000 ]]
   else
@@ -118,9 +122,8 @@ now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
 # plan_is_empty JSON — пуст ли план закрытия аппарата.
 #
 # Отдельной функцией, потому что это главное правило команды: «снято ноль» на
-# томе без разметки выглядит как успешное закрытие и им не является. Сервер
-# отвечает на такой снос 409, но команда обязана сказать это раньше — до того,
-# как спросит подтверждение.
+# томе без разметки выглядит как успешное закрытие и им не является. Команда
+# обязана сказать это до того, как спросит подтверждение.
 plan_is_empty() {
   local json="$1" chapters children
   chapters="$(jq -r '.chapter_count // 0' <<<"$json")"
@@ -304,7 +307,7 @@ chapter_plan() {
   printf '  полос:      %s\n' "$(jq -r '.pages // 0' <<<"$CHAPTER_PLAN")"
   local shared
   shared="$(jq -r '(.shared // []) | length' <<<"$CHAPTER_PLAN")"
-  if [[ "$shared" != "0" ]]; then
+  if [[ "$shared" != "0" ]] && (( ! REOPENING )); then
     printf '  общих полос: %s — их накрывает и открытая глава, поэтому они\n' "$shared"
     printf '              остаются видны через соседа:\n'
     jq -r '(.shared // [])[] | "    - полоса \(.page_number): \((.neighbors // []) | join(", "))"' <<<"$CHAPTER_PLAN"
@@ -316,6 +319,7 @@ chapter_plan() {
 # apparatus_plan ID — что закроет закрытие аппарата. Печатает и возвращает JSON
 # плана в APPARATUS_PLAN, чтобы вызывающий проверил пустоту, не ходя дважды.
 APPARATUS_PLAN=""
+REOPENING=0
 apparatus_plan() {
   local id="$1"
   api GET "/api/works/$id/apparatus" || die "не удалось запросить план аппарата"
@@ -327,14 +331,28 @@ apparatus_plan() {
   printf '  глав:       %s (корни и подглавы; закрываются корни)\n' "$(jq -r '.chapter_count // 0' <<<"$APPARATUS_PLAN")"
   # Глава с parent_title сидит ВНУТРИ работы, не помеченной аппаратом, — почти
   # наверняка это авторское приложение, а не аппарат издания (у Маркса так
-  # помечены сто полос его собственного текста). Снос её всё равно возьмёт,
-  # поэтому строка печатается с восклицанием, а не наравне с остальными.
+  # помечены сто полос его собственного текста). Закрытие её всё равно
+  # возьмёт, поэтому строка печатается с восклицанием, а не наравне с остальными.
   jq -r '(.chapters // [])[]
          | (if (.parent_title // "") == "" then "    - " else "    ! " end)
          + "\(.id): \(.title) [\(.start_page)—\(.end_page)]"
          + (if .subchapters > 0 then " + \(.subchapters) подглав" else "" end)
          + (if (.parent_title // "") == "" then "" else "  ← ВНУТРИ «\(.parent_title)», проверь: похоже на авторское приложение" end)' <<<"$APPARATUS_PLAN"
-  printf '  полос:      %s (вместе со сканами)\n' "$(jq -r '.page_count // 0' <<<"$APPARATUS_PLAN")"
+  printf '  полос:      %s (в диапазонах глав аппарата, до учёта общих с телом)\n' "$(jq -r '.page_count // 0' <<<"$APPARATUS_PLAN")"
+  if (( ! REOPENING )); then
+    # Граничные полосы, общие корня аппарата с открытой главой тела, остаются
+    # видны через соседа: план каждого корня — из closed-plan.
+    local root
+    while IFS= read -r root; do
+      [[ -n "$root" ]] || continue
+      api GET "/api/works/$id/chapters/$root/closed-plan" || die "не удалось запросить план главы $root"
+      api_ok || die "план главы $root не отдался (код $API_STATUS) — план неполон, отказ"
+      if [[ "$(jq -r '(.shared // []) | length' <<<"$API_BODY")" != "0" ]]; then
+        printf '  общие полосы корня %s (остаются видны через соседа):\n' "$root"
+        jq -r '(.shared // [])[] | "    - полоса \(.page_number): \((.neighbors // []) | join(", "))"' <<<"$API_BODY"
+      fi
+    done < <(jq -r '(.chapters // [])[] | .id' <<<"$APPARATUS_PLAN")
+  fi
   printf '  служебных:  %s\n' "$(jq -r '(.children // []) | length' <<<"$APPARATUS_PLAN")"
   jq -r '(.children // [])[] | "    - \(.id): \(.title) (\(.pages) полос, \(.role))"' <<<"$APPARATUS_PLAN"
   printf '  ТЕЛО ТОМА ОСТАЁТСЯ. Сноски и перевод внутри полос тела не отделимы\n'
@@ -404,7 +422,7 @@ main() {
   local closed=true want_seo=410 want_api=404
   ACTION_TITLE="Закрытие"
   if (( reopen )); then
-    closed=false; want_seo=open; want_api=open; ACTION_TITLE="Открытие"
+    closed=false; want_seo=open; want_api=open; ACTION_TITLE="Открытие"; REOPENING=1
   fi
 
   log "читальня: $API_BASE"
@@ -481,14 +499,17 @@ main() {
   # Сверка анонимно. Закрытое: /seo отвечает 410 (не 404 — 404 поисковик
   # перепроверяет неделями, и nginx фронта уводит его в SPA), служебные
   # работы аппарата в API — 404. Открытое: не 404 и не 410.
+  local mismatches=()
   probe() { # ПОДПИСЬ ОЖИДАНИЕ URL
     local code
     code="$(curl -sS -o /dev/null -w '%{http_code}' \
-      -H 'User-Agent: TelegramBot (like TwitterBot)' "$3" || echo 000)"
+      -H 'User-Agent: TelegramBot (like TwitterBot)' "$3" || true)"
+    code="${code:0:3}"; [[ -n "$code" ]] || code=000
     if probe_ok "$2" "$code"; then
       log "сверка: $1 — $code, верно"
     else
-      log "ВНИМАНИЕ: $1 ответил $code (ожидалось: $2) — проверь вручную"
+      log "ОШИБКА СВЕРКИ: $1 ответил $code (ожидалось: $2)"
+      mismatches+=("$1 [$3]: $code вместо $2")
     fi
   }
   case "$kind" in
@@ -522,6 +543,11 @@ main() {
   - журнал публикации tools/ocr_ingest/published/*.json.
 Обратный ход: та же команда с --open и причиной.
 TAIL
+  if (( ${#mismatches[@]} )); then
+    printf 'Сверка не сошлась, запись при этом уже прошла:\n' >&2
+    printf '  - %s\n' "${mismatches[@]}" >&2
+    die "сверка после ${ACTION_TITLE,,} не сошлась (${#mismatches[@]}) — проверь перечисленное вручную"
+  fi
 }
 
 # Источается тестом — тогда main не запускается.
