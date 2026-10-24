@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { chaptersApi, worksApi, cacheApi } from '../services/api';
+import { chaptersApi, worksApi, cacheApi, closuresApi } from '../services/api';
 import { useAuth, canEdit } from '../hooks/useAuth';
+import { ClosedBadge, type BadgeClosure } from '../components/ClosedBadge';
+import { ClosedToggle } from '../components/ClosedToggle';
 import type { Chapter, ChapterPage, Work } from '../types';
 import { ChapterTocDrawer } from '../components/ChapterTocDrawer';
 import { ChapterBreadcrumb } from '../components/ChapterBreadcrumb';
@@ -77,6 +79,7 @@ export const ChapterView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isDroppingCache, setIsDroppingCache] = useState(false);
+  const [closure, setClosure] = useState<BadgeClosure | null>(null);
   // Панель «Слушать» раскрыта у конкретной главы: ChapterView не размонтируется
   // при переходе на соседнюю, и булев флаг перевёз бы панель (пустой рамкой у
   // главы без звука, со строками заливки прежней главы — у сотрудника).
@@ -175,6 +178,49 @@ export const ChapterView: React.FC = () => {
     // поэтому промис здесь честно отбрасывается, а не проглатывается.
     void loadData();
   }, [workId, chapterId]);
+
+  // Дата и причина закрытия нужны только сотруднику и только на странице
+  // самой главы: в дереве глав их не спрашиваем — запрос на каждую строку.
+  const staff = canEdit(user);
+  const chapterClosed = !!chapter?.closed;
+  const shownChapterId = chapter?.id;
+  useEffect(() => {
+    if (!staff || !chapterClosed || shownChapterId === undefined) return;
+    let alive = true;
+    closuresApi
+      .latest('chapter', shownChapterId)
+      .then(({ data }) => {
+        if (alive && data.closed) setClosure({ at: data.at, reason: data.reason });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [staff, chapterClosed, shownChapterId]);
+
+  // Закрытие главы меняет и её признак, и плашки на полосах, и дерево глав.
+  const toggleChapterClosed = useCallback(
+    async (next: boolean, reason: string) => {
+      if (workId === null || chapterId === null) return;
+      try {
+        await chaptersApi.setClosed(workId, chapterId, next, reason);
+        const [chapterResponse, pagesResponse, chaptersResponse] = await Promise.all([
+          chaptersApi.get(workId, chapterId),
+          chaptersApi.listPages(workId, chapterId),
+          chaptersApi.list(workId),
+        ]);
+        setClosure(null);
+        setChapter(chapterResponse.data);
+        setPagesWithHtml(pagesResponse.data?.pages || []);
+        setFootnotesHtml(pagesResponse.data?.footnotes_html || '');
+        setAllChapters(chaptersResponse.data || []);
+        toast.success(next ? 'Глава закрыта' : 'Глава открыта');
+      } catch (err: unknown) {
+        toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к главе'));
+      }
+    },
+    [workId, chapterId],
+  );
 
   // Кэш главы держится час и путей инвалидации не имеет — эта кнопка и есть
   // вторая половина того размена. Перезапрос обязателен: без него редактор
@@ -550,7 +596,10 @@ export const ChapterView: React.FC = () => {
                   : chapterTypeLabel(chapter.type);
               return badge ? <div className="chapter-type-badge">{badge}</div> : null;
             })()}
-            <h1>{chapter.title}</h1>
+            <h1>
+              {chapter.title}
+              {chapter.closed && <ClosedBadge closure={closure} />}
+            </h1>
             {workId != null && chapterId != null && (
               <ChapterEvents workId={workId} chapterId={chapterId} />
             )}
@@ -590,6 +639,15 @@ export const ChapterView: React.FC = () => {
                 title={`${chapter.title} — ${work.title}`}
                 path={chapterAddress(work, chapter)}
               />
+              {workId != null && chapterId != null && (
+                <ClosedToggle
+                  kind="chapter"
+                  closed={!!chapter.closed}
+                  closedBy={chapter.closed_by}
+                  loadPlan={async () => (await chaptersApi.closedPlan(workId, chapterId)).data}
+                  onToggle={toggleChapterClosed}
+                />
+              )}
               {canEdit(user) && (
                 <>
                   <button

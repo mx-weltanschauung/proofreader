@@ -65,9 +65,9 @@ export function JournalDetail() {
           <ClosedToggle
             kind="journal"
             closed={!!journal.closed}
-            onToggle={async (next) => {
+            onToggle={async (next, reason) => {
               try {
-                await journalsApi.setClosed(journal.id, next);
+                await journalsApi.setClosed(journal.id, next, reason);
                 setDetail({ ...detail, journal: { ...journal, closed: next } });
               } catch (err: unknown) {
                 toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к журналу'));

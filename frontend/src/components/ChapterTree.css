@@ -258,3 +258,7 @@
     display: none;
   }
 }
+
+.chapter-tree-closed .chapter-tree-card {
+  opacity: 0.6;
+}

@@ -456,9 +456,41 @@ export interface Chapter {
   end_page: number;
   /** Глава — часть аппарата тома (примечания, указатели), а не произведение. */
   is_apparatus: boolean;
+  /** Закрыта ли глава; поле приходит только сотруднику. */
+  closed?: boolean;
+  /** Откуда закрытие главы: `''|'chapter'` (сама) `|'parent'` (глава выше). */
+  closed_by?: '' | 'chapter' | 'parent';
   created_at: string;
   updated_at: string;
   children?: Chapter[];
+}
+
+/** Что потеряет читатель, если закрыть главу: `GET …/chapters/{id}/closed-plan`. */
+export interface ChapterClosedPlan {
+  chapters: number;
+  pages: number;
+  /** Полосы, общие с главой-соседом: у соседа они пропадут. */
+  shared: { page_number: number; neighbors: string[] }[];
+}
+
+/** Последнее закрытие/открытие записи; причина пуста у редактора. */
+export interface ClosureLatest {
+  closed: boolean;
+  at: string;
+  reason: string;
+}
+
+export type ClosureKind = 'work' | 'edition' | 'journal' | 'chapter';
+
+/** Строка журнала закрытий (`GET /admin/closures`). */
+export interface ClosureEntry {
+  kind: ClosureKind;
+  entity_id: number;
+  title: string;
+  closed: boolean;
+  reason: string;
+  actor_name: string;
+  at: string;
 }
 
 /** Судьба черновика относительно модерации. Публикация — отдельная ось
@@ -855,6 +887,8 @@ export interface ChapterPage {
   html: string;
   /** Пустая полоса: маркер номера ей не рисуют, иначе он сядет на номер соседа. */
   blank: boolean;
+  /** Заглавие закрытой главы, накрывающей полосу; приходит только сотруднику. */
+  closed_chapter?: string;
 }
 
 /** Одна страница окна потокового чтения. */
@@ -868,6 +902,8 @@ export interface ReadingPage {
   notes_html: string;
   /** Пустая полоса: маркер номера ей не рисуют, иначе он сядет на номер соседа. */
   blank: boolean;
+  /** Заглавие закрытой главы, накрывающей полосу; приходит только сотруднику. */
+  closed_chapter?: string;
 }
 
 /** Окно страниц работы и указание, откуда брать следующее. */

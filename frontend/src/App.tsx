@@ -119,6 +119,9 @@ const StatsAdmin = lazy(() =>
 const CacheAdmin = lazy(() =>
   import('./pages/admin/CacheAdmin').then((m) => ({ default: m.CacheAdmin })),
 );
+const ClosuresAdmin = lazy(() =>
+  import('./pages/admin/ClosuresAdmin').then((m) => ({ default: m.ClosuresAdmin })),
+);
 const AudioAdmin = lazy(() =>
   import('./pages/admin/AudioAdmin').then((m) => ({ default: m.AudioAdmin })),
 );
@@ -387,6 +390,14 @@ function App() {
                   element={
                     <RequireRole roles={['administrator']}>
                       <CacheAdmin />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/admin/closures"
+                  element={
+                    <RequireRole roles={['administrator']}>
+                      <ClosuresAdmin />
                     </RequireRole>
                   }
                 />

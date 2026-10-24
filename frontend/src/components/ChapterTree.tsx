@@ -23,6 +23,9 @@ import { findChapterById, flattenChapters } from '../utils/chapterTree';
 import { chapterTypeLabel } from '../utils/chapterTypeLabel';
 import { plural } from '../utils/volumeLabel';
 import { chapterPath } from '../utils/paths';
+import { chaptersApi } from '../services/api';
+import { ClosedBadge } from './ClosedBadge';
+import { ClosedToggle } from './ClosedToggle';
 import './ChapterTree.css';
 
 interface ChapterTreeProps {
@@ -31,6 +34,8 @@ interface ChapterTreeProps {
   canEdit: boolean;
   onMove: (chapterId: number, parentId: number | null, orderNumber: number) => Promise<void>;
   onDelete: (chapterId: number) => void;
+  /** Закрыть/открыть главу (администратору; причина уже спрошена). */
+  onToggleClosed?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
 }
 
 interface ChapterNodeProps {
@@ -41,6 +46,7 @@ interface ChapterNodeProps {
   isExpanded: boolean;
   onToggleExpand: (chapterId: number) => void;
   onDelete: (chapterId: number) => void;
+  onToggleClosed?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
   isOverlay?: boolean;
 }
 
@@ -71,6 +77,7 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
   isExpanded,
   onToggleExpand,
   onDelete,
+  onToggleClosed,
   isOverlay = false,
 }) => {
   const navigate = useNavigate();
@@ -94,7 +101,7 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
     <div
       ref={setNodeRef}
       style={{ ...style, ...overlayStyle }}
-      className={`chapter-tree-node ${isDragging ? 'dragging' : ''} ${isOverlay ? 'overlay' : ''}`}
+      className={`chapter-tree-node ${isDragging ? 'dragging' : ''} ${isOverlay ? 'overlay' : ''} ${chapter.closed ? 'chapter-tree-closed' : ''}`}
     >
       <div className="chapter-tree-card">
         {canEdit && (
@@ -118,7 +125,10 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
         </div>
 
         <div className="chapter-tree-info">
-          <div className="chapter-tree-title">{chapter.title}</div>
+          <div className="chapter-tree-title">
+            {chapter.title}
+            {chapter.closed && <ClosedBadge />}
+          </div>
           <div className="chapter-tree-meta">
             <span className="chapter-type-badge">{chapterTypeLabel(chapter.type)}</span>
             <span className="chapter-pages-info">
@@ -150,6 +160,15 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
               <button onClick={() => onDelete(chapter.id)} className="chapter-tree-btn delete">
                 Удалить
               </button>
+              {onToggleClosed && !isOverlay && (
+                <ClosedToggle
+                  kind="chapter"
+                  closed={!!chapter.closed}
+                  closedBy={chapter.closed_by}
+                  loadPlan={async () => (await chaptersApi.closedPlan(work.id, chapter.id)).data}
+                  onToggle={(next, reason) => onToggleClosed(chapter.id, next, reason)}
+                />
+              )}
             </>
           )}
         </div>
@@ -164,6 +183,7 @@ export const ChapterTree: React.FC<ChapterTreeProps> = ({
   canEdit,
   onMove,
   onDelete,
+  onToggleClosed,
 }) => {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -284,6 +304,7 @@ export const ChapterTree: React.FC<ChapterTreeProps> = ({
                 isExpanded={expandedIds.has(chapter.id)}
                 onToggleExpand={toggleExpand}
                 onDelete={onDelete}
+                onToggleClosed={onToggleClosed}
               />
             ))}
           </div>

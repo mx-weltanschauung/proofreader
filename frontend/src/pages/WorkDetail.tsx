@@ -160,15 +160,26 @@ export const WorkDetail: React.FC = () => {
 
   // Закрытие/открытие тома: ответ несёт лишь затронутые id, поэтому карточку
   // перечитываем — от этого зависят и пометка, и `closed_by` у служебных работ.
-  const handleToggleClosed = async (next: boolean) => {
+  const handleToggleClosed = async (next: boolean, reason: string) => {
     if (!work) return;
     try {
-      await worksApi.setClosed(work.id, next);
+      await worksApi.setClosed(work.id, next, reason);
       const { data } = await worksApi.get(work.id);
       setWork(data);
       toast.success(next ? 'Том закрыт' : 'Том открыт');
     } catch (err: unknown) {
       setError(apiErrorMessage(err, 'Не удалось изменить доступ к тому'));
+    }
+  };
+
+  const handleToggleChapterClosed = async (chapterId: number, next: boolean, reason: string) => {
+    if (!work) return;
+    try {
+      await chaptersApi.setClosed(work.id, chapterId, next, reason);
+      toast.success(next ? 'Глава закрыта' : 'Глава открыта');
+      await loadWorkDetail();
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к главе'));
     }
   };
 
@@ -353,6 +364,7 @@ export const WorkDetail: React.FC = () => {
           onCreatePages={handleCreatePages}
           onDeleteWork={handleDeleteWork}
           onToggleClosed={handleToggleClosed}
+          onToggleChapterClosed={handleToggleChapterClosed}
           onDeleteChapter={handleDeleteChapter}
           onMoveChapter={handleMoveChapter}
           reordering={reordering}

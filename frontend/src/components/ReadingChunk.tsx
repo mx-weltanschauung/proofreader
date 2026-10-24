@@ -10,6 +10,7 @@ import './ReadingSurface.css';
 import './ReadingChunk.css';
 
 import type { ReadingPage } from '../types';
+import { ClosedPageNote } from './ClosedPageNote';
 import { useKatex } from '../hooks/useKatex';
 import { useNoteXrefs } from '../hooks/useNoteXrefs';
 import { useFootnotePreview } from '../hooks/useFootnotePreview';
@@ -146,6 +147,7 @@ export const ReadingChunk: React.FC<ReadingChunkProps> = ({
                 {page.page_number}
               </a>
             )}
+            <ClosedPageNote chapter={page.closed_chapter} />
             <div className="page-html-content" dangerouslySetInnerHTML={{ __html: html }} />
             {page.notes_html && (
               // chapter-footnotes — тот же класс, что у блока сносок внизу

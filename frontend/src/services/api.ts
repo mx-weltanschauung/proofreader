@@ -30,6 +30,10 @@ import type {
   Document,
   DocumentCut,
   Chapter,
+  ChapterClosedPlan,
+  ClosureEntry,
+  ClosureKind,
+  ClosureLatest,
   ChapterPage,
   NoteIndexEntry,
   AdminUser,
@@ -222,8 +226,8 @@ export const worksApi = {
 
   delete: (id: number) => api.delete(`/works/${id}`),
 
-  setClosed: (id: number, closed: boolean) =>
-    api.put<ClosedResult>(`/works/${id}/closed`, { closed }),
+  setClosed: (id: number, closed: boolean, reason: string) =>
+    api.put<ClosedResult>(`/works/${id}/closed`, { closed, reason }),
 
   uploadFile: (id: number, formData: FormData) =>
     api.post(`/works/${id}/upload`, formData, {
@@ -309,6 +313,14 @@ export const chaptersApi = {
     chapterId: number,
     data: { parent_id?: number | null; order_number: number },
   ) => api.patch<Chapter>(`/works/${workId}/chapters/${chapterId}/move`, data),
+
+  /** Закрыть/открыть главу — только администратор, причина обязательна. */
+  setClosed: (workId: number, chapterId: number, closed: boolean, reason: string) =>
+    api.put<ClosedResult>(`/works/${workId}/chapters/${chapterId}/closed`, { closed, reason }),
+
+  /** Что закроется вместе с главой и у кого пропадут общие полосы. */
+  closedPlan: (workId: number, chapterId: number) =>
+    api.get<ChapterClosedPlan>(`/works/${workId}/chapters/${chapterId}/closed-plan`),
 
   listPages: (workId: number, chapterId: number) =>
     api.get<{ pages: ChapterPage[]; footnotes_html: string }>(
@@ -476,8 +488,8 @@ export const editionsApi = {
 
   remove: (id: number) => api.delete(`/editions/${id}`),
 
-  setClosed: (id: number, closed: boolean) =>
-    api.put<ClosedResult>(`/editions/${id}/closed`, { closed }),
+  setClosed: (id: number, closed: boolean, reason: string) =>
+    api.put<ClosedResult>(`/editions/${id}/closed`, { closed, reason }),
 };
 
 // Главная целиком — собрания со своими томами и работы вне собраний.
@@ -485,8 +497,8 @@ export const editionsApi = {
 export const journalsApi = {
   list: () => api.get<JournalSummary[]>('/journals'),
   get: (slug: string) => api.get<JournalDetail>(`/journals/${encodeURIComponent(slug)}`),
-  setClosed: (id: number, closed: boolean) =>
-    api.put<ClosedResult>(`/journals/${id}/closed`, { closed }),
+  setClosed: (id: number, closed: boolean, reason: string) =>
+    api.put<ClosedResult>(`/journals/${id}/closed`, { closed, reason }),
 };
 
 export const eventsApi = {
@@ -759,6 +771,16 @@ export const suggestionsApi = {
 
   /** Снести все отклонённые разом; отвечает числом снесённых. */
   purgeRejected: () => api.delete<{ deleted: number }>('/suggestions/rejected'),
+};
+
+// Журнал закрытий: последняя запись по записи (сотрудник) и весь журнал
+// (администратор).
+export const closuresApi = {
+  latest: (kind: ClosureKind, id: number) =>
+    api.get<ClosureLatest>('/closures/latest', { params: { kind, id } }),
+
+  list: (params?: { limit?: number; offset?: number }) =>
+    api.get<ClosureEntry[]>('/admin/closures', { params }),
 };
 
 // Файловый кэш готовых глав. Сброс главы доступен редактору, сводка и

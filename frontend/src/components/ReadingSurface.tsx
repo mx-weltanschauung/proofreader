@@ -11,6 +11,7 @@ import { useVisiblePage } from '../hooks/useVisiblePage';
 import { printedFolio } from '../utils/folio';
 import { pageAnchorId, pageNumberFromHash } from '../utils/pageAnchor';
 import { useKatex } from '../hooks/useKatex';
+import { ClosedPageNote } from './ClosedPageNote';
 import { usePageSeams } from '../hooks/usePageSeams';
 import { useSearchHighlight } from '../hooks/useSearchHighlight';
 import { useQuoteHighlight } from '../hooks/useQuoteHighlight';
@@ -436,6 +437,7 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
                       {page.page_number}
                     </a>
                   )}
+                  <ClosedPageNote chapter={page.closed_chapter} />
                   <div className="page-html-content" dangerouslySetInnerHTML={{ __html: html }} />
                 </div>
               );
