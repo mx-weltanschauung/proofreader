@@ -289,4 +289,19 @@ func TestPolicyFrontMatterMissingOnProdIsLeftOut(t *testing.T) {
 	if want := (map[int]bool{2: true}); !reflect.DeepEqual(p.closedPages[shown], want) {
 		t.Errorf("полосы служебной работы: %v, хотел %v", p.closedPages[shown], want)
 	}
+
+	// Вклейка разбора и статья указателя из работы, которой нет в архиве
+	// целиком, недоступны: это служебная без карты боевого и работа вне -only.
+	var stranger int64
+	if err := pool.QueryRow(ctx, `INSERT INTO works (title, file_path, language, status, role, owner_id)
+		VALUES ('чужая', '', 'ru', 'draft', 'volume', 1) RETURNING id`).Scan(&stranger); err != nil {
+		t.Fatal(err)
+	}
+	whole, err := p.wholeWorksOut(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !whole[hidden] || !whole[stranger] || whole[id] || whole[shown] {
+		t.Errorf("wholeWorksOut = %v: ждали служебную %d и вне -only %d, но не %d и %d", whole, hidden, stranger, id, shown)
+	}
 }

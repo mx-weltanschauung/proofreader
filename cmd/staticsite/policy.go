@@ -439,3 +439,33 @@ func printChildren(ctx context.Context, pool *pgxpool.Pool, onlyFile string) err
 	}
 	return nil
 }
+
+// wholeWorksOut — работы, которых нет в архиве целиком: исключённые (снятые,
+// закрытые, служебные без карты боевого, передние листы тома со снятым
+// аппаратом) и, если задан -only, все прочие работы локальной базы. Их тексту
+// не место и во вклейках разборов, и в указателе — это тот же набор, что
+// закрытые работы для читателя.
+func (p *policy) wholeWorksOut(ctx context.Context, pool *pgxpool.Pool) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	for _, id := range p.excludedIDs() {
+		out[id] = true
+	}
+	if p.only == nil {
+		return out, nil
+	}
+	rows, err := pool.Query(ctx, `SELECT id FROM works`)
+	if err != nil {
+		return nil, fmt.Errorf("работы базы: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		if !p.only[id] {
+			out[id] = true
+		}
+	}
+	return out, rows.Err()
+}

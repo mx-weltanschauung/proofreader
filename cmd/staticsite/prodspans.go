@@ -52,6 +52,25 @@ func (s *prodSpans) ClosedChapterIDs(ctx context.Context, workID int64) (map[int
 type prodClosed struct {
 	closedBase
 	spans *prodSpans
+	// whole — работы, которых в архиве нет целиком (policy.wholeWorksOut):
+	// вклейка из такой работы, как и статья указателя, недоступна.
+	whole map[int64]bool
+}
+
+// ClosedIDs — закрытые работы локальной базы и работы, которых нет в архиве.
+func (c *prodClosed) ClosedIDs(ctx context.Context) (map[int64]bool, error) {
+	ids, err := c.closedBase.ClosedIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]bool, len(ids)+len(c.whole))
+	for id := range ids {
+		out[id] = true
+	}
+	for id := range c.whole {
+		out[id] = true
+	}
+	return out, nil
 }
 
 // closedBase — то, что указателю нужно от настоящего хранилища закрытого

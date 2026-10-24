@@ -46,7 +46,7 @@ type fakeClosedBase struct{ fakeSpans }
 
 func (fakeClosedBase) ClosedBy(context.Context, int64) (string, error) { return "", nil }
 func (fakeClosedBase) ClosedIDs(context.Context) (map[int64]bool, error) {
-	return map[int64]bool{}, nil
+	return map[int64]bool{3: true}, nil
 }
 func (fakeClosedBase) ClosedEditionIDs(context.Context) (map[int64]bool, error) {
 	return map[int64]bool{}, nil
@@ -95,5 +95,18 @@ func TestIndexHidesArticleWithSourceClosedOnProd(t *testing.T) {
 		Articles: []*models.IndexArticle{art(1, &w10, 1, 3)}}}, &prodClosed{closedBase: fakeClosedBase{}, spans: spans})
 	if _, err := idx.GetConceptBySlug(context.Background(), "k"); !errors.Is(err, seo.ErrNotFound) {
 		t.Errorf("понятие с единственной закрытой статьёй отвечает %v, хотел скрытое", err)
+	}
+}
+
+// Закрытые работы для вклеек и указателя — локальные плюс те, которых нет в
+// архиве целиком.
+func TestProdClosedIDsUnionsWholeWorksOut(t *testing.T) {
+	c := &prodClosed{closedBase: fakeClosedBase{}, whole: map[int64]bool{7: true}}
+	ids, err := c.ClosedIDs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(ids, map[int64]bool{3: true, 7: true}) {
+		t.Errorf("ClosedIDs = %v, хотел {3, 7}", ids)
 	}
 }

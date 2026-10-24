@@ -122,15 +122,19 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	spans := &prodSpans{base: closedRepo, extra: pol.closedPages}
 	// Тот же набор закрытого — указателю и разборам: вклейка из закрытой
 	// главы и статья указателя с закрытым источником в архив не идут.
-	closed := &prodClosed{closedBase: closedRepo, spans: spans}
+	whole, err := pol.wholeWorksOut(ctx, pool)
+	if err != nil {
+		return err
+	}
+	closed := &prodClosed{closedBase: closedRepo, spans: spans, whole: whole}
 	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), closed)
 	viewPages := api.NewViewPages(pages, spans)
 	viewChapters := api.NewViewChapters(chapters, spans)
 	books := api.NewDownloadSource(openWorks, viewChapters, viewPages, openEditions, collections, renderer, *base).WithChapterAnchors()
 	documents := api.NewSEODocumentSource(
-		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closedRepo).WithClosedSpans(spans)
+		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closed).WithClosedSpans(spans)
 	src := api.NewStaticSource(openEditions, openWorks, books, viewPages, index, repository.NewSEORepository(pool),
-		collections, documents, renderer).WithClosed(closedRepo)
+		collections, documents, renderer).WithClosed(closed)
 
 	g := &staticsite.Generator{Src: src, Out: *out, BaseURL: *base, BuildDate: *date, EditionID: *edition,
 		Exclude: pol.exclude, Only: pol.only, Apparatus: pol.apparatus, Logf: log.Printf}
