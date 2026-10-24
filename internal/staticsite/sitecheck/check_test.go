@@ -172,3 +172,16 @@ func TestOnProdFlagsPagesGoneFromProd(t *testing.T) {
 		t.Errorf("все полосы есть на боевом, а проверка ругается: %v", got)
 	}
 }
+
+// Закрытая полоса (локально или на боевом) в сборке — расхождение, и в
+// сообщении она названа закрытой, а не снятым аппаратом.
+func TestForbiddenNamesClosedPages(t *testing.T) {
+	dir := writeTree(t, good())
+	got, err := Run(Options{Dir: dir, AllowedExternal: "https://lib.example.org/", Forbidden: map[int64][]int{1: {12}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || !strings.Contains(got[0].Message, "закрыт") {
+		t.Errorf("закрытая полоса не названа закрытой: %v", got)
+	}
+}

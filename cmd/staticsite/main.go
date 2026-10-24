@@ -2,11 +2,15 @@
 // Спека: docs/superpowers/specs/2026-10-06-static-reading-room-design.md.
 //
 //	go run ./cmd/staticsite build -out static/chitalnya-2026-10-06.partial [-edition 7] [-date 2026-10-06]
-//	    [-exclude scripts/static-exclude.txt] [-only works.json] [-built built.json]
+//	    [-exclude scripts/static-exclude.txt] [-only works.json] [-only-pages pages.json] [-built built.json]
 //	go run ./cmd/staticsite check [-edition 7] [-exclude …] [-only …] static/chitalnya-2026-10-06.partial
 //
 // -only — ответ GET /api/works боевого: в архив идут только его работы
 // (спека docs/superpowers/specs/2026-10-07-static-reading-room-publish-design.md).
+//
+// -only-pages — карты полос боевого (GET /api/works/{id}/page-map) по
+// работам из -only: полоса, которой там нет (закрыта на боевом), в архив не
+// идёт. Без флага — как раньше, плюс закрытое в локальной базе.
 //
 // Целиком (pagefind, serve, zip) — scripts/static-release.sh.
 package main
@@ -35,8 +39,8 @@ import (
 )
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: staticsite build -out DIR [-edition ID] [-date YYYY-MM-DD] [-base URL] [-exclude FILE] [-only FILE] [-built FILE]")
-	fmt.Fprintln(os.Stderr, "       staticsite check [-edition ID] [-allow URL] [-exclude FILE] [-only FILE] DIR")
+	fmt.Fprintln(os.Stderr, "usage: staticsite build -out DIR [-edition ID] [-date YYYY-MM-DD] [-base URL] [-exclude FILE] [-only FILE] [-only-pages FILE] [-built FILE]")
+	fmt.Fprintln(os.Stderr, "       staticsite check [-edition ID] [-allow URL] [-exclude FILE] [-only FILE] [-only-pages FILE] DIR")
 	os.Exit(2)
 }
 
@@ -81,12 +85,13 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	base := fs.String("base", os.Getenv("PUBLIC_BASE_URL"), "читальня онлайн — для ссылки «эта страница в читальне онлайн»")
 	excludeFile := fs.String("exclude", "", "список работ, не идущих в архив (scripts/static-exclude.txt)")
 	onlyFile := fs.String("only", "", "ответ GET /api/works боевого: в архив идут только его работы")
+	onlyPagesFile := fs.String("only-pages", "", "полосы боевого у работ из -only: {\"id\": [номера]} (GET /api/works/{id}/page-map); полос, которых там нет, в архиве нет")
 	builtFile := fs.String("built", "", "куда записать состав сборки (catalog_ids, work_ids)")
 	_ = fs.Parse(args)
 	if *out == "" {
 		return errors.New("нужен -out")
 	}
-	pol, err := loadPolicy(ctx, pool, *excludeFile, *onlyFile)
+	pol, err := loadPolicy(ctx, pool, *excludeFile, *onlyFile, *onlyPagesFile)
 	if err != nil {
 		return err
 	}
@@ -108,8 +113,10 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	openEditions := api.NewOpenEditions(editions, closedRepo)
 	// Полосы и главы — той же обёрткой зрителя, что у сайта: контекст сборки
 	// без claims, поэтому закрытых глав и их полос в архиве нет.
-	viewPages := api.NewViewPages(pages, closedRepo)
-	viewChapters := api.NewViewChapters(chapters, closedRepo)
+	// Закрытые диапазоны — локальные плюс полосы, которых нет на боевом.
+	spans := &prodSpans{base: closedRepo, extra: pol.closedPages}
+	viewPages := api.NewViewPages(pages, spans)
+	viewChapters := api.NewViewChapters(chapters, spans)
 	books := api.NewDownloadSource(openWorks, viewChapters, viewPages, openEditions, collections, renderer, *base).WithChapterAnchors()
 	documents := api.NewSEODocumentSource(
 		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closedRepo)
@@ -149,12 +156,13 @@ func check(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	allow := fs.String("allow", strings.TrimSuffix(os.Getenv("PUBLIC_BASE_URL"), "/")+"/", "допустимый префикс внешних ссылок <a href>")
 	excludeFile := fs.String("exclude", "", "список работ, не идущих в архив (как у build)")
 	onlyFile := fs.String("only", "", "ответ GET /api/works боевого (как у build)")
+	onlyPagesFile := fs.String("only-pages", "", "полосы боевого у работ из -only (как у build)")
 	prodPagesFile := fs.String("prod-pages", "", "полосы боевого у работ со снятым аппаратом: {\"id\": [номера]}")
 	_ = fs.Parse(args)
 	if fs.NArg() != 1 {
 		return errors.New("нужен каталог сборки")
 	}
-	pol, err := loadPolicy(ctx, pool, *excludeFile, *onlyFile)
+	pol, err := loadPolicy(ctx, pool, *excludeFile, *onlyFile, *onlyPagesFile)
 	if err != nil {
 		return err
 	}
@@ -183,6 +191,15 @@ func check(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	forbidden, err := apparatusPrinted(ctx, pool, pol.apparatus)
 	if err != nil {
 		return err
+	}
+	// Закрытые полосы (локально и на боевом) — туда же: полноты они не
+	// требуют, а в сборке их быть не может.
+	closed, err := apparatusPrinted(ctx, pool, pol.closedPages)
+	if err != nil {
+		return err
+	}
+	for id, nums := range closed {
+		forbidden[id] = append(forbidden[id], nums...)
 	}
 	for id, nums := range forbidden {
 		gone := map[int]bool{}

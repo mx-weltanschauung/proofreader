@@ -36,7 +36,8 @@ type Options struct {
 	// вне списка — расхождение: в архив попал том, которого на боевом нет.
 	Allowed map[int64]bool
 	// Forbidden — печатные номера полос, которых в сборке быть не должно:
-	// снятый аппарат («N apparatus» в scripts/static-exclude.txt).
+	// снятый аппарат («N apparatus» в scripts/static-exclude.txt), полосы
+	// закрытых глав локальной базы и полосы, которых нет на боевом.
 	Forbidden map[int64][]int
 	// OnProd — печатные номера полос, которые есть на боевом, у работ со
 	// снятым аппаратом. Полоса такой работы, которой на боевом нет, —
@@ -332,7 +333,7 @@ func (c *checker) checkForbidden() {
 		}
 		if len(hit) > 0 {
 			sort.Ints(hit)
-			c.problem(fmt.Sprintf("works/%d", work), "в архиве полосы снятого аппарата: %v", hit)
+			c.problem(fmt.Sprintf("works/%d", work), "в архиве закрытые полосы или полосы снятого аппарата: %v", hit)
 		}
 	}
 }

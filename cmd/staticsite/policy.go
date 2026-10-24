@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"proofreader/internal/models"
 	"proofreader/internal/repository"
 	"proofreader/internal/staticsite"
 )
@@ -25,14 +27,19 @@ type policy struct {
 	// apparatusFront — передние листы работ со снятым аппаратом: их снятие
 	// аппарата уносит тоже.
 	apparatusFront []int64
+	// closedPages — внутренние номера полос, которых в архиве быть не должно:
+	// полосы закрытых глав локальной базы (closed_pages) и полосы, которых
+	// нет на боевом (-only-pages: там их скрывает закрытая глава, а у нас она
+	// может быть ещё открыта). Снятый аппарат живёт отдельно, в apparatus.
+	closedPages map[int64]map[int]bool
 }
 
-func loadPolicy(ctx context.Context, pool *pgxpool.Pool, excludeFile, onlyFile string) (*policy, error) {
+func loadPolicy(ctx context.Context, pool *pgxpool.Pool, excludeFile, onlyFile, onlyPagesFile string) (*policy, error) {
 	list, err := readExclude(excludeFile)
 	if err != nil {
 		return nil, err
 	}
-	p := &policy{exclude: map[int64]bool{}, apparatus: map[int64]map[int]bool{}}
+	p := &policy{exclude: map[int64]bool{}, apparatus: map[int64]map[int]bool{}, closedPages: map[int64]map[int]bool{}}
 
 	works := sortedKeys(list.Works)
 	kids, err := childrenOf(ctx, pool, works)
@@ -74,7 +81,16 @@ func loadPolicy(ctx context.Context, pool *pgxpool.Pool, excludeFile, onlyFile s
 		return nil, err
 	}
 
+	// Закрытые главы локальной базы: контекст сборки без claims их полос не
+	// видит, но самопроверка должна знать, что их в архиве быть не может.
+	if err := p.addLocalClosedPages(ctx, pool); err != nil {
+		return nil, err
+	}
+
 	if onlyFile == "" {
+		if onlyPagesFile != "" {
+			return nil, errors.New("-only-pages без -only: не к чему привязать карту полос боевого")
+		}
 		return p, nil
 	}
 	f, err := os.Open(onlyFile)
@@ -105,7 +121,129 @@ func loadPolicy(ctx context.Context, pool *pgxpool.Pool, excludeFile, onlyFile s
 	for _, id := range append(ids, kids...) {
 		p.only[id] = true
 	}
+	if onlyPagesFile == "" {
+		return p, nil
+	}
+	if err := p.addMissingOnProd(ctx, pool, onlyPagesFile, only); err != nil {
+		return nil, err
+	}
 	return p, nil
+}
+
+// addLocalClosedPages кладёт в closedPages полосы закрытых глав локальной
+// базы. Полосы закрытых работ не берутся: работа и так в exclude целиком.
+func (p *policy) addLocalClosedPages(ctx context.Context, pool *pgxpool.Pool) error {
+	rows, err := pool.Query(ctx, `SELECT cp.work_id, cp.page_number FROM closed_pages cp
+		WHERE cp.work_id NOT IN (SELECT id FROM closed_works) ORDER BY 1, 2`)
+	if err != nil {
+		return fmt.Errorf("закрытые полосы: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var work int64
+		var n int
+		if err := rows.Scan(&work, &n); err != nil {
+			return err
+		}
+		if p.closedPages[work] == nil {
+			p.closedPages[work] = map[int]bool{}
+		}
+		p.closedPages[work][n] = true
+	}
+	return rows.Err()
+}
+
+// addMissingOnProd читает -only-pages (GET /api/works/{id}/page-map боевого,
+// собранный static-release.sh) и кладёт в closedPages локальные полосы
+// работ каталога, которых на боевом нет. Работа каталога без записи в файле —
+// отказ: молча считать «все полосы есть» значило бы выпустить архив, который
+// опережает сайт.
+func (p *policy) addMissingOnProd(ctx context.Context, pool *pgxpool.Pool, file string, only []staticsite.OnlyWork) error {
+	f, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	prod, err := staticsite.ParseProdPages(f)
+	if err != nil {
+		return fmt.Errorf("%s: %w", file, err)
+	}
+	ids := make([]int64, 0, len(only))
+	for _, w := range only {
+		if p.exclude[w.ID] {
+			continue // снята — в архив не идёт, сверять нечего
+		}
+		if _, ok := prod[w.ID]; !ok {
+			return fmt.Errorf("%s: нет полос боевого у работы %d из -only", file, w.ID)
+		}
+		ids = append(ids, w.ID)
+	}
+	rows, err := pool.Query(ctx, `SELECT work_id, page_number FROM pages WHERE work_id = ANY($1) ORDER BY 1, 2`, ids)
+	if err != nil {
+		return fmt.Errorf("полосы базы: %w", err)
+	}
+	defer rows.Close()
+	local := map[int64][]int{}
+	for rows.Next() {
+		var work int64
+		var n int
+		if err := rows.Scan(&work, &n); err != nil {
+			return err
+		}
+		local[work] = append(local[work], n)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for work, nums := range missingOnProd(local, prod) {
+		if p.closedPages[work] == nil {
+			p.closedPages[work] = map[int]bool{}
+		}
+		for n := range nums {
+			p.closedPages[work][n] = true
+		}
+	}
+	return nil
+}
+
+// missingOnProd — локальные полосы работ, которых нет в карте боевого. Работа
+// без расхождений в результат не входит.
+func missingOnProd(local, prod map[int64][]int) map[int64]map[int]bool {
+	out := map[int64]map[int]bool{}
+	for work, nums := range local {
+		live := map[int]bool{}
+		for _, n := range prod[work] {
+			live[n] = true
+		}
+		for _, n := range nums {
+			if live[n] {
+				continue
+			}
+			if out[work] == nil {
+				out[work] = map[int]bool{}
+			}
+			out[work][n] = true
+		}
+	}
+	return out
+}
+
+// pageSpans сворачивает набор номеров в отсортированные диапазоны.
+func pageSpans(set map[int]bool) []models.PageSpan {
+	nums := make([]int, 0, len(set))
+	for n := range set {
+		nums = append(nums, n)
+	}
+	slices.Sort(nums)
+	var out []models.PageSpan
+	for _, n := range nums {
+		if k := len(out) - 1; k >= 0 && out[k].End+1 == n {
+			out[k].End = n
+			continue
+		}
+		out = append(out, models.PageSpan{Start: n, End: n})
+	}
+	return out
 }
 
 // excludedIDs — работы, которых в сборке быть не должно вовсе: снятые и

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"proofreader/pkg/book"
 )
 
 // runWith собирает фикстуру с настройками состава и отдаёт генератор и
@@ -125,5 +127,28 @@ func TestConceptArticlesFollowTheirVolume(t *testing.T) {
 		if !exists(out, ConceptFile("dialektika")) {
 			t.Errorf("статья тома %d пропала из архива", work)
 		}
+	}
+}
+
+// Подглава, у которой не осталось ни одной полосы (закрыта на боевом, у нас
+// открыта), в архив не идёт: ни якоря, ни строки оглавления тома.
+func TestChapterWithoutPagesIsNotEmitted(t *testing.T) {
+	src := fixture()
+	empty := book.Section{Title: "Закрытая подглава", ChapterID: 14}
+	vol := src.volumes[100]
+	ch := vol.Sections[1]
+	ch.Blocks = append(append([]book.Block(nil), ch.Blocks...), book.Block{Child: &empty})
+	vol.Sections[1] = ch
+	g, out := runWith(t, src, func(*Generator) {})
+	for _, p := range []string{vol1, ch10} {
+		if s := read(t, out, p); strings.Contains(s, "Закрытая подглава") || strings.Contains(s, "ch-14") {
+			t.Errorf("%s ссылается на подглаву без полос", p)
+		}
+	}
+	if _, ok := g.chapters[14]; ok {
+		t.Error("подглава без полос занесена в карту глав")
+	}
+	if !strings.Contains(read(t, out, ch10), "ch-11") {
+		t.Error("подглава с полосами пропала вместе с пустой")
 	}
 }
