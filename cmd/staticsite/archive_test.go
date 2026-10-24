@@ -8,6 +8,7 @@ import (
 
 	"proofreader/internal/api"
 	"proofreader/internal/models"
+	"proofreader/internal/repository"
 )
 
 // Подставные хранилища для сборки источников архива: проверяется проводка
@@ -96,5 +97,72 @@ func TestArchiveIndexHidesArticleWithSourceMissingOnProd(t *testing.T) {
 	}
 	if len(c.Articles) != 1 || c.Articles[0].ID != 2 {
 		t.Errorf("статьи = %v, хотел одну (id 2)", c.Articles)
+	}
+}
+
+// archCollections — одна опубликованная сотрудническая подборка из пунктов на
+// главах работы 1; ChaptersForWorks несёт действующую закрытость глав.
+type archCollections struct {
+	collectionSource
+	rows     []repository.ItemRow
+	chapters []*models.Chapter
+}
+
+func (c archCollections) List(context.Context) ([]*models.Collection, error) {
+	now := time.Now()
+	return []*models.Collection{{ID: 1, Slug: "podborka", Title: "Подборка", PublishedAt: &now}}, nil
+}
+
+func (c archCollections) ItemRows(context.Context, int64) ([]repository.ItemRow, error) {
+	return c.rows, nil
+}
+
+func (c archCollections) ChaptersForWorks(context.Context, []int64) ([]*models.Chapter, error) {
+	return c.chapters, nil
+}
+
+func archChapterItem(itemID, chapterID int64, title string, start, end int) repository.ItemRow {
+	work := int64(1)
+	return repository.ItemRow{
+		Item: models.CollectionItem{ID: itemID, Kind: models.CollectionItemKindChapter,
+			ChapterID: &chapterID, WorkID: &work, SnapshotTitle: title, OrderNumber: int(itemID)},
+		ChapterTitle: &title, ChapterStartPage: &start, ChapterEndPage: &end,
+	}
+}
+
+// Пункт подборки на главе, закрытой локально (через предка) или только на
+// боевом (её полос нет в архиве), в архив не идёт: ни ссылкой, ни строкой
+// «нет в этой копии» с заглавием речи.
+func TestArchiveCollectionsDropClosedChapterItems(t *testing.T) {
+	cols := archCollections{
+		rows: []repository.ItemRow{
+			archChapterItem(1, 20, "Открытая статья", 1, 2),
+			archChapterItem(2, 21, "Речь, закрытая предком", 3, 4),
+			archChapterItem(3, 22, "Речь, закрытая на боевом", 12, 13),
+		},
+		chapters: []*models.Chapter{
+			{ID: 20, WorkID: 1, Title: "Открытая статья", StartPage: 1, EndPage: 2},
+			{ID: 21, WorkID: 1, Title: "Речь, закрытая предком", StartPage: 3, EndPage: 4, ClosedBy: models.ChapterClosedByParent},
+			{ID: 22, WorkID: 1, Title: "Речь, закрытая на боевом", StartPage: 12, EndPage: 13},
+		},
+	}
+	spans := &prodSpans{base: fakeSpans{}, extra: map[int64]map[int]bool{1: {12: true, 13: true}}}
+	a := newArchive(archiveInputs{
+		Works: archWorks{}, Documents: archDocs{}, Cuts: archCuts{work: 1},
+		Closed: fakeClosedBase{}, Collections: cols,
+	}, spans, map[int64]bool{}, "https://lib.example.org")
+	got, err := a.Static.Collections(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("подборок %d, ждали 1", len(got))
+	}
+	var titles []string
+	for _, it := range got[0].Items {
+		titles = append(titles, it.Title)
+	}
+	if len(titles) != 1 || titles[0] != "Открытая статья" {
+		t.Errorf("пункты архива = %q, ждали только открытую статью", titles)
 	}
 }

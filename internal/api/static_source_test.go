@@ -45,8 +45,9 @@ func (f staticIndexFake) ArticleLinks(context.Context, int64) ([]repository.Link
 }
 
 type staticCollectionsFake struct {
-	list []*models.Collection
-	rows []repository.ItemRow
+	list     []*models.Collection
+	rows     []repository.ItemRow
+	chapters []*models.Chapter
 }
 
 func (f staticCollectionsFake) List(context.Context) ([]*models.Collection, error) {
@@ -54,6 +55,9 @@ func (f staticCollectionsFake) List(context.Context) ([]*models.Collection, erro
 }
 func (f staticCollectionsFake) ItemRows(context.Context, int64) ([]repository.ItemRow, error) {
 	return f.rows, nil
+}
+func (f staticCollectionsFake) ChaptersForWorks(context.Context, []int64) ([]*models.Chapter, error) {
+	return f.chapters, nil
 }
 
 type staticDocumentsFake struct{ total int }

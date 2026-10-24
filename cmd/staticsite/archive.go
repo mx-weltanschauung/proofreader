@@ -83,6 +83,6 @@ func newArchive(in archiveInputs, spans *prodSpans, whole map[int64]bool, base s
 	documents := api.NewSEODocumentSource(in.Documents, in.Cuts, openWorks, renderer).
 		WithClosed(closed).WithClosedSpans(spans)
 	static := api.NewStaticSource(openEditions, openWorks, books, viewPages, index, in.Concepts,
-		in.Collections, documents, renderer).WithClosed(closed)
+		in.Collections, documents, renderer).WithClosed(closed).WithClosedSpans(spans)
 	return &archive{Static: static, Documents: documents, Index: index, Closed: closed}
 }

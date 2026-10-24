@@ -31,6 +31,14 @@ func (g *Generator) writeCollections(ctx context.Context) error {
 				author = ` <span class="author">— ` + Esc(a) + `</span>`
 			}
 			target := g.itemTarget(it)
+			// Глава тома, который в сборке есть, а её самой нет ни якорем, ни
+			// первой полосой: её полосы в архив не вошли (закрыта на боевом,
+			// полос нет). Источник уже отсеивает закрытое (StaticSource), это
+			// вторая страховка: заглавие такой главы строкой «нет в этой
+			// копии» печатало бы название закрытой речи.
+			if !it.Broken && target == "" && it.ChapterID != 0 && g.works[it.WorkID] != "" {
+				continue
+			}
 			switch {
 			case it.Broken:
 				fmt.Fprintf(&b, `<li class="broken">%s%s <span class="note">(источник недоступен)</span></li>`+"\n", title, author)
