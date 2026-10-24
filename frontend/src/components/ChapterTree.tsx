@@ -96,12 +96,14 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
   };
 
   const overlayStyle = isOverlay ? { marginLeft: 0 } : {};
+  // Действующая закрытость: своим признаком или через главу выше.
+  const closed = !!chapter.closed || !!chapter.closed_by;
 
   return (
     <div
       ref={setNodeRef}
       style={{ ...style, ...overlayStyle }}
-      className={`chapter-tree-node ${isDragging ? 'dragging' : ''} ${isOverlay ? 'overlay' : ''} ${chapter.closed ? 'chapter-tree-closed' : ''}`}
+      className={`chapter-tree-node ${isDragging ? 'dragging' : ''} ${isOverlay ? 'overlay' : ''} ${closed ? 'chapter-tree-closed' : ''}`}
     >
       <div className="chapter-tree-card">
         {canEdit && (
@@ -127,7 +129,7 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
         <div className="chapter-tree-info">
           <div className="chapter-tree-title">
             {chapter.title}
-            {chapter.closed && <ClosedBadge />}
+            {closed && <ClosedBadge />}
           </div>
           <div className="chapter-tree-meta">
             <span className="chapter-type-badge">{chapterTypeLabel(chapter.type)}</span>
@@ -163,7 +165,7 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
               {onToggleClosed && !isOverlay && (
                 <ClosedToggle
                   kind="chapter"
-                  closed={!!chapter.closed}
+                  closed={closed}
                   closedBy={chapter.closed_by}
                   loadPlan={async () => (await chaptersApi.closedPlan(work.id, chapter.id)).data}
                   onToggle={(next, reason) => onToggleClosed(chapter.id, next, reason)}

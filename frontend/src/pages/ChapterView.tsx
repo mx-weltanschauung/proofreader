@@ -182,7 +182,12 @@ export const ChapterView: React.FC = () => {
   // Дата и причина закрытия нужны только сотруднику и только на странице
   // самой главы: в дереве глав их не спрашиваем — запрос на каждую строку.
   const staff = canEdit(user);
+  // Дата и причина есть в журнале только у главы, закрытой своим признаком;
+  // у закрытой через главу выше их несёт та.
   const chapterClosed = !!chapter?.closed;
+  // Действующая закрытость — для пометки и кнопки: своим признаком или через
+  // главу выше (кнопка тогда говорит, откуда закрытие, и открыть не даёт).
+  const chapterClosedInEffect = chapterClosed || !!chapter?.closed_by;
   const shownChapterId = chapter?.id;
   useEffect(() => {
     if (!staff || !chapterClosed || shownChapterId === undefined) return;
@@ -598,7 +603,7 @@ export const ChapterView: React.FC = () => {
             })()}
             <h1>
               {chapter.title}
-              {chapter.closed && <ClosedBadge closure={closure} />}
+              {chapterClosedInEffect && <ClosedBadge closure={closure} />}
             </h1>
             {workId != null && chapterId != null && (
               <ChapterEvents workId={workId} chapterId={chapterId} />
@@ -642,7 +647,7 @@ export const ChapterView: React.FC = () => {
               {workId != null && chapterId != null && (
                 <ClosedToggle
                   kind="chapter"
-                  closed={!!chapter.closed}
+                  closed={chapterClosedInEffect}
                   closedBy={chapter.closed_by}
                   loadPlan={async () => (await chaptersApi.closedPlan(workId, chapterId)).data}
                   onToggle={toggleChapterClosed}

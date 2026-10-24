@@ -66,6 +66,18 @@ describe('ChapterTree: закрытые главы', () => {
     expect(within(openRow).queryByText('закрыт')).toBeNull();
   });
 
+  it('закрытая через главу выше: пометка, приглушение и кнопка без права открыть', () => {
+    signIn('administrator');
+    renderTree([chapter(1), chapter(2, { closed: false, closed_by: 'parent' })]);
+    const row = screen.getByText('Глава 2').closest('.chapter-tree-node') as HTMLElement;
+    expect(row).toHaveClass('chapter-tree-closed');
+    expect(within(row).getByText('закрыт')).toBeInTheDocument();
+    const toggle = row.querySelector('.closed-toggle') as HTMLElement;
+    expect(within(toggle).getByRole('button', { name: 'Открыть' })).toBeDisabled();
+    expect(within(row).getByText('закрыта вместе с главой выше')).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Закрыть' })).toBeNull();
+  });
+
   it('редактору кнопки «Закрыть» нет', () => {
     signIn('editor');
     renderTree([chapter(1)]);

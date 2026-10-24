@@ -1829,6 +1829,20 @@ describe('ChapterView: закрытая глава', () => {
     expect(screen.queryByRole('button', { name: 'Открыть' })).toBeNull();
   });
 
+  it('закрытая через главу выше: пометка и кнопка без права открыть', async () => {
+    signIn('administrator');
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() =>
+      ok({ ...CHAPTER, closed: false, closed_by: 'parent' } as Chapter),
+    );
+    vi.spyOn(closuresApi, 'latest').mockImplementation(() => ok({ closed: false }) as never);
+    renderChapter();
+    const open = await screen.findByRole('button', { name: 'Открыть' });
+    expect(open).toBeDisabled();
+    expect(screen.getByText('закрыта вместе с главой выше')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Закрыть' })).toBeNull();
+    expect(document.querySelector('h1')?.textContent).toContain('закрыт');
+  });
+
   it('читателю и анониму журнал закрытий не запрашивается', async () => {
     vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CHAPTER));
     const latest = vi.spyOn(closuresApi, 'latest');
