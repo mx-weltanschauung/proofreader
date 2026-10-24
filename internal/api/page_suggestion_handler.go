@@ -195,7 +195,9 @@ func (h *PageSuggestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	// Контекст запроса без его отмены: claims нужны обёртке полос (ViewPages),
+	// а запись не должна обрываться с уходом клиента.
+	ctx := context.WithoutCancel(r.Context())
 	page, err := h.pages.GetByID(ctx, pageID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Страница не найдена")
@@ -427,7 +429,9 @@ func (h *PageSuggestionHandler) Accept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	// Контекст запроса без его отмены: claims нужны обёртке полос (ViewPages),
+	// а запись не должна обрываться с уходом клиента.
+	ctx := context.WithoutCancel(r.Context())
 	d, err := h.suggestions.GetDetail(ctx, id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Предложение не найдено")

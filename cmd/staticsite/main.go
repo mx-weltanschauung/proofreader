@@ -106,10 +106,14 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	// же попали в сборку.
 	openWorks := api.NewOpenWorks(works, closedRepo)
 	openEditions := api.NewOpenEditions(editions, closedRepo)
-	books := api.NewDownloadSource(openWorks, chapters, pages, openEditions, collections, renderer, *base).WithChapterAnchors()
+	// Полосы и главы — той же обёрткой зрителя, что у сайта: контекст сборки
+	// без claims, поэтому закрытых глав и их полос в архиве нет.
+	viewPages := api.NewViewPages(pages, closedRepo)
+	viewChapters := api.NewViewChapters(chapters, closedRepo)
+	books := api.NewDownloadSource(openWorks, viewChapters, viewPages, openEditions, collections, renderer, *base).WithChapterAnchors()
 	documents := api.NewSEODocumentSource(
 		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closedRepo)
-	src := api.NewStaticSource(openEditions, openWorks, books, pages, index, repository.NewSEORepository(pool),
+	src := api.NewStaticSource(openEditions, openWorks, books, viewPages, index, repository.NewSEORepository(pool),
 		collections, documents, renderer).WithClosed(closedRepo)
 
 	g := &staticsite.Generator{Src: src, Out: *out, BaseURL: *base, BuildDate: *date, EditionID: *edition,

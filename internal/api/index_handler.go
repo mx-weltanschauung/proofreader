@@ -285,7 +285,7 @@ func uniqueSlug(base string, taken map[string]bool) string {
 func (h *IndexHandler) GetConcept(w http.ResponseWriter, r *http.Request) {
 	slug := mux.Vars(r)["slug"]
 
-	ctx := context.Background()
+	ctx := r.Context()
 	// GetConceptBySlug reports a missing slug as an error (see
 	// *repository.IndexRepository), the same way GetByID does elsewhere in
 	// this codebase (compare ChapterHandler.Get, EditionHandler.Update) - any
@@ -463,7 +463,7 @@ func (h *IndexHandler) PageConcepts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := r.Context()
 	page, err := h.pages.GetByID(ctx, pageID)
 	if err != nil || page == nil || page.WorkID != workID {
 		http.Error(w, "Page not found", http.StatusNotFound)

@@ -662,7 +662,7 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := r.Context()
 	nickname, slug := collectionKey(r)
 	collection, err := h.collectionStore.GetByAuthorSlug(ctx, nickname, slug)
 	if err != nil || collection == nil {
@@ -718,14 +718,25 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 	// подборка: глава и элемент подборки, накрывающие один диапазон,
 	// обязаны читать один и тот же файл.
 	key := pagecache.Key{WorkID: *item.WorkID, Start: start, End: end}
-	h.cache.Serve(w, r, key, func() (any, error) {
+	// Диапазон с закрытыми полосами — мимо кэша для любого зрителя, как у
+	// главы: файл общий с главой того же диапазона.
+	cache := h.cache
+	hasClosed, err := rangeHasClosed(ctx, h.pageStore, *item.WorkID, start, end)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось собрать страницы")
+		return
+	}
+	if hasClosed {
+		cache = nil
+	}
+	cache.Serve(w, r, key, func() (any, error) {
 		pages, err := h.pageStore.GetPageRange(ctx, *item.WorkID, start, end)
 		if err != nil {
 			return nil, err
 		}
 		pageHTML, notes := renderPageRange(h.renderer, pages)
 		return ChapterPagesResponse{
-			Pages:         chapterPagesFromRange(pages, pageHTML),
+			Pages:         chapterPagesFromRange(pages, pageHTML, nil),
 			FootnotesHTML: markdown.RenderNotes(notes),
 		}, nil
 	})

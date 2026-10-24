@@ -92,7 +92,9 @@ func (h *DocumentCutHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx := context.Background()
+	// Контекст запроса без его отмены: claims нужны обёртке полос (ViewPages),
+	// а запись не должна обрываться с уходом клиента.
+	ctx := context.WithoutCancel(r.Context())
 
 	// Вклейка заводится только в своём разборе — те же права, что у правки
 	// разбора (mayEditDocument, задача 3): читатель, подавший разбор в

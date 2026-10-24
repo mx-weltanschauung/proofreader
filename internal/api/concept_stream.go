@@ -184,7 +184,7 @@ const (
 // единообразно. Побочная польза сужения — ссылка на один адрес.
 func (h *IndexHandler) Fragments(w http.ResponseWriter, r *http.Request) {
 	slug := mux.Vars(r)["slug"]
-	ctx := context.Background()
+	ctx := r.Context()
 
 	// Отсутствующий slug приходит из репозитория ошибкой — как в GetConcept.
 	// Закрытые адреса и статьи уже сняты: поток, его total и разворот полосы
@@ -660,7 +660,9 @@ func (h *IndexHandler) PutCuts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	// Контекст запроса без его отмены: claims нужны обёртке полос (ViewPages),
+	// а запись не должна обрываться с уходом клиента.
+	ctx := context.WithoutCancel(r.Context())
 	c, err := h.index.GetConceptBySlug(ctx, vars["slug"])
 	if err != nil || c == nil {
 		http.Error(w, "Concept not found", http.StatusNotFound)
@@ -912,7 +914,7 @@ func (h *IndexHandler) ExpandPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := r.Context()
 	// Адрес в закрытый том снят вместе с понятием-копией: разворот его полосы
 	// отвечает «адреса нет» (404), как на адрес, которого не было.
 	c, _, found, err := h.conceptFor(r, vars["slug"])

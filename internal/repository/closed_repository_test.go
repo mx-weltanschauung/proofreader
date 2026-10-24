@@ -705,6 +705,12 @@ func TestClosedPagesChapterRange(t *testing.T) {
 	if err != nil || len(ids) != 1 || !ids[first.ID] {
 		t.Fatalf("ClosedChapterIDs = %v, %v", ids, err)
 	}
+	other := newVolume(t, works, "без закрытых глав")
+	newChapter(t, chapters, other.ID, nil, "открытая", 1, 2, 1)
+	withClosed, err := closed.WorksWithClosedChapters(ctx)
+	if err != nil || !withClosed[w.ID] || withClosed[other.ID] {
+		t.Fatalf("WorksWithClosedChapters = %v, %v; ждали %d без %d", withClosed, err, w.ID, other.ID)
+	}
 	if _, err := closed.SetChapterClosed(ctx, 999999, true, testActor, "r"); !errors.Is(err, ErrClosedTargetNotFound) {
 		t.Fatalf("нет главы: %v, ждали ErrClosedTargetNotFound", err)
 	}

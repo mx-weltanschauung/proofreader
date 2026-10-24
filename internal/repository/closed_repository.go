@@ -84,6 +84,12 @@ func (r *ClosedRepository) ClosedEditionIDs(ctx context.Context) (map[int64]bool
 	return r.idSet(ctx, `SELECT id FROM editions WHERE closed`)
 }
 
+// WorksWithClosedChapters — работы, у которых закрыта хоть одна глава: их
+// оригинал (PDF/DJVU) не-сотруднику не выдаётся.
+func (r *ClosedRepository) WorksWithClosedChapters(ctx context.Context) (map[int64]bool, error) {
+	return r.idSet(ctx, `SELECT DISTINCT work_id FROM closed_chapters`)
+}
+
 func (r *ClosedRepository) idSet(ctx context.Context, query string) (map[int64]bool, error) {
 	rows, err := r.pool.Query(ctx, query)
 	if err != nil {

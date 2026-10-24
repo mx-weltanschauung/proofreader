@@ -71,7 +71,7 @@ func (h *PageHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := r.Context()
 	pages, err := h.pageRepo.ListByWork(ctx, workID)
 	if err != nil {
 		http.Error(w, "Failed to retrieve pages", http.StatusInternalServerError)
@@ -166,7 +166,7 @@ func (h *PageHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := r.Context()
 	page, err := h.pageRepo.GetByWorkAndPageNumber(ctx, workID, pageNumber)
 	if err != nil {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -207,7 +207,9 @@ func (h *PageHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	// Контекст запроса без его отмены: claims нужны обёртке полос (ViewPages),
+	// а запись не должна обрываться с уходом клиента.
+	ctx := context.WithoutCancel(r.Context())
 	if err := applyPageEdit(ctx, h.pageRepo, h.pageVersionRepo, h.fragments, h.cuts,
 		page, req.ContentMarkdown, req.Status, claims.UserID, req.Comment); err != nil {
 		log.Printf("apply page edit %d: %v", page.ID, err)
@@ -327,7 +329,9 @@ func (h *PageHandler) RestoreVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	// Контекст запроса без его отмены: claims нужны обёртке полос (ViewPages),
+	// а запись не должна обрываться с уходом клиента.
+	ctx := context.WithoutCancel(r.Context())
 
 	// Get the version to restore
 	version, err := h.pageVersionRepo.GetByID(ctx, versionID)

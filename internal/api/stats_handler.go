@@ -12,7 +12,6 @@ import (
 
 	"proofreader/internal/metrics"
 	"proofreader/internal/middleware"
-	"proofreader/internal/models"
 	"proofreader/internal/opds"
 	"proofreader/internal/repository"
 	"proofreader/internal/stats"
@@ -113,8 +112,7 @@ func (h *StatsHandler) Hit(w http.ResponseWriter, r *http.Request) {
 // isStaffRequest — запрос вошедшего редактора или администратора: их
 // проверки и поиски не должны попадать в статистику читателей.
 func isStaffRequest(r *http.Request) bool {
-	claims, ok := middleware.GetUserFromContext(r.Context())
-	return ok && (claims.Role == models.RoleEditor || claims.Role == models.RoleAdministrator)
+	return staffContext(r.Context())
 }
 
 // limiterKey — ключ предела частоты: IPv6 по /64 (абонент свободно меняет

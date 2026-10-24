@@ -19,6 +19,9 @@ import (
 
 // ChapterHandler handles chapter endpoints
 type ChapterHandler struct {
+	// chapterRepo — голое хранилище: запись и охрана закрытого (409) обязаны
+	// видеть закрытые главы на любом контексте. Чтение для ответа — через
+	// reads().
 	chapterRepo ChapterStore
 	pageRepo    PageStore
 	renderer    *markdown.Renderer
@@ -44,6 +47,13 @@ func (h *ChapterHandler) WithRecordings(c RecordingCounter) *ChapterHandler {
 func (h *ChapterHandler) WithClosedChapters(s ClosedSpansStore) *ChapterHandler {
 	h.closed = s
 	return h
+}
+
+// reads — хранилище глав за обёрткой зрителя: не-сотруднику закрытых глав
+// нет. Строится здесь, а не приходит снаружи, — так запись не получит обёртку
+// по ошибке проводки.
+func (h *ChapterHandler) reads() *ViewChapters {
+	return viewOfChapterStore(h.chapterRepo, h.closed)
 }
 
 const chapterClosedMessage = "Глава закрыта — сначала откройте её"
@@ -138,6 +148,12 @@ func NewChapterHandler(
 	renderer *markdown.Renderer,
 	cache *RangeCache,
 ) *ChapterHandler {
+	// Обёрнутое хранилище спрятало бы закрытые главы от охраны записи на
+	// context.Background(): удаление родителя закрытой подглавы прошло бы
+	// мимо 409 и унесло её каскадом. Обёртку обработчик строит себе сам.
+	if _, wrapped := chapterRepo.(*ViewChapters); wrapped {
+		panic("NewChapterHandler: нужно голое хранилище глав, обёртку чтения обработчик строит сам")
+	}
 	return &ChapterHandler{
 		chapterRepo: chapterRepo,
 		pageRepo:    pageRepo,
@@ -177,8 +193,8 @@ func (h *ChapterHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
-	chapters, err := h.chapterRepo.ListByWorkHierarchical(ctx, workID)
+	ctx := r.Context()
+	chapters, err := h.reads().ListByWorkHierarchical(ctx, workID)
 	if err != nil {
 		http.Error(w, "Failed to retrieve chapters", http.StatusInternalServerError)
 		return
@@ -289,8 +305,8 @@ func (h *ChapterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
-	chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
+	ctx := r.Context()
+	chapter, err := h.reads().GetByID(ctx, chapterID)
 	if err != nil || !chapterInPathWork(r, chapter) {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
 		return
@@ -467,6 +483,9 @@ type ChapterPage struct {
 	PageNumber int    `json:"page_number"`
 	HTML       string `json:"html"`
 	Blank      bool   `json:"blank"`
+	// ClosedChapter — заглавие закрытой главы, накрывающей полосу; только
+	// сотруднику.
+	ClosedChapter string `json:"closed_chapter,omitempty"`
 }
 
 // ChapterPagesResponse represents the response for chapter pages with aggregated footnotes
@@ -478,7 +497,10 @@ type ChapterPagesResponse struct {
 // chapterPagesFromRange собирает слим-полосы из отрендеренного диапазона.
 // Общая для глав и элементов подборок: их ответы читает один и тот же
 // ReadingSurface, и форма провода обязана оставаться одной.
-func chapterPagesFromRange(pages []*models.Page, pageHTML []string) []ChapterPage {
+//
+// mark — заглавие закрытой главы полосы для сотрудника (closedMarkers); nil —
+// пометок нет.
+func chapterPagesFromRange(pages []*models.Page, pageHTML []string, mark func(page int) string) []ChapterPage {
 	result := make([]ChapterPage, len(pages))
 	for i, page := range pages {
 		result[i] = ChapterPage{
@@ -488,6 +510,9 @@ func chapterPagesFromRange(pages []*models.Page, pageHTML []string) []ChapterPag
 			// возится, а маркер номера пустой полосе рисовать нельзя — её
 			// секция схлопывается, и маркер сел бы на номер соседа.
 			Blank: strings.TrimSpace(page.ContentMarkdown) == "",
+		}
+		if mark != nil {
+			result[i].ClosedChapter = mark(page.PageNumber)
 		}
 	}
 	return result
@@ -502,22 +527,42 @@ func (h *ChapterHandler) ListPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
-	chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
+	ctx := r.Context()
+	chapter, err := h.reads().GetByID(ctx, chapterID)
 	if err != nil || !chapterInPathWork(r, chapter) {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
 		return
 	}
 
+	// Диапазон с закрытыми полосами собирается мимо кэша для любого
+	// зрителя: не-сотрудник иначе получил бы файл, прогретый сотрудником, а
+	// сотрудник — файл с дырой. Сотруднику на нём — пометки закрытой главы.
+	hasClosed, err := rangeHasClosed(ctx, h.pageRepo, chapter.WorkID, chapter.StartPage, chapter.EndPage)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось собрать страницы")
+		return
+	}
+	cache := h.cache
+	var mark func(int) string
+	if hasClosed {
+		cache = nil
+		if staffContext(ctx) {
+			if mark, err = closedMarkers(ctx, h.chapterRepo, chapter.WorkID); err != nil {
+				writeError(w, http.StatusInternalServerError, "Не удалось собрать страницы")
+				return
+			}
+		}
+	}
+
 	key := pagecache.Key{WorkID: chapter.WorkID, Start: chapter.StartPage, End: chapter.EndPage}
-	h.cache.Serve(w, r, key, func() (any, error) {
+	cache.Serve(w, r, key, func() (any, error) {
 		pages, err := h.pageRepo.GetPageRange(ctx, chapter.WorkID, chapter.StartPage, chapter.EndPage)
 		if err != nil {
 			return nil, err
 		}
 		pageHTML, notes := renderPageRange(h.renderer, pages)
 		return ChapterPagesResponse{
-			Pages:         chapterPagesFromRange(pages, pageHTML),
+			Pages:         chapterPagesFromRange(pages, pageHTML, mark),
 			FootnotesHTML: markdown.RenderNotes(notes),
 		}, nil
 	})
