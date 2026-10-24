@@ -38,6 +38,8 @@ type journalBody struct {
 	Description string `json:"description"`
 	// Closed — завести журнал сразу закрытым; Update поле не читает.
 	Closed bool `json:"closed,omitempty"`
+	// ClosedReason — причина строки журнала при Closed.
+	ClosedReason string `json:"closed_reason,omitempty"`
 }
 
 type issueRequest struct {
@@ -49,6 +51,8 @@ type issueRequest struct {
 	Months     string `json:"months"`
 	// Closed — признак работы номера (у номера своего нет); Update не читает.
 	Closed bool `json:"closed,omitempty"`
+	// ClosedReason — причина строки журнала при Closed.
+	ClosedReason string `json:"closed_reason,omitempty"`
 }
 
 func journalPathID(r *http.Request) (int64, bool) {
@@ -106,8 +110,12 @@ func (h *JournalHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	closeReason, ok := requireAdminToClose(w, r, req.Closed, req.ClosedReason)
+	if !ok {
+		return
+	}
 	j := &models.Journal{ID: req.ID, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description, Closed: req.Closed}
-	if err := h.store.Create(r.Context(), j, closureActor(r), closedAtCreation); err != nil {
+	if err := h.store.Create(r.Context(), j, closureActor(r), closeReason); err != nil {
 		h.writeStoreError(w, err, "Не удалось завести журнал")
 		return
 	}
@@ -189,6 +197,10 @@ func (h *JournalHandler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
+	closeReason, ok := requireAdminToClose(w, r, req.Closed, req.ClosedReason)
+	if !ok {
+		return
+	}
 	j, err := h.store.GetByID(r.Context(), journalID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Журнал не найден")
@@ -199,7 +211,7 @@ func (h *JournalHandler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		NumberTo: req.NumberTo, Label: label, Months: req.Months}
 	work := &models.Work{ID: req.WorkID, Title: models.IssueTitle(j.Title, req.Year, label), Language: "ru",
 		Status: models.WorkStatusDraft, OwnerID: claims.UserID, Closed: req.Closed}
-	if err := h.store.CreateIssue(r.Context(), issue, work, closureActor(r), closedAtCreation); err != nil {
+	if err := h.store.CreateIssue(r.Context(), issue, work, closureActor(r), closeReason); err != nil {
 		h.writeStoreError(w, err, "Не удалось завести номер")
 		return
 	}

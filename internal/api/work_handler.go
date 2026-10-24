@@ -94,6 +94,8 @@ type CreateWorkRequest struct {
 	// Closed — завести работу сразу закрытой (публикатор, закрытое издание).
 	// Update поле не читает: признак меняет только ClosedHandler.
 	Closed bool `json:"closed,omitempty"`
+	// ClosedReason — причина строки журнала при Closed; пусто — «закрыто при создании».
+	ClosedReason string `json:"closed_reason,omitempty"`
 }
 
 // UpdateWorkRequest represents a request to update a work.
@@ -181,6 +183,11 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	closeReason, ok := requireAdminToClose(w, r, req.Closed, req.ClosedReason)
+	if !ok {
+		return
+	}
+
 	// Create work
 	work := &models.Work{
 		ID:       req.ID,
@@ -195,7 +202,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	if err := h.workRepo.Create(ctx, work, closureActor(r), closedAtCreation); err != nil {
+	if err := h.workRepo.Create(ctx, work, closureActor(r), closeReason); err != nil {
 		if errors.Is(err, repository.ErrIDTaken) {
 			http.Error(w, fmt.Sprintf("work id %d is already taken", req.ID), http.StatusConflict)
 			return

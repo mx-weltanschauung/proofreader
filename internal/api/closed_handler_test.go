@@ -18,10 +18,19 @@ import (
 type fakeClosedWriter struct {
 	works, editions, journals map[int64][]int64
 	gotID                     int64
+	chapters                  map[int64][]int64
 	gotClosed                 bool
+	gotReason                 string
+	calls                     int
+}
+
+func (f *fakeClosedWriter) SetChapterClosed(_ context.Context, id int64, c bool, _ models.ClosureActor, reason string) ([]int64, error) {
+	f.gotReason = reason
+	return f.do(f.chapters, id, c)
 }
 
 func (f *fakeClosedWriter) do(m map[int64][]int64, id int64, closed bool) ([]int64, error) {
+	f.calls++
 	f.gotID, f.gotClosed = id, closed
 	ids, ok := m[id]
 	if !ok {
@@ -65,7 +74,7 @@ func TestCloseEditionDropsEveryWork(t *testing.T) {
 	crawler := &fakeCrawlerCaches{}
 	h := NewClosedHandler(&fakeClosedWriter{editions: map[int64][]int64{5: {1, 2, 3}}}, NewServingCache(store, crawler))
 
-	rec := closedPut(h.Edition, "5", `{"closed": true}`)
+	rec := closedPut(h.Edition, "5", `{"closed": true, "reason": "письмо"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("код %d: %s", rec.Code, rec.Body.String())
 	}
@@ -96,7 +105,7 @@ func TestOpenWorkDropsCacheToo(t *testing.T) {
 	w := &fakeClosedWriter{works: map[int64][]int64{7: {7}}}
 	h := NewClosedHandler(w, NewServingCache(store, crawler))
 
-	if rec := closedPut(h.Work, "7", `{"closed": false}`); rec.Code != http.StatusOK {
+	if rec := closedPut(h.Work, "7", `{"closed": false, "reason": "снято"}`); rec.Code != http.StatusOK {
 		t.Fatalf("код %d: %s", rec.Code, rec.Body.String())
 	}
 	if w.gotClosed {
@@ -123,7 +132,7 @@ func TestToggleWithNoAffectedWorksStillPurgesCrawler(t *testing.T) {
 		id   string
 		want int
 	}{{h.Edition, "5", 1}, {h.Journal, "6", 2}} {
-		rec := closedPut(c.h, c.id, `{"closed": true}`)
+		rec := closedPut(c.h, c.id, `{"closed": true, "reason": "письмо"}`)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("код %d: %s", rec.Code, rec.Body.String())
 		}
@@ -141,7 +150,7 @@ func TestToggleWithNoAffectedWorksStillPurgesCrawler(t *testing.T) {
 func TestClosedUnknownTargetAndBadBody(t *testing.T) {
 	crawler := &fakeCrawlerCaches{}
 	h := NewClosedHandler(&fakeClosedWriter{}, NewServingCache(nil, crawler))
-	if rec := closedPut(h.Work, "99", `{"closed": true}`); rec.Code != http.StatusNotFound {
+	if rec := closedPut(h.Work, "99", `{"closed": true, "reason": "письмо"}`); rec.Code != http.StatusNotFound {
 		t.Errorf("неизвестная цель: код %d, ждали 404", rec.Code)
 	}
 	for _, body := range []string{``, `{}`, `{"closed": "да"}`} {
@@ -149,7 +158,7 @@ func TestClosedUnknownTargetAndBadBody(t *testing.T) {
 			t.Errorf("тело %q: код %d, ждали 400", body, rec.Code)
 		}
 	}
-	if rec := closedPut(h.Work, "abc", `{"closed": true}`); rec.Code != http.StatusBadRequest {
+	if rec := closedPut(h.Work, "abc", `{"closed": true, "reason": "письмо"}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("id abc: код %d, ждали 400", rec.Code)
 	}
 	if crawler.calls != 0 {
@@ -157,14 +166,14 @@ func TestClosedUnknownTargetAndBadBody(t *testing.T) {
 	}
 }
 
-func TestClosedRoutesAreStaffOnly(t *testing.T) {
+func TestClosedRoutesAdminOnly(t *testing.T) {
 	rt := createTestRouter()
-	w := &fakeClosedWriter{works: map[int64][]int64{7: {7}}, editions: map[int64][]int64{7: {7}}, journals: map[int64][]int64{7: {7}}}
+	w := &fakeClosedWriter{works: map[int64][]int64{7: {7}}, editions: map[int64][]int64{7: {7}}, journals: map[int64][]int64{7: {7}}, chapters: map[int64][]int64{7: {7}}}
 	r := NewRouter(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		rt.cacheHandler, nil, rt.authService).WithClosedWriter(NewClosedHandler(w, nil)).Setup()
-	for _, path := range []string{"/api/works/7/closed", "/api/editions/7/closed", "/api/journals/7/closed"} {
-		for tok, want := range map[string]int{"": 401, readerToken(t): 403, editorToken(t): 200, adminToken(t): 200} {
-			req := httptest.NewRequest(http.MethodPut, path, bytes.NewBufferString(`{"closed": true}`))
+		rt.cacheHandler, nil, rt.authService).WithClosedWriter(NewClosedHandler(w, nil).WithChapters(fakeChapterSource{{ID: 7, WorkID: 7}})).Setup()
+	for _, path := range []string{"/api/works/7/closed", "/api/editions/7/closed", "/api/journals/7/closed", "/api/works/7/chapters/7/closed"} {
+		for tok, want := range map[string]int{"": 401, readerToken(t): 403, editorToken(t): 403, adminToken(t): 200} {
+			req := httptest.NewRequest(http.MethodPut, path, bytes.NewBufferString(`{"closed": true, "reason": "письмо"}`))
 			if tok != "" {
 				req.Header.Set("Authorization", "Bearer "+tok)
 			}
@@ -184,7 +193,7 @@ func TestCreateWorkWithClosed(t *testing.T) {
 	}{{`{"title":"Т","closed":true}`, true}, {`{"title":"Т"}`, false}} {
 		repo := &fakeWorkRepo{}
 		h := NewWorkHandler(repo, nil, nil, nil, 0, nil, nil)
-		h.Create(httptest.NewRecorder(), journalRequest(http.MethodPost, "/api/works", c.body, nil))
+		h.Create(httptest.NewRecorder(), asRole(journalRequest(http.MethodPost, "/api/works", c.body, nil), models.RoleAdministrator))
 		if repo.created == nil || repo.created.Closed != c.want {
 			t.Errorf("тело %s: Closed = %v, ждали %v", c.body, repo.created, c.want)
 		}
@@ -194,7 +203,7 @@ func TestCreateWorkWithClosed(t *testing.T) {
 func TestCreateEditionWithClosed(t *testing.T) {
 	store := &fakeEditionStore{}
 	req := httptest.NewRequest(http.MethodPost, "/api/editions", bytes.NewBufferString(`{"title":"С","slug":"s","closed":true}`))
-	NewEditionHandler(store).Create(httptest.NewRecorder(), req)
+	NewEditionHandler(store).Create(httptest.NewRecorder(), asRole(req, models.RoleAdministrator))
 	if store.created == nil || !store.created.Closed {
 		t.Fatalf("создано %+v, ждали Closed", store.created)
 	}
@@ -203,15 +212,15 @@ func TestCreateEditionWithClosed(t *testing.T) {
 func TestCreateJournalAndIssueWithClosed(t *testing.T) {
 	store := &fakeJournalStore{}
 	rec := httptest.NewRecorder()
-	NewJournalHandler(store).Create(rec, journalRequest(http.MethodPost, "/api/journals",
-		`{"slug":"pzm","title":"ПЗМ","closed":true}`, nil))
+	NewJournalHandler(store).Create(rec, asRole(journalRequest(http.MethodPost, "/api/journals",
+		`{"slug":"pzm","title":"ПЗМ","closed":true}`, nil), models.RoleAdministrator))
 	if rec.Code != http.StatusCreated || !store.journal.Closed {
 		t.Fatalf("журнал: код %d, %+v", rec.Code, store.journal)
 	}
 	store = &fakeJournalStore{journal: &models.Journal{ID: 3, Title: "ПЗМ"}}
 	rec = httptest.NewRecorder()
-	NewJournalHandler(store).CreateIssue(rec, journalRequest(http.MethodPost, "/api/journals/3/issues",
-		`{"year":1925,"number_from":5,"closed":true}`, map[string]string{"id": "3"}))
+	NewJournalHandler(store).CreateIssue(rec, asRole(journalRequest(http.MethodPost, "/api/journals/3/issues",
+		`{"year":1925,"number_from":5,"closed":true}`, map[string]string{"id": "3"}), models.RoleAdministrator))
 	if rec.Code != http.StatusCreated || !store.createdWork.Closed {
 		t.Fatalf("номер: код %d, работа %+v", rec.Code, store.createdWork)
 	}

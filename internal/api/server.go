@@ -242,7 +242,7 @@ func NewServer(d ServerDeps) *mux.Router {
 	).WithMCP(mcpHandler).
 		WithOPDS(opdsHandler).
 		WithClosed(closedRepo).
-		WithClosedWriter(NewClosedHandler(closedRepo, servingCache)).
+		WithClosedWriter(NewClosedHandler(closedRepo, servingCache).WithChapters(chapterRepo).WithLog(closedRepo)).
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
 		WithEvents(NewEventHandler(eventRepo, closedRepo)).
