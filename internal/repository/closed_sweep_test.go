@@ -846,6 +846,38 @@ func sweepFollow(t *testing.T, h http.Handler, path, token string) sweepResponse
 	return res
 }
 
+// sweepETag — ETag краулерской страницы после редиректов на канон и сам
+// канонический путь (под /seo).
+func sweepETag(t *testing.T, h http.Handler, path string) (string, string) {
+	t.Helper()
+	for i := 0; i < 4; i++ {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusMovedPermanently {
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s: %d, ждали 200", path, rec.Code)
+			}
+			return path, rec.Header().Get("ETag")
+		}
+		loc := strings.TrimPrefix(rec.Header().Get("Location"), sweepBase)
+		if !strings.HasPrefix(loc, "/seo") {
+			loc = "/seo" + loc
+		}
+		path = loc
+	}
+	t.Fatalf("%s: петля редиректов", path)
+	return "", ""
+}
+
+// sweepRevalidate — код ответа на перепроверку краулером: GET с If-None-Match.
+func sweepRevalidate(h http.Handler, path, etag string) int {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Header.Set("If-None-Match", etag)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
+}
+
 // percentRun — подряд идущие %XX: один закодированный знак UTF-8 занимает
 // несколько.
 var percentRun = regexp.MustCompile(`(?:%[0-9A-Fa-f]{2})+`)
@@ -1131,6 +1163,27 @@ func closeSweepChapter(t *testing.T, router http.Handler, f *closedSweep, cache 
 			t.Fatalf("до закрытия: %s (%d) не отдаёт подглаву анониму — фикстура неверна", path, res.code)
 		}
 	}
+	// ETag родителя, его .md и .md тома — до закрытия: краулер, который их
+	// уже забрал, перепроверяет копию с If-None-Match и обязан после
+	// закрытия получить новую страницу, а не 304 на копию с подглавой.
+	revalidate := []string{
+		"/seo/works/" + itoa(c.work) + "/chapters/" + itoa(c.parent),
+		"/seo/works/" + itoa(c.work) + "/chapters/" + itoa(c.parent) + ".md",
+		"/seo/works/" + itoa(c.work) + ".md",
+	}
+	etags := map[string]string{}
+	for i, path := range revalidate {
+		final, etag := sweepETag(t, router, path)
+		if etag == "" {
+			t.Fatalf("до закрытия: %s не отдаёт ETag — проверка перепроверки ничего не значит", final)
+		}
+		if code := sweepRevalidate(router, final, etag); code != http.StatusNotModified {
+			t.Fatalf("до закрытия: %s с тем же ETag ответил %d, ждали 304 — проверка ничего не значит", final, code)
+		}
+		revalidate[i] = final
+		etags[final] = etag
+	}
+
 	parentKey := pagecache.Key{WorkID: c.work, Start: 1, End: 4}
 	rc, _, ok := cache.Open(parentKey)
 	if !ok {
@@ -1164,6 +1217,11 @@ func closeSweepChapter(t *testing.T, router http.Handler, f *closedSweep, cache 
 	}
 	if err := cache.Put(parentKey, stale); err != nil {
 		t.Fatal(err)
+	}
+	for _, path := range revalidate {
+		if code := sweepRevalidate(router, path, etags[path]); code == http.StatusNotModified {
+			t.Errorf("после закрытия подглавы %s с прежним ETag ответил 304 — краулер держит копию с закрытым", path)
+		}
 	}
 }
 

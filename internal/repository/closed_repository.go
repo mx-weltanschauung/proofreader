@@ -249,6 +249,17 @@ func (r *ClosedRepository) ClosedChapterIDs(ctx context.Context, workID int64) (
 	return ids, rows.Err()
 }
 
+// ClosuresGeneration — поколение закрытий: наибольший номер строки журнала
+// (0 — журнал пуст). Сдвигается любым закрытием и открытием; краулерская
+// половина подмешивает его в ETag (seo.Source.Closures).
+func (r *ClosedRepository) ClosuresGeneration(ctx context.Context) (int64, error) {
+	var gen int64
+	if err := r.pool.QueryRow(ctx, `SELECT coalesce(max(id), 0) FROM closures`).Scan(&gen); err != nil {
+		return 0, fmt.Errorf("closures generation: %w", err)
+	}
+	return gen, nil
+}
+
 const closureColumns = `entity_kind, entity_id, title_snapshot, closed, reason, actor_name, created_at`
 
 func scanClosure(row rowScanner) (*models.Closure, error) {

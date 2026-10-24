@@ -279,7 +279,13 @@ func (h *Handler) OGCard(w http.ResponseWriter, r *http.Request) {
 
 	entry := &cacheEntry{body: string(raw)}
 	if !stamp.IsZero() {
-		entry.etag = docETag(cacheKey, h.build(), stamp.Unix())
+		closures, err := h.src.closuresGen(r.Context())
+		if err != nil {
+			log.Printf("карточка %s: поколение закрытий: %v", cacheKey, err)
+			http.Error(w, "Не удалось нарисовать карточку", http.StatusInternalServerError)
+			return
+		}
+		entry.etag = docETag(cacheKey, h.build(), closures, stamp.Unix())
 	}
 	h.cards.putIfFresh(cacheKey, entry, gen)
 	writeCard(w, r, entry)
