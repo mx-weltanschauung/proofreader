@@ -28,10 +28,26 @@ func collectionWorkIDs(rows []repository.ItemRow) []int64 {
 // доезжает до подборки само. Снимок подставляется только когда источник
 // пропал — тогда строка помечается broken, а поддерева у неё нет.
 //
+// hideClosedChapters — зритель не сотрудник: закрытые главы (своим признаком
+// или через предка) из дерева исчезают вместе с поддеревьями, а пункт на
+// закрытой главе уходит в unavailable, как пункт на закрытой работе.
+//
 // Закрытая работа проверяется РАНЬШЕ «пропавшего источника»: строка такой
 // работы — unavailable без заглавия, автора и источника, а снимок заглавия
 // (он вернул бы название закрытого) не печатается ни в каком состоянии.
-func buildCollectionTOC(rows []repository.ItemRow, chapters []*models.Chapter, closed ClosedSet) []*models.CollectionEntry {
+func buildCollectionTOC(rows []repository.ItemRow, chapters []*models.Chapter, closed ClosedSet, hideClosedChapters bool) []*models.CollectionEntry {
+	closedChapters := map[int64]bool{}
+	if hideClosedChapters {
+		open := make([]*models.Chapter, 0, len(chapters))
+		for _, c := range chapters {
+			if chapterIsClosed(c) {
+				closedChapters[c.ID] = true
+				continue
+			}
+			open = append(open, c)
+		}
+		chapters = open
+	}
 	byID, childrenOf, topLevel := indexChapters(chapters)
 
 	entries := make([]*models.CollectionEntry, 0, len(rows))
@@ -41,7 +57,8 @@ func buildCollectionTOC(rows []repository.ItemRow, chapters []*models.Chapter, c
 			offset = *row.PageOffset
 		}
 
-		if itemIsClosed(row.Item, closed) {
+		if itemIsClosed(row.Item, closed) ||
+			(row.Item.ChapterID != nil && closedChapters[*row.Item.ChapterID]) {
 			entries = append(entries, &models.CollectionEntry{
 				ID:          row.Item.ID,
 				Kind:        row.Item.Kind,

@@ -90,6 +90,12 @@ func (r *ClosedRepository) WorksWithClosedChapters(ctx context.Context) (map[int
 	return r.idSet(ctx, `SELECT DISTINCT work_id FROM closed_chapters`)
 }
 
+// AllClosedChapterIDs — все главы, закрытые действующе, по всем работам: для
+// событий, чьи цели разбросаны по томам.
+func (r *ClosedRepository) AllClosedChapterIDs(ctx context.Context) (map[int64]bool, error) {
+	return r.idSet(ctx, `SELECT id FROM closed_chapters`)
+}
+
 func (r *ClosedRepository) idSet(ctx context.Context, query string) (map[int64]bool, error) {
 	rows, err := r.pool.Query(ctx, query)
 	if err != nil {

@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -105,9 +108,44 @@ func (s *DownloadSource) Work(ctx context.Context, workID int64) (*book.Book, er
 	// страницы в файле, ни одной страницы при этом не трогая.
 	meta.CacheKey = latestOf(meta.Modified, work.UpdatedAt)
 
+	fingerprint, err := s.closedFingerprint(ctx, workID)
+	if err != nil {
+		return nil, err
+	}
+	meta.CacheVariant += fingerprint
+
 	b := &book.Book{Meta: meta}
 	b.Sections = disambiguateFootnotes(s.buildSections(nodes, pages, work.PageOffset))
 	return b, nil
+}
+
+// closedFingerprint — отпечаток закрытых диапазонов работы для не-сотрудника:
+// первые 8 шестнадцатеричных знаков sha256 строки «начало-конец;…» по
+// отсортированным диапазонам. Закрытие главы не двигает ни одного UpdatedAt,
+// а файл от него меняется — отпечаток меняет ETag. Работа без закрытых
+// диапазонов и сотрудник получают пустую строку: прежние ETag не
+// переписываются.
+func (s *DownloadSource) closedFingerprint(ctx context.Context, workID int64) (string, error) {
+	spans, err := hiddenSpansOf(ctx, s.pages, workID)
+	if err != nil {
+		return "", fmt.Errorf("закрытые диапазоны работы %d: %w", workID, err)
+	}
+	if len(spans) == 0 {
+		return "", nil
+	}
+	sorted := append([]models.PageSpan(nil), spans...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].Start != sorted[j].Start {
+			return sorted[i].Start < sorted[j].Start
+		}
+		return sorted[i].End < sorted[j].End
+	})
+	var sb strings.Builder
+	for _, sp := range sorted {
+		fmt.Fprintf(&sb, "%d-%d;", sp.Start, sp.End)
+	}
+	sum := sha256.Sum256([]byte(sb.String()))
+	return hex.EncodeToString(sum[:4]), nil
 }
 
 // Chapter собирает одну главу вместе с её поддеревом.
@@ -167,6 +205,12 @@ func (s *DownloadSource) Chapter(ctx context.Context, workID, chapterID int64) (
 	// (/chapters/{id}/move переставляет границы, не трогая ни одной
 	// страницы), UpdatedAt работы — то же, что и у выгрузки тома целиком.
 	meta.CacheKey = latestOf(meta.Modified, chapter.UpdatedAt, work.UpdatedAt)
+
+	fingerprint, err := s.closedFingerprint(ctx, workID)
+	if err != nil {
+		return nil, err
+	}
+	meta.CacheVariant += fingerprint
 
 	b := &book.Book{Meta: meta}
 	b.Sections = disambiguateFootnotes(s.buildSections([]book.Node{node}, pages, work.PageOffset))
@@ -247,10 +291,28 @@ func (s *DownloadSource) Collection(ctx context.Context, nickname, slug string, 
 	cacheKey := collection.UpdatedAt
 
 	var statuses []models.PageStatus
+	// Закрытые главы работ подборки — для не-сотрудника: пункт на закрытой
+	// главе недоступен, как пункт на закрытой работе.
+	fingerprinted := map[int64]bool{}
+	closedChapters := map[int64]bool{}
+	if !staffContext(ctx) {
+		for _, wid := range collectionWorkIDs(rows) {
+			chapters, err := s.collections.ChaptersForWorks(ctx, []int64{wid})
+			if err != nil {
+				return nil, fmt.Errorf("главы работы %d: %w", wid, err)
+			}
+			for _, c := range chapters {
+				if chapterIsClosed(c) {
+					closedChapters[c.ID] = true
+				}
+			}
+		}
+	}
 	for _, row := range rows {
 		cacheKey = latestOf(cacheKey, row.Item.UpdatedAt)
 
-		if itemIsClosed(row.Item, closed) {
+		if itemIsClosed(row.Item, closed) ||
+			(row.Item.ChapterID != nil && closedChapters[*row.Item.ChapterID]) {
 			b.Meta.Missing = append(b.Meta.Missing, unavailableSourceLabel)
 			b.Meta.CacheVariant += fmt.Sprintf("u%d.", row.Item.ID)
 			continue
@@ -262,6 +324,16 @@ func (s *DownloadSource) Collection(ctx context.Context, nickname, slug string, 
 			// нельзя — он перечисляется на титуле.
 			b.Meta.Missing = append(b.Meta.Missing, itemLabel(row))
 			continue
+		}
+		if !fingerprinted[*row.Item.WorkID] {
+			fingerprinted[*row.Item.WorkID] = true
+			fp, err := s.closedFingerprint(ctx, *row.Item.WorkID)
+			if err != nil {
+				return nil, err
+			}
+			if fp != "" {
+				b.Meta.CacheVariant += fmt.Sprintf("w%d:%s.", *row.Item.WorkID, fp)
+			}
 		}
 		b.Sections = append(b.Sections, section)
 		for _, p := range pages {

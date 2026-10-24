@@ -24,6 +24,7 @@ type DocumentHandler struct {
 	// возврата назад. nil означает «кэшей нет», как и у DocumentReviewHandler.
 	cache  *ServingCache
 	closed ClosedStore
+	spans  ClosedSpansStore
 }
 
 // WithClosed подключает хранилище закрытых работ: вклейки закрытых работ
@@ -388,7 +389,7 @@ func (h *DocumentHandler) View(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось собрать разбор")
 		return
 	}
-	htmlContent, _, err := assembleDocumentFor(ctx, h.renderer, h.cuts, h.works, shown, closed)
+	htmlContent, _, err := assembleDocumentFor(ctx, h.renderer, h.cuts, h.works, shown, closed, h.viewerSpans(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось собрать разбор")
 		return
@@ -442,4 +443,19 @@ func (h *DocumentHandler) View(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, response)
+}
+
+// viewerSpans — закрытые главы для вклеек этого зрителя: сотруднику nil.
+func (h *DocumentHandler) viewerSpans(r *http.Request) ClosedSpansStore {
+	if isStaffRequest(r) {
+		return nil
+	}
+	return h.spans
+}
+
+// WithClosedSpans подключает закрытые главы: вклейка, задевающая закрытую
+// полосу, не-сотруднику недоступна.
+func (h *DocumentHandler) WithClosedSpans(c ClosedSpansStore) *DocumentHandler {
+	h.spans = c
+	return h
 }

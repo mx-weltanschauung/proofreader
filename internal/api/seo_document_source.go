@@ -23,6 +23,14 @@ type SEODocumentSource struct {
 	works     WorkStore
 	renderer  *markdown.Renderer
 	closed    ClosedStore
+	spans     ClosedSpansStore
+}
+
+// WithClosedSpans подключает закрытые главы: краулер без токена, поэтому вклейка,
+// задевающая закрытую полосу, всегда недоступна.
+func (a *SEODocumentSource) WithClosedSpans(c ClosedSpansStore) *SEODocumentSource {
+	a.spans = c
+	return a
 }
 
 // WithClosed подключает хранилище закрытых работ: краулер без токена, поэтому
@@ -95,7 +103,7 @@ func (a *SEODocumentSource) Page(
 	if err != nil {
 		return nil, fmt.Errorf("закрытые работы: %w", err)
 	}
-	body, cutCount, err := assembleDocumentFor(ctx, a.renderer, a.cuts, a.works, document, closed)
+	body, cutCount, err := assembleDocumentFor(ctx, a.renderer, a.cuts, a.works, document, closed, a.spans)
 	if err != nil {
 		return nil, fmt.Errorf("сборка разбора %q: %w", slug, err)
 	}

@@ -27,6 +27,14 @@ type DocumentCutHandler struct {
 	pages     PageStore
 	renderer  *markdown.Renderer
 	closed    ClosedStore
+	spans     ClosedSpansStore
+}
+
+// WithClosedSpans подключает закрытые главы: догрузка вклейки, задевающей
+// закрытую полосу, не-сотруднику — 404.
+func (h *DocumentCutHandler) WithClosedSpans(c ClosedSpansStore) *DocumentCutHandler {
+	h.spans = c
+	return h
 }
 
 // WithClosed подключает хранилище закрытых работ: не-сотрудник не заводит
@@ -401,6 +409,12 @@ func (h *DocumentCutHandler) Full(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(pages) == 0 {
 		writeError(w, http.StatusGone, "Вклейка снята")
+		return
+	}
+	// Закрытая глава среди полос вклейки — как закрытая работа: 404
+	// не-сотруднику, после проверки «названа ли вклейка».
+	if !isStaffRequest(r) && cut.WorkID != nil && cutTouchesClosed(ctx, h.spans, *cut.WorkID, pages) {
+		writeError(w, http.StatusNotFound, "Не найдено")
 		return
 	}
 

@@ -265,6 +265,8 @@ func (r *EventRepository) organizations(ctx context.Context, slug string) ([]mod
 	erows, err := r.pool.Query(ctx, `
 		SELECT e.id, e.kind_id, e.slug, e.title, e.dates,
 		       COALESCE(array_agg(t.work_id) FILTER (WHERE t.work_id IS NOT NULL
+		           AND (t.kind = 'work' OR t.chapter_id IS NOT NULL)), '{}'),
+		       COALESCE(array_agg(COALESCE(t.chapter_id, 0)) FILTER (WHERE t.work_id IS NOT NULL
 		           AND (t.kind = 'work' OR t.chapter_id IS NOT NULL)), '{}')
 		FROM events e
 		JOIN event_kinds k ON k.id = e.kind_id
@@ -281,7 +283,7 @@ func (r *EventRepository) organizations(ctx context.Context, slug string) ([]mod
 	for erows.Next() {
 		var s models.EventSummary
 		var kindID int64
-		if err := erows.Scan(&s.ID, &kindID, &s.Slug, &s.Title, &s.Dates, &s.TargetWorkIDs); err != nil {
+		if err := erows.Scan(&s.ID, &kindID, &s.Slug, &s.Title, &s.Dates, &s.TargetWorkIDs, &s.TargetChapterIDs); err != nil {
 			return nil, err
 		}
 		s.MaterialsTotal = len(s.TargetWorkIDs)

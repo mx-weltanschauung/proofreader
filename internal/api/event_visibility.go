@@ -7,8 +7,9 @@ import "proofreader/internal/models"
 // без строк — тоже; ни подпись строки, ни заглавие пункта не остаются, когда
 // за ними нечего показать. false — не осталось ни одного пункта. Позиции
 // уцелевших пунктов не пересчитываются: якорь из ссылки главы не сдвигается.
-// Сотрудник видит всё, закрытые цели помечены.
-func visibleEvent(d *models.EventDetail, closed ClosedSet, staff bool) (*models.EventDetail, bool) {
+// Сотрудник видит всё, закрытые цели помечены. Цель-глава из closedChapters
+// ведёт себя как цель в закрытой работе.
+func visibleEvent(d *models.EventDetail, closed, closedChapters ClosedSet, staff bool) (*models.EventDetail, bool) {
 	out := *d
 	out.Sections = make([]models.EventSection, 0, len(d.Sections))
 	for _, s := range d.Sections {
@@ -17,7 +18,8 @@ func visibleEvent(d *models.EventDetail, closed ClosedSet, staff bool) (*models.
 		for _, e := range s.Entries {
 			entry := models.EventEntry{Label: e.Label, Targets: make([]models.EventTarget, 0, len(e.Targets))}
 			for _, t := range e.Targets {
-				isClosed := t.WorkID != nil && closed.Has(*t.WorkID)
+				isClosed := (t.WorkID != nil && closed.Has(*t.WorkID)) ||
+					(t.ChapterID != nil && closedChapters.Has(*t.ChapterID))
 				if !staff && (t.Broken || isClosed) {
 					continue
 				}
@@ -44,7 +46,7 @@ func visibleEvent(d *models.EventDetail, closed ClosedSet, staff bool) (*models.
 // MaterialsTotal считается по целям в открытых работах (сотруднику — по всем).
 // Не-сотруднику событие без открытых материалов и вид без событий
 // выбрасываются; false — не осталось ни одного события.
-func visibleOrganization(o *models.EventOrganizationDetail, closed ClosedSet, staff bool) (*models.EventOrganizationDetail, bool) {
+func visibleOrganization(o *models.EventOrganizationDetail, closed, closedChapters ClosedSet, staff bool) (*models.EventOrganizationDetail, bool) {
 	out := *o
 	out.Kinds = make([]models.EventKindEvents, 0, len(o.Kinds))
 	total := 0
@@ -52,8 +54,12 @@ func visibleOrganization(o *models.EventOrganizationDetail, closed ClosedSet, st
 		kind := models.EventKindEvents{EventKind: k.EventKind, Events: make([]models.EventSummary, 0, len(k.Events))}
 		for _, e := range k.Events {
 			n := 0
-			for _, id := range e.TargetWorkIDs {
-				if staff || !closed.Has(id) {
+			for i, id := range e.TargetWorkIDs {
+				chapterID := int64(0)
+				if i < len(e.TargetChapterIDs) {
+					chapterID = e.TargetChapterIDs[i]
+				}
+				if staff || (!closed.Has(id) && !closedChapters.Has(chapterID)) {
 					n++
 				}
 			}

@@ -101,11 +101,11 @@ func NewServer(d ServerDeps) *mux.Router {
 	readingHandler := NewReadingHandler(viewPages, markdownRenderer).WithClosedMarkers(viewChapters)
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же
 	// набор источников, что у чтения разбора, плюс свой рендер без подрезки.
-	documentCutHandler := NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, viewPages, markdownRenderer).WithClosed(closedRepo)
+	documentCutHandler := NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, viewPages, markdownRenderer).WithClosed(closedRepo).WithClosedSpans(closedRepo)
 	userHandler := NewUserHandler(userRepo, authService)
 	exportHandler := NewExportHandler(workRepo, chapterRepo, pageRepo)
 	editionHandler := NewEditionHandler(editionRepo)
-	shelfHandler := NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo).WithEvents(eventRepo)
+	shelfHandler := NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo).WithClosedChapters(closedRepo).WithEvents(eventRepo)
 	highlightHandler := NewHighlightHandler(editionRepo).WithClosed(closedRepo)
 	searchRepo := repository.NewSearchRepository(pool)
 	searchHandler := NewSearchHandler(searchRepo)
@@ -135,8 +135,8 @@ func NewServer(d ServerDeps) *mux.Router {
 		markdownRenderer, cfg.Server.PublicBaseURL,
 	)
 	downloadHandler := NewDownloadHandler(downloadSource).WithOpen(openDownload).WithClosed(closedRepo).
-		WithAudio(NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, viewChapters, cfg.Server.PublicBaseURL))
-	audioHandler := NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, viewChapters, audioStore, closedRepo)
+		WithAudio(NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, viewChapters, cfg.Server.PublicBaseURL).WithClosedSpans(closedRepo))
+	audioHandler := NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, viewChapters, audioStore, closedRepo).WithClosedSpans(closedRepo)
 	seoRepo := repository.NewSEORepository(pool)
 	seoHandler := seo.NewHandler(&seo.Source{
 		Works:       openWorks,
@@ -146,7 +146,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		Concepts:    tokenlessIndex,
 		Collections: NewSEOCollectionSource(collectionRepo).WithClosed(closedRepo),
 		Documents: NewSEODocumentSource(
-			documentRepo, documentCutRepo, openWorks, markdownRenderer).WithClosed(closedRepo),
+			documentRepo, documentCutRepo, openWorks, markdownRenderer).WithClosed(closedRepo).WithClosedSpans(closedRepo),
 		Books:        NewSEOBookSource(openDownload),
 		ConceptBooks: NewConceptBookSource(tokenlessIndex, viewPages, viewChapters, cfg.Server.PublicBaseURL),
 		Catalog:      seoRepo,
@@ -172,7 +172,7 @@ func NewServer(d ServerDeps) *mux.Router {
 	// остальными обработчиками разбора выше: снятие с публикации и удаление
 	// обязаны сбросить краулерскую половину servingCache (см. DropCrawler), а
 	// она собирается только после seoHandler.
-	documentHandler := NewDocumentHandler(documentRepo, markdownRenderer, documentCutRepo, workRepo, servingCache).WithClosed(closedRepo)
+	documentHandler := NewDocumentHandler(documentRepo, markdownRenderer, documentCutRepo, workRepo, servingCache).WithClosed(closedRepo).WithClosedSpans(closedRepo)
 	// Модерация разбора: отправка автором, очередь редактору, приём и отказ.
 	// jwtSecret и trustProxy — рельс предела частоты, тот же, что у подборок.
 	documentReviewHandler := NewDocumentReviewHandler(
@@ -255,7 +255,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		WithClosedWriter(NewClosedHandler(closedRepo, servingCache).WithChapters(chapterRepo).WithLog(closedRepo)).
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
-		WithEvents(NewEventHandler(eventRepo, closedRepo)).
+		WithEvents(NewEventHandler(eventRepo, closedRepo).WithClosedChapters(closedRepo)).
 		WithSite(NewSiteHandler(cfg.Site)).
 		WithJournals(NewJournalHandler(journalRepo), NewPersonHandler(personRepo, personRepo, viewChapters)).
 		WithStaticArchive(NewStaticArchiveHandler(cfg.Server.StaticArchiveURL, &http.Client{Timeout: 5 * time.Second})).

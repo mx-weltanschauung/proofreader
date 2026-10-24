@@ -67,6 +67,15 @@ type AudioHandler struct {
 	store    storage.Storage
 	// closed — закрытые работы; nil — проверки нет.
 	closed ClosedStore
+	// view — закрытые главы: дорожки и записи, задевающие их, не-сотруднику
+	// не показываются.
+	view audioView
+}
+
+// WithClosedSpans подключает закрытые главы тома. nil — ничего не прячется.
+func (h *AudioHandler) WithClosedSpans(c ClosedSpansStore) *AudioHandler {
+	h.view = audioView{closed: c}
+	return h
 }
 
 func NewAudioHandler(tracks AudioTrackStore, queue AudioQueueStore, recs AudioRecordingStore,
@@ -123,6 +132,14 @@ func (h *AudioHandler) WorkAudio(w http.ResponseWriter, r *http.Request) {
 		mapAudioErr(w, err, "")
 		return
 	}
+	if tracks, err = h.view.tracks(r.Context(), id, tracks); err != nil {
+		mapAudioErr(w, err, "")
+		return
+	}
+	if recs, err = h.view.recordings(r.Context(), id, recs); err != nil {
+		mapAudioErr(w, err, "")
+		return
+	}
 	out := struct {
 		Tracks     []trackView     `json:"tracks"`
 		Recordings []recordingView `json:"recordings"`
@@ -143,6 +160,10 @@ type audioFile struct {
 	ascii  string // запаска filename= для браузеров без filename*
 	human  string
 	ext    string
+	// start, end — диапазон полос дорожки; chapterID — глава записи (у дорожки
+	// 0). По ним закрытое прячется и у адреса файла.
+	start, end int
+	chapterID  int64
 }
 
 // Точка в конце имени дала бы «..opus»: у заголовка («Товар.») и у
@@ -150,7 +171,8 @@ type audioFile struct {
 func trimTitle(s string) string { return strings.TrimRight(strings.TrimSpace(s), ". ") }
 
 func trackFile(t models.AudioTrack) audioFile {
-	return audioFile{workID: t.WorkID, key: t.S3Key, ascii: fmt.Sprintf("track-%d", t.ID), human: trimTitle(t.Title), ext: "opus"}
+	return audioFile{workID: t.WorkID, key: t.S3Key, ascii: fmt.Sprintf("track-%d", t.ID), human: trimTitle(t.Title), ext: "opus",
+		start: t.StartPage, end: t.EndPage}
 }
 
 // Номер записи в имени обязателен: у главы бывает несколько записей, и без
@@ -162,7 +184,8 @@ func recordingFile(x models.AudioRecording) audioFile {
 	}
 	// Расширение — из ключа: его ставит RecordingKey по типу при заливке.
 	ext := strings.TrimPrefix(path.Ext(x.S3Key), ".")
-	return audioFile{workID: x.WorkID, key: x.S3Key, ascii: fmt.Sprintf("recording-%d", x.ID), human: trimTitle(human), ext: ext}
+	return audioFile{workID: x.WorkID, key: x.S3Key, ascii: fmt.Sprintf("recording-%d", x.ID), human: trimTitle(human), ext: ext,
+		chapterID: x.ChapterID}
 }
 
 // redirect — 302 на подписанную ссылку; строки нет — 410: адрес дорожки
@@ -196,6 +219,15 @@ func (h *AudioHandler) redirect(w http.ResponseWriter, r *http.Request, file fun
 			writeError(w, http.StatusNotFound, "Не найдено")
 			return
 		}
+	}
+	hidden, err := h.view.fileHidden(r.Context(), f)
+	if err != nil {
+		mapAudioErr(w, err, "")
+		return
+	}
+	if hidden {
+		writeError(w, http.StatusNotFound, "Не найдено")
+		return
 	}
 	var url string
 	if r.URL.Query().Get("download") == "1" {

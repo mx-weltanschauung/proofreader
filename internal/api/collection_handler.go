@@ -263,7 +263,7 @@ func (h *CollectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить состав подборки")
 		return
 	}
-	collection.Items = buildCollectionTOC(rows, chapters, closed)
+	collection.Items = buildCollectionTOC(rows, chapters, closed, !isStaffRequest(r))
 
 	writeJSON(w, collection)
 }
@@ -534,6 +534,18 @@ func (h *CollectionHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusNotFound, "Не найдено")
 				return
 			}
+			// Закрытая глава — то же: заглавие-снимок в ответе назвало бы её.
+			if req.Kind == models.CollectionItemKindChapter {
+				chapterClosed, err := h.chapterClosed(ctx, *targetWork, *req.ChapterID)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "Не удалось проверить доступность источника")
+					return
+				}
+				if chapterClosed {
+					writeError(w, http.StatusNotFound, "Не найдено")
+					return
+				}
+			}
 		}
 	}
 
@@ -695,6 +707,19 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusGone, "Источник элемента недоступен")
 		return
 	}
+	// Пункт на закрытой главе — то же, что пункт на закрытой работе.
+	if !isStaffRequest(r) && item.Kind == models.CollectionItemKindChapter &&
+		item.ChapterID != nil && item.WorkID != nil {
+		chapterClosed, err := h.chapterClosed(ctx, *item.WorkID, *item.ChapterID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось определить доступность элемента")
+			return
+		}
+		if chapterClosed {
+			writeError(w, http.StatusGone, "Источник элемента недоступен")
+			return
+		}
+	}
 
 	// Источник пересоздан или удалён. 410, а не 404: элемент на месте, читать
 	// нечего — и составителю это надо показать по-разному.
@@ -823,4 +848,20 @@ func topLevelPageRange(chapters []*models.Chapter, workID int64) (start, end int
 	}
 
 	return start, end, ok
+}
+
+// chapterClosed — закрыта ли глава действующе (своим признаком или через
+// предка). Главу, которой в работе нет, закрытой не считает: «нет» решает
+// вызывающий своим путём.
+func (h *CollectionHandler) chapterClosed(ctx context.Context, workID, chapterID int64) (bool, error) {
+	chapters, err := h.collectionStore.ChaptersForWorks(ctx, []int64{workID})
+	if err != nil {
+		return false, err
+	}
+	for _, c := range chapters {
+		if c.ID == chapterID {
+			return chapterIsClosed(c), nil
+		}
+	}
+	return false, nil
 }

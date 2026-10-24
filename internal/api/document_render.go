@@ -457,6 +457,24 @@ func renderCutState(r *markdown.Renderer, cut *models.DocumentCut, pages []*mode
 	return renderCutTrimmed(r, cut, pages, ordinal, offsets[*cut.WorkID])
 }
 
+// cutTouchesClosed — есть ли среди полос вклейки закрытая главой. Сбой чтения
+// диапазонов закрывает вклейку (нулевое значение скрывает).
+func cutTouchesClosed(ctx context.Context, spans ClosedSpansStore, workID int64, pages []*models.Page) bool {
+	if spans == nil || len(pages) == 0 {
+		return false
+	}
+	closed, err := spans.ClosedSpans(ctx, workID)
+	if err != nil {
+		return true
+	}
+	for _, p := range pages {
+		if inSpans(closed, p.PageNumber) {
+			return true
+		}
+	}
+	return false
+}
+
 // assembleDocumentFor собирает разбор целиком: читает вклейки, их полосы и
 // смещения печатных колонцифр затронутых томов, после чего зовёт
 // assembleDocument. Второй результат — сколько вклеек числится за разбором.
@@ -469,6 +487,10 @@ func renderCutState(r *markdown.Renderer, cut *models.DocumentCut, pages []*mode
 // стока заново, только другой дверью — на этот раз в странице, которую
 // читает поисковик и мессенджер модератора.
 //
+// spans — закрытые главы томов, из которых взяты вклейки; nil отключает
+// проверку (сотрудник). Вызывающий передаёт хранилище, когда зритель не
+// сотрудник, — как и множество closed.
+//
 // d — строка, УЖЕ сведённая к редакции, которую вправе видеть пришедший
 // (documentForViewer): тело берётся из d.MarkdownContent как есть, а решение
 // «черновик или одобренное» принимается до вызова, а не внутри.
@@ -479,6 +501,7 @@ func assembleDocumentFor(
 	works WorkStore,
 	d *models.Document,
 	closed ClosedSet,
+	spans ClosedSpansStore,
 ) (string, int, error) {
 	// Разбор собирается здесь и сейчас, а не читается снимком: вклейка едет за
 	// источником. Кэша у сборки нет намеренно — кэш глав
@@ -503,6 +526,13 @@ func assembleDocumentFor(
 		pages, err := cutStore.PagesOfCut(ctx, c)
 		if err != nil {
 			return "", 0, err
+		}
+		// Хоть одна исходная полоса в закрытой главе — вклейка недоступна
+		// целиком: усечь её значило бы показать кусок и выдать, где граница.
+		// spans == nil — зритель сотрудник (или закрытых глав нет).
+		if c.WorkID != nil && cutTouchesClosed(ctx, spans, *c.WorkID, pages) {
+			unavailable[c.ID] = true
+			continue
 		}
 		cutPages[c.ID] = pages
 		if c.WorkID != nil {
