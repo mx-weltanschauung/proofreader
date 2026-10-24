@@ -28,6 +28,12 @@ func (f fakeClosedSpans) ClosedChapterIDs(ctx context.Context, workID int64) (ma
 // 20 — открытая соседка с общей полосой; 30 — открытый родитель
 // закрытой подглавы 31; 40 — открытая глава.
 func closedGuardHandler() (*ChapterHandler, *int) {
+	h, w, _ := closedGuardHandlerCreates()
+	return h, w
+}
+
+func closedGuardHandlerCreates() (*ChapterHandler, *int, *int) {
+	creates := 0
 	chapters := map[int64]*models.Chapter{
 		10: {ID: 10, WorkID: 1, Title: "Закрытая", Type: "chapter", StartPage: 1, EndPage: 5},
 		11: {ID: 11, WorkID: 1, Title: "Подглава", Type: "chapter", StartPage: 2, EndPage: 3, ParentID: i64(10)},
@@ -57,10 +63,11 @@ func closedGuardHandler() (*ChapterHandler, *int) {
 			return nil
 		},
 		deleteFn: func(ctx context.Context, id int64) error { writes++; return nil },
+		createFn: func(ctx context.Context, c *models.Chapter) error { creates++; return nil },
 	}
 	h := NewChapterHandler(store, &fakePageStore{}, nil, nil).
 		WithClosedChapters(fakeClosedSpans{ids: map[int64]bool{10: true, 11: true, 31: true}})
-	return h, &writes
+	return h, &writes, &creates
 }
 
 func doChapter(t *testing.T, call func(http.ResponseWriter, *http.Request), method string, id int64, body any) *httptest.ResponseRecorder {
@@ -137,5 +144,34 @@ func TestUpdateOpenNeighborAllowed(t *testing.T) {
 	// Открытая глава без закрытых потомков удаляется.
 	if rec := doChapter(t, h.Delete, "DELETE", 40, nil); rec.Code != http.StatusNoContent {
 		t.Errorf("delete open = %d", rec.Code)
+	}
+}
+
+func TestUpdateReparentIntoClosed409(t *testing.T) {
+	h, w := closedGuardHandler()
+	// 40 открыта, её переподчиняют закрытой 10 через PUT.
+	want409(t, doChapter(t, h.Update, "PUT", 40, updBody("Открытая", 21, 30, i64(10))), w)
+}
+
+func TestCreateUnderClosedParent409(t *testing.T) {
+	h, _, creates := closedGuardHandlerCreates()
+	rec := doChapter(t, func(w http.ResponseWriter, r *http.Request) { h.Create(w, r) }, "POST", 0,
+		updBody("Новая", 2, 3, i64(10)))
+	if rec.Code != http.StatusConflict || *creates != 0 {
+		t.Fatalf("status %d creates %d; %s", rec.Code, *creates, rec.Body)
+	}
+	var e struct {
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &e)
+	if e.Message != "Глава закрыта — сначала откройте её" {
+		t.Errorf("message = %q", e.Message)
+	}
+	rec = doChapter(t, h.Create, "POST", 0, updBody("Новая", 22, 23, i64(40)))
+	if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+		t.Errorf("open parent: status %d; %s", rec.Code, rec.Body)
+	}
+	if *creates != 1 {
+		t.Errorf("creates = %d, want 1", *creates)
 	}
 }

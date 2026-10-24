@@ -258,6 +258,9 @@ func (h *ChapterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
+	if h.refuseClosed(ctx, w, workID, req.ParentID) {
+		return
+	}
 	if err := h.chapterRepo.Create(ctx, chapter); err != nil {
 		http.Error(w, "Failed to create chapter", http.StatusInternalServerError)
 		return
