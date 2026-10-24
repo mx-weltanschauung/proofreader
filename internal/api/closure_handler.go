@@ -122,7 +122,8 @@ type closePlan struct {
 
 // Plan — что закроет закрытие главы: глав в поддереве, полос в диапазоне и
 // общие полосы — те, что накрывает ещё и открытая глава вне поддерева, — с
-// заглавиями этих соседей. Предки закрываемой главы соседями не считаются:
+// заглавиями этих соседей. Уже закрытые главы соседями не считаются: свой
+// кусок они потеряли раньше. Предки закрываемой главы соседями не считаются:
 // они по устройству накрывают все её полосы, и перечень стал бы всей главой.
 func (h *ClosedHandler) Plan(w http.ResponseWriter, r *http.Request) {
 	workID, err1 := strconv.ParseInt(mux.Vars(r)["workId"], 10, 64)
@@ -191,7 +192,7 @@ func buildClosePlan(tree []*models.Chapter, targetID int64) closePlan {
 	for page := target.StartPage; page <= target.EndPage; page++ {
 		var names []string
 		for _, c := range all {
-			if !skip[c.ID] && c.StartPage <= page && page <= c.EndPage {
+			if !skip[c.ID] && c.ClosedBy == "" && c.StartPage <= page && page <= c.EndPage {
 				names = append(names, c.Title)
 			}
 		}

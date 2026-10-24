@@ -250,6 +250,7 @@ func TestClosedPlanCountsSharedPages(t *testing.T) {
 			{ID: 3, WorkID: 7, Title: "Подглава", StartPage: 37, EndPage: 38},
 		}},
 		{ID: 4, WorkID: 7, Title: "Правая", StartPage: 39, EndPage: 47},
+		{ID: 6, WorkID: 7, Title: "Уже закрытая", StartPage: 36, EndPage: 36, ClosedBy: "chapter"},
 		{ID: 5, WorkID: 8, Title: "Чужая работа", StartPage: 36, EndPage: 39},
 	}
 	h := NewClosedHandler(nil, nil).WithChapters(src)
