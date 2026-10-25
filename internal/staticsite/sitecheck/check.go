@@ -36,7 +36,8 @@ type Options struct {
 	// вне списка — расхождение: в архив попал том, которого на боевом нет.
 	Allowed map[int64]bool
 	// Forbidden — печатные номера полос, которых в сборке быть не должно:
-	// снятый аппарат («N apparatus» в scripts/static-exclude.txt).
+	// снятый аппарат («N apparatus» в scripts/static-exclude.txt), полосы
+	// закрытых глав локальной базы и полосы, которых нет на боевом.
 	Forbidden map[int64][]int
 	// OnProd — печатные номера полос, которые есть на боевом, у работ со
 	// снятым аппаратом. Полоса такой работы, которой на боевом нет, —
@@ -234,6 +235,23 @@ func (c *checker) checkRelative(r ref) {
 	if frag != "" && strings.HasSuffix(joined, ".html") && !c.ids[joined][frag] {
 		c.problem(r.file, "в %s нет якоря #%s", joined, frag)
 	}
+	// Ссылка на закрытую полосу (разбор, указатель, подборка, соседняя глава)
+	// — расхождение, даже если якорь по ошибке есть: читатель увидел бы адрес
+	// того, чего на сайте нет.
+	if work, ok := workOfFile(joined); ok {
+		if n, ok := printedOf(frag); ok && c.forbiddenPage(work, n) {
+			c.problem(r.file, "ссылка на закрытую полосу %d работы %d: %s", n, work, r.value)
+		}
+	}
+}
+
+func (c *checker) forbiddenPage(work int64, n int) bool {
+	for _, x := range c.opt.Forbidden[work] {
+		if x == n {
+			return true
+		}
+	}
+	return false
 }
 
 // pageAnchors — печатные номера полос (якоря p<n>) в файлах каждой работы
@@ -332,7 +350,7 @@ func (c *checker) checkForbidden() {
 		}
 		if len(hit) > 0 {
 			sort.Ints(hit)
-			c.problem(fmt.Sprintf("works/%d", work), "в архиве полосы снятого аппарата: %v", hit)
+			c.problem(fmt.Sprintf("works/%d", work), "в архиве закрытые полосы или полосы снятого аппарата: %v", hit)
 		}
 	}
 }

@@ -1,0 +1,101 @@
+package main
+
+import (
+	"context"
+	"sort"
+
+	"proofreader/internal/api"
+	"proofreader/internal/models"
+	"proofreader/internal/repository"
+)
+
+// prodSpans — закрытые диапазоны для обёрток зрителя (api.NewViewPages,
+// api.NewViewChapters): настоящие закрытые главы локальной базы плюс полосы,
+// которых нет на боевом (policy.closedPages). Так архив не опережает сайт на
+// уровне полосы тем же путём, каким от не-сотрудника прячется локально
+// закрытое: книга собирается без этих полос, а не вырезает их потом из уже
+// отрендеренных сносок.
+type prodSpans struct {
+	base  api.ClosedSpansStore
+	extra map[int64]map[int]bool
+}
+
+var _ api.ClosedSpansStore = (*prodSpans)(nil)
+
+func (s *prodSpans) ClosedSpans(ctx context.Context, workID int64) ([]models.PageSpan, error) {
+	spans, err := s.base.ClosedSpans(ctx, workID)
+	if err != nil {
+		return nil, err
+	}
+	extra := pageSpans(s.extra[workID])
+	if len(extra) == 0 {
+		return spans, nil
+	}
+	out := append(append([]models.PageSpan(nil), spans...), extra...)
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Start != out[j].Start {
+			return out[i].Start < out[j].Start
+		}
+		return out[i].End < out[j].End
+	})
+	return out, nil
+}
+
+func (s *prodSpans) ClosedChapterIDs(ctx context.Context, workID int64) (map[int64]bool, error) {
+	return s.base.ClosedChapterIDs(ctx, workID)
+}
+
+// prodClosed — хранилище закрытого для указателя: настоящее, у которого
+// диапазоны закрытых глав дополнены полосами, которых нет на боевом. Указатель
+// сам берёт из него работы с закрытыми главами и их диапазоны (closedView), и
+// статья с закрытым источником и адреса в закрытые полосы уходят, как на боевом.
+type prodClosed struct {
+	closedBase
+	spans *prodSpans
+	// whole — работы, которых в архиве нет целиком (policy.wholeWorksOut):
+	// вклейка из такой работы, как и статья указателя, недоступна.
+	whole map[int64]bool
+}
+
+// ClosedIDs — закрытые работы локальной базы и работы, которых нет в архиве.
+func (c *prodClosed) ClosedIDs(ctx context.Context) (map[int64]bool, error) {
+	ids, err := c.closedBase.ClosedIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]bool, len(ids)+len(c.whole))
+	for id := range ids {
+		out[id] = true
+	}
+	for id := range c.whole {
+		out[id] = true
+	}
+	return out, nil
+}
+
+// closedBase — то, что указателю нужно от настоящего хранилища закрытого
+// (*repository.ClosedRepository).
+type closedBase interface {
+	api.ClosedStore
+	api.ClosedSpansStore
+	WorksWithClosedChapters(ctx context.Context) (map[int64]bool, error)
+}
+
+var _ closedBase = (*repository.ClosedRepository)(nil)
+
+func (c *prodClosed) WorksWithClosedChapters(ctx context.Context) (map[int64]bool, error) {
+	works, err := c.closedBase.WorksWithClosedChapters(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for id, set := range c.spans.extra {
+		if len(set) > 0 {
+			works[id] = true
+		}
+	}
+	return works, nil
+}
+
+func (c *prodClosed) ClosedSpans(ctx context.Context, workID int64) ([]models.PageSpan, error) {
+	return c.spans.ClosedSpans(ctx, workID)
+}

@@ -407,9 +407,7 @@ func (rt *Router) Setup() *mux.Router {
 	// Edition management (Editor and Admin only)
 	staff.HandleFunc("/editions", rt.editionHandler.Create).Methods("POST")
 	staff.HandleFunc("/editions/{id}", rt.editionHandler.Update).Methods("PUT")
-	staff.HandleFunc("/editions/{id}/closed", rt.closedHandler.Edition).Methods("PUT")
-	staff.HandleFunc("/works/{id}/closed", rt.closedHandler.Work).Methods("PUT")
-	staff.HandleFunc("/journals/{id}/closed", rt.closedHandler.Journal).Methods("PUT")
+	staff.HandleFunc("/closures/latest", rt.closedHandler.Latest).Methods("GET")
 	staff.HandleFunc("/editions/{id}", rt.editionHandler.Delete).Methods("DELETE")
 	staff.HandleFunc("/editions/{id}/highlights", rt.highlightHandler.Replace).Methods("PUT")
 
@@ -714,6 +712,14 @@ func (rt *Router) Setup() *mux.Router {
 	//
 	// Личные данные, поэтому admin, а не staff, и проверяется РОЛЬ, а не факт
 	// входа: тем же JWT_SECRET подписан токен любого постороннего.
+	// Признак «закрыт» на любом уровне пишет только администратор; причина
+	// обязательна и уходит в журнал закрытий.
+	admin.HandleFunc("/editions/{id}/closed", rt.closedHandler.Edition).Methods("PUT")
+	admin.HandleFunc("/works/{id}/closed", rt.closedHandler.Work).Methods("PUT")
+	admin.HandleFunc("/journals/{id}/closed", rt.closedHandler.Journal).Methods("PUT")
+	admin.HandleFunc("/works/{workId}/chapters/{id}/closed", rt.closedHandler.Chapter).Methods("PUT")
+	admin.HandleFunc("/works/{workId}/chapters/{id}/closed-plan", rt.closedHandler.Plan).Methods("GET")
+	admin.HandleFunc("/admin/closures", rt.closedHandler.List).Methods("GET")
 	admin.HandleFunc("/readers", rt.readerAdminHandler.List).Methods("GET")
 	admin.HandleFunc("/readers/{nickname}/collections", rt.readerAdminHandler.Collections).Methods("GET")
 

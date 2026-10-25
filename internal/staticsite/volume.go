@@ -86,6 +86,7 @@ func (g *Generator) renderWork(ctx context.Context, w *models.Work, ed *models.E
 	}
 	res := &workResult{work: w, edition: ed, parent: parent, index: WorkIndex(w.ID, w.Slug)}
 	for _, s := range b.Sections {
+		s = withoutEmptyChapters(s)
 		first, last, ok := sectionBounds(s)
 		if !ok {
 			continue
@@ -125,6 +126,26 @@ func editionTitle(ed *models.Edition) string {
 }
 
 // sectionBounds — первая и последняя полоса секции в порядке чтения.
+// withoutEmptyChapters снимает подглавы, у которых в сборке не осталось ни
+// одной полосы (закрыты на боевом, у нас открыты): ни строки оглавления, ни
+// якоря у них быть не должно. Секции верхнего уровня без полос отсеивает
+// sectionBounds.
+func withoutEmptyChapters(s book.Section) book.Section {
+	blocks := make([]book.Block, 0, len(s.Blocks))
+	for _, blk := range s.Blocks {
+		if blk.Child != nil {
+			child := withoutEmptyChapters(*blk.Child)
+			if _, _, ok := sectionBounds(child); !ok && child.ChapterID != 0 {
+				continue
+			}
+			blk.Child = &child
+		}
+		blocks = append(blocks, blk)
+	}
+	s.Blocks = blocks
+	return s
+}
+
 func sectionBounds(s book.Section) (first, last book.Page, ok bool) {
 	var walk func(s book.Section)
 	walk = func(s book.Section) {

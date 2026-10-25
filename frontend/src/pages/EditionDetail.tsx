@@ -159,9 +159,9 @@ export const EditionDetail: React.FC = () => {
           <ClosedToggle
             kind="edition"
             closed={!!edition.closed}
-            onToggle={async (next) => {
+            onToggle={async (next, reason) => {
               try {
-                await editionsApi.setClosed(edition.id, next);
+                await editionsApi.setClosed(edition.id, next, reason);
                 setEdition({ ...edition, closed: next });
                 toast.success(next ? 'Собрание закрыто' : 'Собрание открыто');
               } catch (err: unknown) {

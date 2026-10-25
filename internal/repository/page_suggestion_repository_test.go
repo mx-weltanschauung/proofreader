@@ -26,7 +26,7 @@ func seedWorkWithPage(t *testing.T, pool *pgxpool.Pool, markdown string) (workID
 		Status: models.WorkStatusDraft, Role: models.WorkRoleVolume,
 		NumberingStyle: models.NumberingArabic, OwnerID: 1,
 	}
-	if err := workRepo.Create(ctx, w); err != nil {
+	if err := workRepo.Create(ctx, w, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("seedWorkWithPage: create work: %v", err)
 	}
 	t.Cleanup(func() { _ = workRepo.Delete(context.Background(), w.ID) })

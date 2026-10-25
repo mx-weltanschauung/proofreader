@@ -52,6 +52,9 @@ type StaticConceptShelf interface {
 type StaticCollections interface {
 	List(ctx context.Context) ([]*models.Collection, error)
 	ItemRows(ctx context.Context, collectionID int64) ([]repository.ItemRow, error)
+	// ChaptersForWorks — главы работ состава с действующей закрытостью
+	// (closed_by): пункт на закрытой главе в архив не идёт.
+	ChaptersForWorks(ctx context.Context, workIDs []int64) ([]*models.Chapter, error)
 }
 
 // StaticDocuments — *SEODocumentSource: он уже сводит разбор к одобренной
@@ -73,6 +76,16 @@ type StaticSource struct {
 	renderer    *markdown.Renderer
 	volumeMaps  map[int64]map[volumeKey]models.VolumeLocation
 	closed      ClosedStore
+	spans       ClosedSpansStore
+}
+
+// WithClosedSpans подключает диапазоны полос, которых в архиве нет: закрытые
+// главы и полосы, которых нет на боевом. Пункт подборки на главе, чей
+// диапазон накрыт ими целиком, в архив не идёт — глава в сборку не попала
+// (закрыта на боевом), а заглавие её печаталось бы строкой «нет в этой копии».
+func (s *StaticSource) WithClosedSpans(c ClosedSpansStore) *StaticSource {
+	s.spans = c
+	return s
 }
 
 // WithClosed подключает хранилище закрытых работ: в архив, который раздают
@@ -172,6 +185,9 @@ func (s *StaticSource) volumeMap(ctx context.Context, editionID int64) (map[volu
 
 func (s *StaticSource) Concept(ctx context.Context, slug string) (*staticsite.Concept, error) {
 	c, err := s.index.GetConceptBySlug(ctx, slug)
+	if errors.Is(err, errConceptHidden) {
+		return nil, fmt.Errorf("%w: %q", staticsite.ErrConceptHidden, slug)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -239,11 +255,16 @@ func (s *StaticSource) Collections(ctx context.Context) ([]staticsite.Collection
 		if err != nil {
 			return nil, fmt.Errorf("состав подборки %q: %w", c.Slug, err)
 		}
+		hidden, err := s.hiddenChapterItems(ctx, rows)
+		if err != nil {
+			return nil, fmt.Errorf("закрытые главы подборки %q: %w", c.Slug, err)
+		}
 		col := staticsite.Collection{ID: c.ID, Slug: c.Slug, Title: c.Title, Description: c.Description}
 		for _, row := range rows {
 			// Закрытый элемент в архив не идёт вовсе: ни строкой, ни снимком
-			// заглавия.
-			if itemIsClosed(row.Item, closed) {
+			// заглавия. Закрыта бывает работа, а бывает глава — своим
+			// признаком, предком или только на боевом.
+			if itemIsClosed(row.Item, closed) || hidden[row.Item.ID] {
 				continue
 			}
 			it := staticsite.CollectionItem{Title: itemLabel(row), Author: itemAuthor(row)}
@@ -266,6 +287,67 @@ func (s *StaticSource) Collections(ctx context.Context) ([]staticsite.Collection
 		out = append(out, col)
 	}
 	return out, nil
+}
+
+// hiddenChapterItems — пункты-главы состава, которых в архиве нет: глава
+// закрыта действующе (своим признаком или предком, ChaptersForWorks) или её
+// диапазон целиком накрыт полосами, которых в архиве нет (WithClosedSpans:
+// закрытые на боевом и отсутствующие там). Живой API такой пункт показывает
+// недоступным без заглавия; архив не печатает его вовсе.
+func (s *StaticSource) hiddenChapterItems(ctx context.Context, rows []repository.ItemRow) (map[int64]bool, error) {
+	hidden := map[int64]bool{}
+	chapters, err := s.collections.ChaptersForWorks(ctx, collectionWorkIDs(rows))
+	if err != nil {
+		return nil, err
+	}
+	closedChapter := map[int64]bool{}
+	for _, ch := range chapters {
+		if chapterIsClosed(ch) {
+			closedChapter[ch.ID] = true
+		}
+	}
+	spans := map[int64][]models.PageSpan{}
+	for _, row := range rows {
+		it := row.Item
+		if it.Kind != models.CollectionItemKindChapter || it.ChapterID == nil {
+			continue
+		}
+		if closedChapter[*it.ChapterID] {
+			hidden[it.ID] = true
+			continue
+		}
+		if s.spans == nil || it.WorkID == nil || row.ChapterStartPage == nil || row.ChapterEndPage == nil {
+			continue
+		}
+		ws, ok := spans[*it.WorkID]
+		if !ok {
+			if ws, err = s.spans.ClosedSpans(ctx, *it.WorkID); err != nil {
+				return nil, err
+			}
+			spans[*it.WorkID] = ws
+		}
+		if spansCover(ws, *row.ChapterStartPage, *row.ChapterEndPage) {
+			hidden[it.ID] = true
+		}
+	}
+	return hidden, nil
+}
+
+// spansCover — накрыт ли диапазон [start, end] объединением spans целиком.
+func spansCover(spans []models.PageSpan, start, end int) bool {
+	for p := start; p <= end; p++ {
+		covered := false
+		for _, sp := range spans {
+			if p >= sp.Start && p <= sp.End {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			return false
+		}
+	}
+	return true
 }
 
 const staticDocumentBatch = 100

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"testing"
@@ -125,6 +126,98 @@ func TestApparatusRemoveTakesRangesAndLeavesBody(t *testing.T) {
 	}
 	if len(tree) != 1 || tree[0].Title != "Настоящая работа" {
 		t.Errorf("после сноса остались главы %+v, ожидалась одна — тело", tree)
+	}
+}
+
+// Подглава аппарата, закрытая через закрытого родителя-аппарат, считается в
+// плане закрытой, и Remove отказывает, ничего не снеся; открыли — снос идёт.
+func TestApparatusRemoveRefusesClosedChapter(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	works := NewWorkRepository(pool)
+	chapters := NewChapterRepository(pool)
+	pages := NewPageRepository(pool)
+	apparatus := NewApparatusRepository(pool)
+	closed := NewClosedRepository(pool)
+
+	vol := apparatusFixture(t, works, chapters, pages)
+	plan, err := apparatus.Plan(ctx, vol.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.ClosedChapters != 0 {
+		t.Fatalf("до закрытия план насчитал закрытых %d", plan.ClosedChapters)
+	}
+	notes := plan.Chapters[0].ID
+	actor := models.ClosureActor{Name: "тест"}
+	if _, err := closed.SetChapterClosed(ctx, notes, true, actor, "проба"); err != nil {
+		t.Fatal(err)
+	}
+	plan, err = apparatus.Plan(ctx, vol.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.ClosedChapters != 2 {
+		t.Errorf("план насчитал закрытых %d, ждали 2 (глава и подглава через неё)", plan.ClosedChapters)
+	}
+	if _, err := apparatus.Remove(ctx, vol.ID); !errors.Is(err, ErrApparatusClosed) {
+		t.Fatalf("Remove с закрытой главой: %v, ждали ErrApparatusClosed", err)
+	}
+	left, err := pages.ListByWork(ctx, vol.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 10 {
+		t.Fatalf("отказ сноса унёс полосы: осталось %d из 10", len(left))
+	}
+	if _, err := closed.SetChapterClosed(ctx, notes, false, actor, "проба"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Подглава, с которой признак аппарата снят руками, уходит каскадом по
+	// parent_id вместе с родителем — закрытая, она тоже держит отказ.
+	plain := &models.Chapter{
+		WorkID: vol.ID, ParentID: &notes, Title: "Текст автора в приложении", Type: "chapter",
+		OrderNumber: 2, StartPage: 9, EndPage: 10,
+	}
+	if err := chapters.Create(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE chapters SET is_apparatus = false WHERE id = $1`, plain.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetChapterClosed(ctx, plain.ID, true, actor, "проба"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apparatus.Remove(ctx, vol.ID); !errors.Is(err, ErrApparatusClosed) {
+		t.Fatalf("Remove с закрытой подглавой без признака аппарата: %v, ждали ErrApparatusClosed", err)
+	}
+	if _, err := closed.SetChapterClosed(ctx, plain.ID, false, actor, "проба"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Служебная работа уходит целиком — закрытая глава в ней тоже держит отказ.
+	front := newVolume(t, works, "проба-аппарат: передние листы")
+	if _, err := pool.Exec(ctx, `UPDATE works SET parent_work_id = $1, role = 'front_matter' WHERE id = $2`,
+		vol.ID, front.ID); err != nil {
+		t.Fatal(err)
+	}
+	title := &models.Chapter{WorkID: front.ID, Title: "Предисловие", Type: "chapter",
+		OrderNumber: 1, StartPage: 1, EndPage: 1}
+	if err := chapters.Create(ctx, title); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetChapterClosed(ctx, title.ID, true, actor, "проба"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apparatus.Remove(ctx, vol.ID); !errors.Is(err, ErrApparatusClosed) {
+		t.Fatalf("Remove с закрытой главой служебной работы: %v, ждали ErrApparatusClosed", err)
+	}
+	if _, err := closed.SetChapterClosed(ctx, title.ID, false, actor, "проба"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apparatus.Remove(ctx, vol.ID); err != nil {
+		t.Fatalf("Remove после открытия: %v", err)
 	}
 }
 
@@ -464,7 +557,7 @@ func TestApparatusRemoveDropsOwnConceptArticleKeepsForeign(t *testing.T) {
 	vol := apparatusFixture(t, works, chapters, pages)
 
 	edition := &models.Edition{Title: "проба-аппарат-издание", Slug: "proba-apparatus-edition"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -486,7 +579,7 @@ func TestApparatusRemoveDropsOwnConceptArticleKeepsForeign(t *testing.T) {
 	seedArticle(t, pool, shared, edition.ID, &vol.ID, "Прибавочная стоимость")
 
 	otherEdition := &models.Edition{Title: "проба-чужое-издание", Slug: "proba-foreign-edition"}
-	if err := editions.Create(ctx, otherEdition); err != nil {
+	if err := editions.Create(ctx, otherEdition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create foreign edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, otherEdition.ID) })
@@ -580,7 +673,7 @@ func TestApparatusRemoveDoesNotSweepUnrelatedOrphanConcept(t *testing.T) {
 	vol := apparatusFixture(t, works, chapters, pages)
 
 	edition := &models.Edition{Title: "проба-аппарат-издание-2", Slug: "proba-apparatus-edition-2"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -597,7 +690,7 @@ func TestApparatusRemoveDoesNotSweepUnrelatedOrphanConcept(t *testing.T) {
 	// удаления издания, статья ушла каскадом, понятие осталось без единой
 	// статьи. Со снимаемым томом не связано никак.
 	strandedEdition := &models.Edition{Title: "проба-исчезнувшее-издание", Slug: "proba-vanished-edition"}
-	if err := editions.Create(ctx, strandedEdition); err != nil {
+	if err := editions.Create(ctx, strandedEdition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create stranded edition: %v", err)
 	}
 	stranded := seedConcept(t, pool, "Меновая стоимость", "menovaya-stoimost-apparatus")

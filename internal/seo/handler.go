@@ -247,6 +247,14 @@ func (h *Handler) lead(ctx context.Context, path string, route route, gen uint64
 	// контекста, но снимает отмену и дедлайн — ведущий дорендерит начатое
 	// независимо от того, кто его запросил. Ждущие по-прежнему выходят по
 	// собственному <-ctx.Done() в resolve: это их соединение, не общий рендер.
+	// Поколение закрытий снимается ДО рендера, как и метка кэша: закрытие,
+	// пришедшее посреди рендера, сбросит кэш и сдвинет поколение, и следующий
+	// заход получит новый ETag, а не 304 на собранное до закрытия.
+	closures, err := h.src.closuresGen(context.WithoutCancel(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("поколение закрытий: %w", err)
+	}
+
 	var entry *cacheEntry
 	switch {
 	case route.textParts != nil:
@@ -280,7 +288,7 @@ func (h *Handler) lead(ctx context.Context, path string, route route, gen uint64
 			}
 			used += len(td.Body)
 			p := chapterTextPath(chapter, k+1) + route.query
-			e := textEntry(p, h.build(), td)
+			e := textEntry(p, h.build(), closures, td)
 			h.cache.putIfFresh(p, e, gen)
 			if k+1 == route.part {
 				entry = e
@@ -309,7 +317,7 @@ func (h *Handler) lead(ctx context.Context, path string, route route, gen uint64
 		if err != nil {
 			return nil, err
 		}
-		entry = textEntry(path, h.build(), td)
+		entry = textEntry(path, h.build(), closures, td)
 		h.cache.putIfFresh(path, entry, gen)
 	default:
 		doc, err := route.render(context.WithoutCancel(ctx), h.src)
@@ -318,7 +326,7 @@ func (h *Handler) lead(ctx context.Context, path string, route route, gen uint64
 		}
 		entry = &cacheEntry{body: Render(doc)}
 		if !doc.CacheKey.IsZero() {
-			entry.etag = docETag(path, h.build(), doc.CacheKey.Unix())
+			entry.etag = docETag(path, h.build(), closures, doc.CacheKey.Unix())
 		}
 		h.cache.putIfFresh(path, entry, gen)
 	}
@@ -558,7 +566,7 @@ func (h *Handler) build() string {
 }
 
 // textEntry — запись кэша для текста: тип, noindex и canonical заголовками.
-func textEntry(path, build string, td *TextDoc) *cacheEntry {
+func textEntry(path, build string, closures int64, td *TextDoc) *cacheEntry {
 	e := &cacheEntry{body: td.Body, contentType: textContentType, canonical: td.Canonical}
 	if td.NoIndex {
 		e.robotsTag = "noindex"
@@ -567,17 +575,20 @@ func textEntry(path, build string, td *TextDoc) *cacheEntry {
 		e.link = "<" + td.Canonical + `>; rel="canonical"`
 	}
 	if !td.CacheKey.IsZero() {
-		e.etag = docETag(path, build, td.CacheKey.Unix())
+		e.etag = docETag(path, build, closures, td.CacheKey.Unix())
 	}
 	return e
 }
 
-// docETag — ETag страницы: адрес, отметка сборки и метка правки материала.
-// Сборка входит наравне с меткой правки: вёрстка меняется и с кодом, а
-// краулер с If-None-Match иначе получал бы 304 на страницу прежнего рендерера,
-// пока не поправят сам текст (тот же довод, что у COMMIT файлового кэша глав).
-func docETag(path, build string, stamp int64) string {
-	sum := sha256.Sum256([]byte(path + "|" + build + "|" + strconv.FormatInt(stamp, 10)))
+// docETag — ETag страницы: адрес, отметка сборки, поколение закрытий и метка
+// правки материала. Сборка входит наравне с меткой правки: вёрстка меняется и
+// с кодом, а краулер с If-None-Match иначе получал бы 304 на страницу
+// прежнего рендерера, пока не поправят сам текст (тот же довод, что у COMMIT
+// файлового кэша глав). Поколение закрытий — по той же причине: закрытие
+// подглавы убирает её из родительской главы и тома, не трогая ни сборки, ни
+// полос (Source.Closures).
+func docETag(path, build string, closures, stamp int64) string {
+	sum := sha256.Sum256([]byte(path + "|" + build + "|" + strconv.FormatInt(closures, 10) + "|" + strconv.FormatInt(stamp, 10)))
 	return `"` + hex.EncodeToString(sum[:8]) + `"`
 }
 

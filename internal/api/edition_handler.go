@@ -41,6 +41,8 @@ type EditionRequest struct {
 	VolumesPlanned *int `json:"volumes_planned"`
 	// Closed — завести издание сразу закрытым; Update поле не читает.
 	Closed bool `json:"closed,omitempty"`
+	// ClosedReason — причина строки журнала при Closed.
+	ClosedReason string `json:"closed_reason,omitempty"`
 	// VolumeNumbering — "printed" или "order" (models.VolumeNumbering*).
 	// Указатель: поле не пришло — при создании печатная нумерация, при правке
 	// прежнее значение. Иначе форма или скрипт, не знающие о поле, молча
@@ -138,6 +140,11 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		numbering = models.VolumeNumberingPrinted
 	}
 
+	closeReason, ok := requireAdminToClose(w, r, req.Closed, req.ClosedReason)
+	if !ok {
+		return
+	}
+
 	edition := &models.Edition{
 		ID:              req.ID,
 		Title:           req.Title,
@@ -150,7 +157,7 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	if err := h.editionStore.Create(ctx, edition); err != nil {
+	if err := h.editionStore.Create(ctx, edition, closureActor(r), closeReason); err != nil {
 		if errors.Is(err, repository.ErrIDTaken) {
 			http.Error(w, fmt.Sprintf("edition id %d is already taken", req.ID), http.StatusConflict)
 			return

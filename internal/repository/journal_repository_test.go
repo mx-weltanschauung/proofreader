@@ -11,7 +11,7 @@ import (
 func newJournal(t *testing.T, repo *JournalRepository, slug string) *models.Journal {
 	t.Helper()
 	j := &models.Journal{Slug: slug, Title: "Проба " + slug}
-	if err := repo.Create(context.Background(), j); err != nil {
+	if err := repo.Create(context.Background(), j, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create journal: %v", err)
 	}
 	return j
@@ -23,7 +23,7 @@ func newIssue(t *testing.T, repo *JournalRepository, j *models.Journal, year, fr
 	issue := &models.JournalIssue{JournalID: j.ID, Year: year, NumberFrom: from, NumberTo: to, Label: label}
 	work := &models.Work{Title: models.IssueTitle(j.Title, year, label), Language: "ru",
 		Status: models.WorkStatusDraft, OwnerID: 1}
-	if err := repo.CreateIssue(context.Background(), issue, work); err != nil {
+	if err := repo.CreateIssue(context.Background(), issue, work, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
 	return issue, work
@@ -64,7 +64,7 @@ func TestJournalIssueTakenIsRejectedAndRolledBack(t *testing.T) {
 
 	dup := &models.JournalIssue{JournalID: j.ID, Year: 1925, NumberFrom: 5, NumberTo: 5, Label: "5"}
 	w := &models.Work{Title: "дубль", Status: models.WorkStatusDraft, OwnerID: 1}
-	err := repo.CreateIssue(ctx, dup, w)
+	err := repo.CreateIssue(ctx, dup, w, models.ClosureActor{}, "")
 	if !errors.Is(err, ErrIssueTaken) {
 		t.Fatalf("ждали ErrIssueTaken, получили %v", err)
 	}
@@ -80,22 +80,22 @@ func TestJournalIssueExplicitIDs(t *testing.T) {
 	pool := testPool(t)
 	repo := NewJournalRepository(pool)
 	j := &models.Journal{ID: 4242, Slug: "jr-explicit", Title: "Явный"}
-	if err := repo.Create(ctx, j); err != nil || j.ID != 4242 {
+	if err := repo.Create(ctx, j, models.ClosureActor{}, ""); err != nil || j.ID != 4242 {
 		t.Fatalf("журнал с явным id: %d, %v", j.ID, err)
 	}
 	issue := &models.JournalIssue{ID: 5151, JournalID: j.ID, Year: 1930, NumberFrom: 1, NumberTo: 1, Label: "1"}
 	work := &models.Work{ID: 6161, Title: "Явный, 1930, № 1", Status: models.WorkStatusDraft, OwnerID: 1}
-	if err := repo.CreateIssue(ctx, issue, work); err != nil {
+	if err := repo.CreateIssue(ctx, issue, work, models.ClosureActor{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if issue.ID != 5151 || work.ID != 6161 || issue.WorkID != 6161 {
 		t.Fatalf("id: номер %d, работа %d", issue.ID, work.ID)
 	}
 	again := &models.Journal{ID: 4242, Slug: "jr-explicit-2", Title: "Повтор"}
-	if err := repo.Create(ctx, again); !errors.Is(err, ErrIDTaken) {
+	if err := repo.Create(ctx, again, models.ClosureActor{}, ""); !errors.Is(err, ErrIDTaken) {
 		t.Fatalf("занятый id журнала: %v", err)
 	}
-	if err := repo.Create(ctx, &models.Journal{Slug: "jr-explicit", Title: "Тот же слаг"}); !errors.Is(err, ErrJournalSlugTaken) {
+	if err := repo.Create(ctx, &models.Journal{Slug: "jr-explicit", Title: "Тот же слаг"}, models.ClosureActor{}, ""); !errors.Is(err, ErrJournalSlugTaken) {
 		t.Fatalf("занятый слаг: %v", err)
 	}
 }

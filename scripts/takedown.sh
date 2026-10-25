@@ -1,44 +1,38 @@
 #!/usr/bin/env bash
-# Снятие тома и снятие аппарата тома — одной командой, с замером.
+# Снятие по жалобе — ЗАКРЫТИЕМ, а не удалением. Одной командой, с причиной.
 #
-# Зачем это нам. Правовая стойка проекта реактивная (тикет 14): ничего не
-# снимаем превентивно, снимаем по первому письму. Стойка целиком держится на
-# допущении, что снятие быстрое, — а операция не делалась ни разу, и сколько
-# она занимает, не знал никто. Эта команда и есть измеренная готовность.
+# Правовая стойка проекта реактивная (тикет 14): ничего не снимаем
+# превентивно, снимаем по первому письму. Раньше снятие сносило данные
+# (DELETE) и было необратимо; теперь оно закрывает: закрытое видят только
+# editor и administrator, анониму и читателю его нет ни в одном канале (API —
+# 404, /seo и .md — 410), а открыть обратно можно одной командой.
 #
-#   ./scripts/takedown.sh volume 145             # снять том целиком
-#   ./scripts/takedown.sh apparatus 145          # снять аппарат тома
-#   ./scripts/takedown.sh volume 145 --plan      # только показать, не трогать
-#   ./scripts/takedown.sh apparatus 145 --prod   # против боевой читальни
+#   ./scripts/takedown.sh volume 145 --reason "письмо правообладателя от 12.10"
+#   ./scripts/takedown.sh apparatus 145 --reason "..."     # аппарат тома
+#   ./scripts/takedown.sh chapter 145/9923 --reason "..."  # одна глава
+#   ./scripts/takedown.sh volume 145 --plan                # только показать
+#   ./scripts/takedown.sh volume 145 --reason "..." --open # вернуть обратно
+#   ./scripts/takedown.sh chapter 145/9923 --reason "..." --prod
 #
-# Что снимает «volume»: том, его полосы со сканами, главы, предметный
-# указатель, служебные передние листы — и объекты хранилища под works/<id>/.
-# Всё это уносит каскад схемы плюс обход по S3 внутри DELETE /api/works/{id}.
+# Закрывать и открывать может только администратор; причина обязательна в
+# обе стороны и попадает в журнал закрытий (GET /api/admin/closures).
 #
-# Что снимает «apparatus»: главы is_apparatus с подглавами, полосы их
-# диапазонов со сканами, предметный указатель тома и служебные передние листы.
-# Имя говорит про аппарат, а сносит оно больше — поэтому план печатается
-# поимённо и подтверждается вводом номера тома.
+# Что закрывает «apparatus»: корни глав is_apparatus (вместе с подглавами) и
+# служебные (front_matter) работы тома. Тело тома остаётся открытым.
 #
-# ЧЕГО НЕ СНИМАЕТ НИ ТО, НИ ДРУГОЕ. Подстрочные и редакционные сноски и
-# перевод (весь МиЭ) лежат внутри content_markdown полосы вперемешку с
-# текстом: отделить их нечем, и эти слои снимаются только снятием тома
-# целиком. Это ограничение, а не недоделка.
+# Что закрывает «chapter»: главу с подглавами и все полосы её диапазона.
+# Полоса, общая с открытой соседней главой, закрывается целиком: сосед
+# теряет на ней свой кусок (план печатает такие полосы и соседей). Родитель
+# закрытой подглавы теряет её вместе с полосами — так и задумано.
 #
-# Необратимо. Обратный ход — не откат, а повторная публикация тома из
-# локального корпуса (tools/ocr_ingest/publish_volume.py); адреса при этом
-# меняются, потому что id выдаются заново.
-#
-# Подробности, измеренные числа и то, куда снятие не дотягивается (копия в
-# «Архиве Интернета», кэш поисковика, журнал публикации) — в шапке выше и
-# в комментариях функций ниже.
+# ЧЕГО НЕ ДОСТАЁТ. Копия в «Архиве Интернета», кэш поисковика, уже
+# скачанные читателями файлы и архивы — подробности в docs/TAKEDOWN.md.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-# Статическая читальня: список исключений следующей сборки и выкладка, которая
-# снимает уже залитые сборки с этой работой. Переменные — для тестов.
-STATIC_EXCLUDE="${STATIC_EXCLUDE:-$REPO_ROOT/instance/static-exclude.txt}"
+# Статическая читальня: выкладка, которая снимает уже залитые сборки с этой
+# работой. Переменная — для тестов. Списка исключений скрипт не пишет.
 STATIC_PUBLISH="${STATIC_PUBLISH:-$SCRIPT_DIR/static-publish.sh}"
 
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
@@ -48,22 +42,58 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 # Чистые функции: ни сети, ни файлов. Проверяются scripts/tests/takedown_test.sh.
 # ---------------------------------------------------------------------------
 
-# parse_target ВИД ID — проверяет пару «что снимаем» и «у чего».
+# parse_target ВИД ЦЕЛЬ — проверяет пару «что закрываем» и «у чего».
 #
-# Номер тома берётся строго целым: ведущий слаг адреса читальни
-# (/works/49-lenin-t06) сюда не годится, потому что API адресует том числом, а
-# «49-lenin-t06» молча ушло бы в ParseInt как 49 не везде одинаково.
+# Том — целое число: ведущий слаг адреса читальни (/works/49-lenin-t06) сюда
+# не годится, API адресует том числом. Глава — пара «том/глава», потому что
+# маршрут главы адресуется парой. Печатает «вид том [глава]».
 parse_target() {
   local kind="$1" id="${2:-}"
   case "$kind" in
-    volume|apparatus) ;;
-    *) printf 'неизвестный вид снятия: %s (ожидалось volume или apparatus)\n' "$kind"; return 1 ;;
+    volume|apparatus)
+      [[ "$id" =~ ^[1-9][0-9]*$ ]] || {
+        printf 'номер тома должен быть целым числом, получено: %s\n' "${id:-<пусто>}"
+        return 1
+      }
+      printf '%s %s\n' "$kind" "$id" ;;
+    chapter)
+      [[ "$id" =~ ^([1-9][0-9]*)/([1-9][0-9]*)$ ]] || {
+        printf 'глава адресуется парой том/глава (12/345), получено: %s\n' "${id:-<пусто>}"
+        return 1
+      }
+      printf 'chapter %s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" ;;
+    *) printf 'неизвестный вид: %s (ожидалось volume, apparatus или chapter)\n' "$kind"; return 1 ;;
   esac
-  [[ "$id" =~ ^[1-9][0-9]*$ ]] || {
-    printf 'номер тома должен быть целым числом, получено: %s\n' "${id:-<пусто>}"
-    return 1
-  }
-  printf '%s %s\n' "$kind" "$id"
+}
+
+# require_reason ТЕКСТ — причина обязательна и в закрытии, и в открытии.
+# Пустая или из одних пробелов — отказ (сервер ответил бы 400 «Укажите
+# причину», но проверяем до входа).
+require_reason() {
+  local r="${1:-}"
+  r="${r//[[:space:]]/}"
+  [[ -n "$r" ]] || { printf 'Укажите причину: --reason "письмо, от кого, о чём"\n' >&2; return 1; }
+}
+
+# closed_body true|false ПРИЧИНА — тело запроса. Через jq --arg, без
+# подстановки в строку: кавычки и переводы строк в причине обязаны уцелеть.
+closed_body() {
+  jq -n --argjson c "$1" --arg r "$2" '{closed:$c, reason:$r}'
+}
+
+# probe_ok ОЖИДАНИЕ КОД — сходится ли код анонимной пробы. Ожидание: 410, 404
+# или open (вернулось: не 404 и не 410).
+probe_ok() {
+  local want="$1" code="${2:-000}"
+  # curl при обрыве печатает 000 сам; лишнее от `|| echo 000` отсекаем: берём
+  # первые три знака. Пустое и 000 — сервер не ответил, это не «открыто».
+  code="${code:0:3}"
+  [[ -n "$code" ]] || code=000
+  if [[ "$want" == open ]]; then
+    [[ "$code" != 404 && "$code" != 410 && "$code" != 000 ]]
+  else
+    [[ "$code" == "$want" ]]
+  fi
 }
 
 # human_duration МИЛЛИСЕКУНДЫ — «0.5 с», «4 мин 07 с».
@@ -89,40 +119,16 @@ human_duration() {
 # в busybox; на macOS его нет, но остальные скрипты набора и так линуксовые.
 now_ms() { echo $(( $(date +%s%N) / 1000000 )); }
 
-# plan_is_empty JSON — пуст ли план снятия аппарата.
+# plan_is_empty JSON — пуст ли план закрытия аппарата.
 #
 # Отдельной функцией, потому что это главное правило команды: «снято ноль» на
-# томе без разметки выглядит как успешное снятие и им не является. Сервер
-# отвечает на такой снос 409, но команда обязана сказать это раньше — до того,
-# как спросит подтверждение.
+# томе без разметки выглядит как успешное закрытие и им не является. Команда
+# обязана сказать это до того, как спросит подтверждение.
 plan_is_empty() {
   local json="$1" chapters children
   chapters="$(jq -r '.chapter_count // 0' <<<"$json")"
   children="$(jq -r '(.children // []) | length' <<<"$json")"
   [[ "$chapters" == "0" && "$children" == "0" ]]
-}
-
-# index_anchor_note СТАТЕЙ_ТОМА СТАТЕЙ_СОБРАНИЯ — подпись под счётчиком статей.
-#
-# Счёт статей в плане идёт по ЯКОРЮ: index_concept_articles.work_id = этот том.
-# А якорь проставляет только миграция 000025 (по прежней колонке понятия) —
-# ни parse_index.py, ни publish_volume.py поля work_id в теле ввоза не шлют,
-# и статье, заведённой ввозом, он не достаётся никогда. Значит ноль в плане
-# необратимой операции означает одно из двух: указателя у собрания нет вовсе
-# (снимать нечего) или указатель есть, но без якоря (снятие его не тронет, и
-# оператор увидит заведомо неполный план). Различить их по самому нулю нельзя,
-# поэтому подпись смотрит на второе число — статьи собрания целиком.
-index_anchor_note() {
-  local mine="${1:-0}" edition="${2:-0}"
-  [[ "$mine" == "0" ]] || return 0
-  if [[ "$edition" == "0" ]]; then
-    printf 'у собрания статей указателя нет вовсе — ноль выше полон\n'
-  else
-    printf 'ВНИМАНИЕ: у собрания %s статей указателя, и ни одна не помечена\n' "$edition"
-    printf 'этим томом (work_id) — снятие их НЕ ТРОНЕТ. Ноль выше значит\n'
-    printf '«якоря на этот том нет», а не «указателя нет»: статье,\n'
-    printf 'заведённой ввозом, work_id не проставляется вовсе.\n'
-  fi
 }
 
 # api_base --prod|--local — адрес API.
@@ -151,21 +157,32 @@ crawler_path() {
   fi
 }
 
+# crawler_chapter_path --prod|--local ТОМ ГЛАВА — то же для страницы главы.
+crawler_chapter_path() {
+  if [[ "${1:-}" == "--prod" ]]; then
+    printf '/works/%s/chapters/%s\n' "$2" "$3"
+  else
+    printf '/seo/works/%s/chapters/%s\n' "$2" "$3"
+  fi
+}
+
 usage() {
   cat >&2 <<'USAGE'
-Использование: takedown.sh {volume|apparatus} <номер тома> [ключи]
+Использование: takedown.sh {volume|apparatus} <том> ключи
+               takedown.sh chapter <том>/<глава> ключи
 
-  volume      снять том целиком: полосы, сканы, главы, указатель,
-              служебные передние листы, объекты хранилища
-  apparatus   снять аппарат тома: главы is_apparatus с их полосами,
-              предметный указатель и служебные передние листы
+  volume      закрыть том целиком
+  apparatus   закрыть аппарат тома: главы is_apparatus и служебные работы
+  chapter     закрыть главу (с подглавами); адрес — пара 12/345
 
-  --plan      только показать, что снимется; ничего не менять
+  --reason T  причина (обязательна, и при открытии тоже)
+  --open      обратный ход: открыть то же самое
+  --plan      только показать, что закроется; ничего не менять
   --prod      против боевой читальни (умолчание — локальный API)
   --yes       без подтверждения (для неинтерактивных прогонов)
 
-Необратимо. Обратный ход — повторная публикация тома из локального корпуса,
-и адреса при этом меняются.
+Закрытое видят только editor и administrator; администратор открывает
+обратно этой же командой. Журнал — GET /api/admin/closures.
 USAGE
   exit 2
 }
@@ -227,57 +244,23 @@ api() {
   API_BODY="${out%$'\n'*}"
 }
 
+# api_put ПУТЬ ТЕЛО — PUT с JSON-телом; результат — как у api.
+api_put() {
+  local path="$1" body="$2" out
+  out="$(curl -sS -X PUT "$API_BASE$path" \
+    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+    -d "$body" -w $'\n%{http_code}')" || return 1
+  API_STATUS="${out##*$'\n'}"
+  API_BODY="${out%$'\n'*}"
+}
+
 api_ok() { [[ "$API_STATUS" =~ ^2 ]]; }
-
-# edition_article_count ИЗДАНИЕ — сколько понятий каталога несут статью этого
-# собрания. Своего счётчика в API нет, зато список понятий отдаёт edition_ids
-# агрегатом; по 500 за раз это горстка запросов даже на ленинском указателе.
-# Пустое издание (работа вне собрания) — ноль без единого запроса.
-edition_article_count() {
-  local edition="${1:-}" offset=0 n batch total=0
-  [[ -n "$edition" && "$edition" != "null" ]] || { printf '0\n'; return 0; }
-  while :; do
-    api GET "/api/concepts?limit=500&offset=$offset" || return 1
-    api_ok || return 1
-    n="$(jq -r '(. // []) | length' <<<"$API_BODY")"
-    [[ "$n" == "0" ]] && break
-    batch="$(jq -r --arg e "$edition" \
-      '[(. // [])[] | select([(.edition_ids // [])[] | tostring] | index($e))] | length' \
-      <<<"$API_BODY")"
-    total=$(( total + batch ))
-    offset=$(( offset + n ))
-    (( n < 500 )) && break
-  done
-  printf '%s\n' "$total"
-}
-
-# print_index_note ID СТАТЕЙ_ТОМА — подпись под счётчиком статей, если нужна.
-#
-# Второе число (статьи собрания) добывается ТОЛЬКО когда первое — ноль:
-# на томе с якорем обход каталога незачем.
-print_index_note() {
-  local id="$1" mine="$2" edition note
-  [[ "$mine" == "0" ]] || return 0
-  api GET "/api/works/$id" || die "не удалось запросить том $id"
-  api_ok || die "тома $id нет (код $API_STATUS)"
-  edition="$(jq -r '.edition_id // empty' <<<"$API_BODY")"
-  # Счёт идёт в подоболочке, поэтому API_BODY/API_STATUS оттуда не вернутся —
-  # проверяем сам код возврата, а не их.
-  local articles
-  articles="$(edition_article_count "$edition")" ||
-    die "не удалось пересчитать статьи собрания — план неполон, отказ"
-  note="$(index_anchor_note "$mine" "$articles")"
-  if [[ -n "$note" ]]; then
-    while IFS= read -r line; do printf '              %s\n' "$line"; done <<<"$note"
-  fi
-  return 0
-}
 
 # ---------------------------------------------------------------------------
 # План
 # ---------------------------------------------------------------------------
 
-# volume_plan ID — что снимет снятие тома. Собирается из уже существующих
+# volume_plan ID — что закроет закрытие тома. Собирается из существующих
 # маршрутов: своего «плана тома» на сервере нет и заводить его незачем.
 volume_plan() {
   local id="$1" work pages chapters apparatus
@@ -286,10 +269,6 @@ volume_plan() {
   api_ok || die "тома $id нет (код $API_STATUS)"
   work="$API_BODY"
 
-  # Каждый ответ проверяется кодом, а не только первым. Это экран, по которому
-  # оператор подтверждает необратимое, и непроверенный ответ печатает в нём
-  # ноль вместо числа: у списочных маршрутов есть известный дефект — пустой
-  # список приезжает как null, и «глав: 0» на живом томе выглядит буднично.
   api GET "/api/works/$id/page-map" || die "не удалось запросить карту полос"
   api_ok || die "карта полос тома $id не отдалась (код $API_STATUS) — план неполон, отказ"
   pages="$(jq -r '(. // []) | length' <<<"$API_BODY")"
@@ -298,150 +277,154 @@ volume_plan() {
   api_ok || die "главы тома $id не отдались (код $API_STATUS) — план неполон, отказ"
   chapters="$(jq -r '[.. | objects | select(has("start_page"))] | length' <<<"$API_BODY")"
 
-  api GET "/api/works/$id/apparatus" || die "не удалось запросить план аппарата"
+  api GET "/api/works/$id/apparatus" || die "не удалось запросить состав аппарата"
   api_ok || die "состав аппарата тома $id не отдался (код $API_STATUS) — план неполон, отказ"
   apparatus="$API_BODY"
 
-  printf 'Снятие ТОМА (необратимо)\n'
+  printf '%s ТОМА\n' "$ACTION_TITLE"
   printf '  том:        %s — %s\n' "$id" "$(jq -r '.title // "?"' <<<"$work")"
   printf '  автор:      %s\n' "$(jq -r 'if (.author // "") == "" then "—" else .author end' <<<"$work")"
   printf '  собрание:   %s, том %s\n' \
     "$(jq -r '.edition_id // "—"' <<<"$work")" "$(jq -r '.volume_number // "—"' <<<"$work")"
-  printf '  полос:      %s (вместе со сканами)\n' "$pages"
+  printf '  полос:      %s\n' "$pages"
   printf '  глав:       %s\n' "$chapters"
-  # concept_count в API — статьи предметного указателя (index_concept_articles)
-  # с work_id = этот том. В отличие от снятия АППАРАТА (Remove в
-  # apparatus_repository.go, свой DELETE FROM index_concept_articles), снятие
-  # ТОМА этих статей не удаляет: у index_concept_articles.work_id стоит
-  # ON DELETE SET NULL (миграция 000025), а DELETE /api/works/{id} —
-  # WorkRepository.Delete, голый DELETE FROM works без собственного кода на
-  # статьи. Поэтому N ниже — не то, что снимется, а то, что ОСИРОТЕЕТ: у
-  # стольких статей обнулится привязка к тому, а сама статья, её текст,
-  # подрубрики и адреса останутся в каталоге и останутся публично читаемыми по
-  # GET /api/concepts/{slug}. Снести их сейчас можно снятием аппарата (он
-  # удаляет по work_id) либо вручную.
-  local concepts
-  concepts="$(jq -r '.concept_count // 0' <<<"$apparatus")"
-  printf '  статей:     %s статей указателя ссылаются на этот том (work_id)\n' "$concepts"
-  if [[ "$concepts" != "0" ]]; then
-    printf '              ВНИМАНИЕ: снятие ТОМА их не удаляет — только снимает\n'
-    printf '              привязку (work_id -> NULL). Статьи и их текст останутся в\n'
-    printf '              каталоге и останутся читаемыми по GET /api/concepts/{slug}.\n'
-    printf '              Снести их сейчас можно снятием аппарата (удаляет по\n'
-    printf '              work_id) либо вручную.\n'
-  fi
-  print_index_note "$id" "$concepts"
-  printf '  служебных:  %s\n' "$(jq -r '(.children // []) | length' <<<"$apparatus")"
+  printf '  служебных:  %s (закрываются вместе с томом)\n' "$(jq -r '(.children // []) | length' <<<"$apparatus")"
   jq -r '(.children // [])[] | "    - \(.id): \(.title) (\(.pages) полос, \(.role))"' <<<"$apparatus"
-  printf '  хранилище:  объекты под works/%s/ и под каждым служебным\n' "$id"
+  printf '  Данные не удаляются: закрытое остаётся в базе и в хранилище.\n'
 }
 
-# apparatus_plan ID — что снимет снятие аппарата. Печатает и возвращает JSON
+# chapter_plan ТОМ ГЛАВА — план из closed-plan: сколько глав и полос закроется,
+# какие полосы общие с открытыми главами.
+CHAPTER_PLAN=""
+chapter_plan() {
+  local work="$1" chapter="$2"
+  api GET "/api/works/$work/chapters/$chapter/closed-plan" || die "не удалось запросить план главы"
+  api_ok || die "план главы $work/$chapter не отдался (код $API_STATUS): $API_BODY"
+  CHAPTER_PLAN="$API_BODY"
+  printf '%s ГЛАВЫ\n' "$ACTION_TITLE"
+  printf '  глава:      %s в томе %s\n' "$chapter" "$work"
+  printf '  глав:       %s (с подглавами)\n' "$(jq -r '.chapters // 0' <<<"$CHAPTER_PLAN")"
+  printf '  полос:      %s\n' "$(jq -r '.pages // 0' <<<"$CHAPTER_PLAN")"
+  local shared
+  shared="$(jq -r '(.shared // []) | length' <<<"$CHAPTER_PLAN")"
+  if [[ "$shared" != "0" ]] && (( ! REOPENING )); then
+    printf '  общих полос: %s — их накрывает и открытая глава; полоса\n' "$shared"
+    printf '              закрывается целиком, соседи потеряют на ней кусок:\n'
+    jq -r '(.shared // [])[] | "    - полоса \(.page_number): \((.neighbors // []) | join(", "))"' <<<"$CHAPTER_PLAN"
+  fi
+  printf '  Родительские главы в списке соседей не названы: родитель теряет\n'
+  printf '  закрытую подглаву вместе с её полосами — так и задумано.\n'
+}
+
+# apparatus_plan ID — что закроет закрытие аппарата. Печатает и возвращает JSON
 # плана в APPARATUS_PLAN, чтобы вызывающий проверил пустоту, не ходя дважды.
 APPARATUS_PLAN=""
+REOPENING=0
 apparatus_plan() {
   local id="$1"
   api GET "/api/works/$id/apparatus" || die "не удалось запросить план аппарата"
   api_ok || die "тома $id нет (код $API_STATUS)"
   APPARATUS_PLAN="$API_BODY"
 
-  printf 'Снятие АППАРАТА ТОМА (необратимо)\n'
+  printf '%s АППАРАТА ТОМА\n' "$ACTION_TITLE"
   printf '  том:        %s — %s\n' "$id" "$(jq -r '.work_title // "?"' <<<"$APPARATUS_PLAN")"
-  printf '  глав:       %s (вместе с подглавами)\n' "$(jq -r '.chapter_count // 0' <<<"$APPARATUS_PLAN")"
+  printf '  глав:       %s (корни и подглавы; закрываются корни)\n' "$(jq -r '.chapter_count // 0' <<<"$APPARATUS_PLAN")"
   # Глава с parent_title сидит ВНУТРИ работы, не помеченной аппаратом, — почти
   # наверняка это авторское приложение, а не аппарат издания (у Маркса так
-  # помечены сто полос его собственного текста). Снос её всё равно возьмёт,
-  # поэтому строка печатается с восклицанием, а не наравне с остальными.
+  # помечены сто полос его собственного текста). Закрытие её всё равно
+  # возьмёт, поэтому строка печатается с восклицанием, а не наравне с остальными.
   jq -r '(.chapters // [])[]
          | (if (.parent_title // "") == "" then "    - " else "    ! " end)
          + "\(.id): \(.title) [\(.start_page)—\(.end_page)]"
          + (if .subchapters > 0 then " + \(.subchapters) подглав" else "" end)
          + (if (.parent_title // "") == "" then "" else "  ← ВНУТРИ «\(.parent_title)», проверь: похоже на авторское приложение" end)' <<<"$APPARATUS_PLAN"
-  printf '  полос:      %s (вместе со сканами)\n' "$(jq -r '.page_count // 0' <<<"$APPARATUS_PLAN")"
-  # Аппарат не озвучивается, поэтому штатно тут ноль; ненулевое — дорожки
-  # прежней раскладки или главы, размеченной аппаратом после синтеза.
-  local tracks
-  tracks="$(jq -r '.track_count // 0' <<<"$APPARATUS_PLAN")"
-  if [[ "$tracks" != "0" ]]; then
-    printf '  дорожек:    %s (синтез, задевший полосы аппарата)\n' "$tracks"
+  printf '  полос:      %s (в диапазонах глав аппарата, до учёта общих с телом)\n' "$(jq -r '.page_count // 0' <<<"$APPARATUS_PLAN")"
+  if (( ! REOPENING )); then
+    # Граничные полосы, общие корня аппарата с открытой главой тела,
+    # закрываются целиком, и глава тела теряет на них свой кусок: план каждого
+    # корня — из closed-plan.
+    local root
+    while IFS= read -r root; do
+      [[ -n "$root" ]] || continue
+      api GET "/api/works/$id/chapters/$root/closed-plan" || die "не удалось запросить план главы $root"
+      api_ok || die "план главы $root не отдался (код $API_STATUS) — план неполон, отказ"
+      if [[ "$(jq -r '(.shared // []) | length' <<<"$API_BODY")" != "0" ]]; then
+        printf '  общие полосы корня %s (закрываются целиком, соседи потеряют кусок):\n' "$root"
+        jq -r '(.shared // [])[] | "    - полоса \(.page_number): \((.neighbors // []) | join(", "))"' <<<"$API_BODY"
+      fi
+    done < <(jq -r '(.chapters // [])[] | .id' <<<"$APPARATUS_PLAN")
   fi
-  local concepts
-  concepts="$(jq -r '.concept_count // 0' <<<"$APPARATUS_PLAN")"
-  printf '  статей:     %s (предметный указатель тома)\n' "$concepts"
-  print_index_note "$id" "$concepts"
   printf '  служебных:  %s\n' "$(jq -r '(.children // []) | length' <<<"$APPARATUS_PLAN")"
   jq -r '(.children // [])[] | "    - \(.id): \(.title) (\(.pages) полос, \(.role))"' <<<"$APPARATUS_PLAN"
   printf '  ТЕЛО ТОМА ОСТАЁТСЯ. Сноски и перевод внутри полос тела не отделимы\n'
-  printf '  и снимаются только снятием тома целиком.\n'
+  printf '  и закрываются только закрытием тома целиком.\n'
 
-  # Щель, найденная замером: снятие идёт по диапазонам глав, и полосы, не
+  # Щель, найденная замером: закрытие идёт по главам, и полосы, не
   # накрытые ни одной главой, остаются — какими бы они ни были. У ленинского
   # тома 45 это «Содержание» и колофон, то есть аппарат чистой воды. Молчать
-  # об этом нельзя: невидимый остаток и есть худший исход снятия.
+  # об этом нельзя: невидимый остаток и есть худший исход закрытия.
   local outside
   outside="$(jq -r '.pages_outside_chapters // 0' <<<"$APPARATUS_PLAN")"
   if [[ "$outside" != "0" ]]; then
     printf '  ВНИМАНИЕ: %s полос тома не накрыты НИ ОДНОЙ главой и останутся.\n' "$outside"
     printf '  Обычно это «Содержание» и выходные данные в хвосте. Если их тоже\n'
-    printf '  надо снять — размечай главу или снимай том целиком.\n'
+    printf '  надо закрыть — размечай главу или закрывай том целиком.\n'
   fi
 }
 
-# exclude_line ВИД ID ДАТА — строка instance/static-exclude.txt о снятии:
-# «ID» для тома, «ID apparatus» для аппарата (разбор —
-# staticsite.ParseExcludeList).
-exclude_line() {
-  if [[ "$1" == volume ]]; then
-    printf '%s  # %s: том снят по жалобе (takedown.sh volume)\n' "$2" "$3"
-  else
-    printf '%s apparatus  # %s: снят аппарат по жалобе (takedown.sh apparatus)\n' "$2" "$3"
-  fi
-}
-
-# static_after_takedown ВИД ID — статическая читальня узнаёт о снятии с
-# боевого: работа уходит в исключения следующей сборки, а сборки в бакете, где
-# она лежит, снимаются сразу (static-publish.sh --withdraw). Иначе архив со
-# снятым томом так и лежал бы по ссылке из справки.
+# static_after_takedown ID — сборки статической читальни, уже выложенные в
+# бакет и содержащие работу, снимаются сразу (static-publish.sh --withdraw).
+# Следующую сборку ведёт сама сборка: она узнаёт закрытое с боевого (карты
+# полос анонимно, служебные работы с 404), строки в списке исключений
+# больше не пишутся. Инструмент выкладки — свой у каждой читальни (в
+# платформе его нет): без него выложенные сборки снимают сами.
 static_after_takedown() {
-  # Каталога экземпляра может не быть (читальня без instance/): снятие на
-  # сайте к этому моменту уже прошло, падать на записи строки нельзя.
-  mkdir -p "$(dirname "$STATIC_EXCLUDE")"
-  exclude_line "$1" "$2" "$(date +%F)" >> "$STATIC_EXCLUDE"
-  log "статическая читальня: строка дописана в $STATIC_EXCLUDE — закоммить её"
-  # Инструмент выкладки — свой у каждой читальни (в платформе его нет):
-  # без него выложенные сборки с этим томом снимают сами.
   if [[ ! -x "$STATIC_PUBLISH" ]]; then
-    log "статическая читальня: инструмента выкладки нет ($STATIC_PUBLISH) — выложенные сборки с работой $2 снимите сами"
+    log "статическая читальня: инструмента выкладки нет ($STATIC_PUBLISH) — выложенные сборки с работой $1 снимите сами"
     return 0
   fi
-  "$STATIC_PUBLISH" --withdraw "$2" --yes ||
-    die "снятие на сайте прошло, а сборки статической читальни в бакете остались.
-       Повтори: scripts/static-publish.sh --withdraw $2"
+  "$STATIC_PUBLISH" --withdraw "$1" --yes ||
+    die "закрытие на сайте прошло, а сборки статической читальни в бакете остались.
+       Повтори: scripts/static-publish.sh --withdraw $1"
 }
 
 # ---------------------------------------------------------------------------
 
 main() {
   (( $# >= 2 )) || usage
-  local parsed kind id
+  local parsed kind id chapter=""
   parsed="$(parse_target "$1" "$2")" || die "$parsed"
-  read -r kind id <<<"$parsed"
+  read -r kind id chapter <<<"$parsed"
   shift 2
 
-  local plan_only=0 target=--local assume_yes=0
+  local plan_only=0 target=--local assume_yes=0 reopen=0 reason=""
   while (( $# )); do
     case "$1" in
       --plan) plan_only=1; shift ;;
       --prod) target=--prod; shift ;;
       --yes)  assume_yes=1; shift ;;
+      --open) reopen=1; shift ;;
+      --reason)
+        (( $# >= 2 )) || die "--reason требует текст"
+        reason="$2"; shift 2 ;;
       -h|--help) usage ;;
       *) die "неизвестный ключ: $1" ;;
     esac
   done
 
   command -v jq >/dev/null || die "нужен jq"
+  # Причина — до входа и до сети. План ничего не меняет и причины не просит.
+  if (( ! plan_only )); then
+    require_reason "$reason" || exit 1
+  fi
   load_env
   API_BASE="$(api_base "$target")"
+
+  local closed=true want_seo=410 want_api=404
+  ACTION_TITLE="Закрытие"
+  if (( reopen )); then
+    closed=false; want_seo=open; want_api=open; ACTION_TITLE="Открытие"; REOPENING=1
+  fi
 
   log "читальня: $API_BASE"
   TOKEN="$(login "$target" "$API_BASE")" || die "вход не удался"
@@ -450,23 +433,20 @@ main() {
   local plan_started plan_took
   plan_started="$(now_ms)"
   printf '\n'
-  if [[ "$kind" == "volume" ]]; then
-    volume_plan "$id"
-  else
-    apparatus_plan "$id"
-  fi
+  case "$kind" in
+    volume) volume_plan "$id" ;;
+    apparatus) apparatus_plan "$id" ;;
+    chapter) chapter_plan "$id" "$chapter" ;;
+  esac
   plan_took=$(( $(now_ms) - plan_started ))
   printf '\n'
   log "план собран за $(human_duration "$plan_took")"
 
-  # Отказ на пустом плане — раньше подтверждения. Сервер тоже откажет (409),
-  # но спросить «точно снимаем?» про набор из нуля строк значит предложить
-  # оператору подтвердить бессмыслицу.
+  # Отказ на пустом плане — раньше подтверждения: «закрыто ноль» не должно
+  # выглядеть как закрытие.
   if [[ "$kind" == "apparatus" ]] && plan_is_empty "$APPARATUS_PLAN"; then
-    die "у тома $id не размечено ни одной главы аппарата и нет служебных работ — снимать нечего.
-       Разметь главы (is_apparatus) или убедись, что аппарата в томе нет.
-       Разметка ставится классификатором по заголовку и в корпусе неполна:
-       у издания Выготского до миграции 000019 не было размечено ни одной."
+    die "у тома $id не размечено ни одной главы аппарата и нет служебных работ — закрывать нечего.
+       Разметь главы (is_apparatus) или убедись, что аппарата в томе нет."
   fi
 
   if (( plan_only )); then
@@ -474,61 +454,101 @@ main() {
     return 0
   fi
 
-  # Подтверждение — ввод номера тома, а не «y». Операция необратима, и цена
-  # случайного Enter несоизмерима с ценой лишних четырёх нажатий.
+  # Подтверждение — ввод номера тома (для главы — пары), а не «y».
+  local label="$id"
+  [[ "$kind" == chapter ]] && label="$id/$chapter"
   if (( ! assume_yes )); then
     local answer
-    read -r -p "Введи номер тома ($id), чтобы снять: " answer ||
+    read -r -p "Введи $label, чтобы подтвердить: " answer ||
       die "подтверждения нет — отказ"
-    [[ "$answer" == "$id" ]] || die "подтверждение не совпало — отказ"
+    [[ "$answer" == "$label" ]] || die "подтверждение не совпало — отказ"
   fi
 
-  local started took
+  local body started took r c
+  body="$(closed_body "$closed" "$reason")"
   started="$(now_ms)"
-  if [[ "$kind" == "volume" ]]; then
-    api DELETE "/api/works/$id" || die "запрос снятия не прошёл"
-    api_ok || die "снятие не удалось (код $API_STATUS): $API_BODY"
-    log "том $id снят"
-  else
-    api DELETE "/api/works/$id/apparatus" || die "запрос снятия не прошёл"
-    api_ok || die "снятие не удалось (код $API_STATUS): $API_BODY"
-    printf '%s\n' "$API_BODY" | jq -r '"снято: \(.chapter_count) глав, \(.page_count) полос, \(.concept_count) статей указателя, \((.children // []) | length) служебных работ"' >&2
-  fi
+  # put_closed ПУТЬ — один PUT .../closed с телом; любой не-2xx — отказ.
+  put_closed() {
+    api_put "$1" "$body" || die "запрос не прошёл: $1"
+    api_ok || die "не удалось (код $API_STATUS) на $1: $API_BODY"
+  }
+  local roots=() children=()
+  case "$kind" in
+    volume)
+      put_closed "/api/works/$id/closed"
+      log "том $id: closed=$closed" ;;
+    chapter)
+      put_closed "/api/works/$id/chapters/$chapter/closed"
+      log "глава $id/$chapter: closed=$closed" ;;
+    apparatus)
+      mapfile -t roots < <(jq -r '(.chapters // [])[] | .id' <<<"$APPARATUS_PLAN")
+      mapfile -t children < <(jq -r '(.children // [])[] | .id' <<<"$APPARATUS_PLAN")
+      for r in "${roots[@]}"; do
+        [[ -n "$r" ]] || continue
+        put_closed "/api/works/$id/chapters/$r/closed"
+        log "глава аппарата $r: closed=$closed"
+      done
+      for c in "${children[@]}"; do
+        [[ -n "$c" ]] || continue
+        put_closed "/api/works/$c/closed"
+        log "служебная работа $c: closed=$closed"
+      done ;;
+  esac
   took=$(( $(now_ms) - started ))
+  log "заняло $(human_duration "$took") (план — $(human_duration "$plan_took"))"
 
-  log "снятие заняло $(human_duration "$took") (план — $(human_duration "$plan_took"))"
-
-  # Сверка: адрес снятого обязан отвечать 410, а не 404 и не 200. Разница не
-  # косметическая — 404 поисковик перепроверяет неделями, 410 выбрасывает
-  # сразу; и nginx фронта перехватывает именно 404, уводя его в SPA.
-  if [[ "$kind" == "volume" ]]; then
+  # Сверка анонимно. Закрытое: /seo отвечает 410 (не 404 — 404 поисковик
+  # перепроверяет неделями, и nginx фронта уводит его в SPA), служебные
+  # работы аппарата в API — 404. Открытое: не 404 и не 410.
+  local mismatches=()
+  probe() { # ПОДПИСЬ ОЖИДАНИЕ URL
     local code
-    local probe; probe="$(crawler_path "$target" "$id")"
     code="$(curl -sS -o /dev/null -w '%{http_code}' \
-      -H 'User-Agent: TelegramBot (like TwitterBot)' "$API_BASE$probe" || echo 000)"
-    if [[ "$code" == "410" ]]; then
-      log "сверка: адрес снятого тома отвечает 410 — верно"
+      -H 'User-Agent: TelegramBot (like TwitterBot)' "$3" || true)"
+    code="${code:0:3}"; [[ -n "$code" ]] || code=000
+    if probe_ok "$2" "$code"; then
+      log "сверка: $1 — $code, верно"
     else
-      log "ВНИМАНИЕ: адрес снятого тома ответил $code вместо 410 — проверь вручную"
+      log "ОШИБКА СВЕРКИ: $1 ответил $code (ожидалось: $2)"
+      mismatches+=("$1 [$3]: $code вместо $2")
     fi
+  }
+  case "$kind" in
+    volume)
+      probe "страница тома $id" "$want_seo" "$API_BASE$(crawler_path "$target" "$id")" ;;
+    chapter)
+      probe "страница главы $id/$chapter" "$want_seo" "$API_BASE$(crawler_chapter_path "$target" "$id" "$chapter")" ;;
+    apparatus)
+      for r in "${roots[@]}"; do
+        [[ -n "$r" ]] || continue
+        probe "глава аппарата $r" "$want_seo" "$API_BASE$(crawler_chapter_path "$target" "$id" "$r")"
+      done
+      for c in "${children[@]}"; do
+        [[ -n "$c" ]] || continue
+        probe "служебная работа $c (API анониму)" "$want_api" "$API_BASE/api/works/$c"
+      done ;;
+  esac
+
+  if [[ "$target" == "--prod" && "$closed" == true ]]; then
+    static_after_takedown "$id"
   fi
 
-  if [[ "$target" == "--prod" ]]; then
-    static_after_takedown "$kind" "$id"
-  fi
+  cat >&2 <<'TAIL'
 
-  cat >&2 <<EOF
-
-Чего это снятие НЕ достало, и достать не может:
+Журнал закрытий: GET /api/admin/closures (экран /admin/closures).
+Чего закрытие НЕ достало, и достать не может:
   - копию в «Архиве Интернета», если том туда уезжал (scripts/wayback-save.sh
     --exclude); удаление оттуда — переписка, а не команда;
   - кэш поисковика: адрес выпадет из выдачи не мгновенно (410 быстрее 404);
-  - локальный корпус: том остаётся в рабочей базе, и он же — обратный ход;
-  - журнал публикации tools/ocr_ingest/published/*.json: он по-прежнему
-    считает том выложенным;
-  - архивы статической читальни, уже скачанные читателями, и зеркала, которые
-    они выложили.
-EOF
+  - файлы и архивы статической читальни, уже скачанные читателями;
+  - журнал публикации tools/ocr_ingest/published/*.json.
+Обратный ход: та же команда с --open и причиной.
+TAIL
+  if (( ${#mismatches[@]} )); then
+    printf 'Сверка не сошлась, запись при этом уже прошла:\n' >&2
+    printf '  - %s\n' "${mismatches[@]}" >&2
+    die "сверка после ${ACTION_TITLE,,} не сошлась (${#mismatches[@]}) — проверь перечисленное вручную"
+  fi
 }
 
 # Источается тестом — тогда main не запускается.

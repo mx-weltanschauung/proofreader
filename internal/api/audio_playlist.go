@@ -18,6 +18,14 @@ type AudioPlaylist struct {
 	works    WorkStore
 	chapters ChapterGetter
 	baseURL  string
+	view     audioView
+}
+
+// WithClosedSpans подключает закрытые главы: плейлист не-сотрудника не
+// перечисляет дорожки и записи, задевающие их.
+func (p *AudioPlaylist) WithClosedSpans(c ClosedSpansStore) *AudioPlaylist {
+	p.view = audioView{closed: c}
+	return p
 }
 
 func NewAudioPlaylist(tracks AudioTrackStore, recs AudioRecordingStore, works WorkStore,
@@ -50,6 +58,14 @@ func (p *AudioPlaylist) serve(ctx context.Context, w http.ResponseWriter, workID
 	}
 	recs, err := p.recs.ListRecordings(ctx, workID)
 	if err != nil {
+		http.Error(w, "Не удалось собрать плейлист", http.StatusInternalServerError)
+		return
+	}
+	if tracks, err = p.view.tracks(ctx, workID, tracks); err != nil {
+		http.Error(w, "Не удалось собрать плейлист", http.StatusInternalServerError)
+		return
+	}
+	if recs, err = p.view.recordings(ctx, workID, recs); err != nil {
 		http.Error(w, "Не удалось собрать плейлист", http.StatusInternalServerError)
 		return
 	}

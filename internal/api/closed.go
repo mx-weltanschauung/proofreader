@@ -7,7 +7,20 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+
+	"proofreader/internal/middleware"
+	"proofreader/internal/models"
 )
+
+// staffContext — несёт ли контекст claims сотрудника (editor, administrator).
+// Нулевое значение — не сотрудник: контекст без claims (context.Background(),
+// краулер, MCP, статическая сборка) закрытое не видит. isStaffRequest — то же
+// по запросу.
+func staffContext(ctx context.Context) bool {
+	claims, ok := middleware.GetUserFromContext(ctx)
+	return ok && claims != nil &&
+		(claims.Role == models.RoleEditor || claims.Role == models.RoleAdministrator)
+}
 
 // ClosedSet — множество id закрытых работ; nil значит «ничего не закрыто».
 // Сотруднику и экземпляру без хранилища отдаётся именно nil: нулевое значение

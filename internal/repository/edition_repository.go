@@ -23,15 +23,15 @@ func NewEditionRepository(pool *pgxpool.Pool) *EditionRepository {
 }
 
 // Create creates a new edition
-func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition) error {
+func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition, actor models.ClosureActor, reason string) error {
 	if edition.VolumeNumbering == "" {
 		edition.VolumeNumbering = models.VolumeNumberingPrinted
 	}
 	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering", "closed"}
 	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned,
 		edition.VolumeNumbering, edition.Closed}
-	if err := insertRow(ctx, r.pool, "editions", edition.ID, cols, args,
-		&edition.ID, &edition.CreatedAt, &edition.UpdatedAt); err != nil {
+	if err := insertRowClosure(ctx, r.pool, "editions", ClosureEdition, edition.Title, edition.Closed, actor, reason,
+		edition.ID, cols, args, &edition.ID, &edition.CreatedAt, &edition.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create edition: %w", err)
 	}
 	return nil

@@ -115,7 +115,7 @@ type WorkStore interface {
 // *repository.WorkRepository удовлетворяет ему как есть.
 type WorkRepo interface {
 	WorkStore
-	Create(ctx context.Context, work *models.Work) error
+	Create(ctx context.Context, work *models.Work, actor models.ClosureActor, reason string) error
 	Update(ctx context.Context, work *models.Work) error
 	Delete(ctx context.Context, id int64) error
 	ListChildren(ctx context.Context, parentID int64) ([]*models.Work, error)
@@ -126,7 +126,7 @@ type WorkRepo interface {
 // EditionStore is the slice of the edition repository the handlers use.
 // *repository.EditionRepository satisfies it as written.
 type EditionStore interface {
-	Create(ctx context.Context, edition *models.Edition) error
+	Create(ctx context.Context, edition *models.Edition, actor models.ClosureActor, reason string) error
 	Delete(ctx context.Context, id int64) error
 	GetByID(ctx context.Context, id int64) (*models.Edition, error)
 	List(ctx context.Context) ([]*models.Edition, error)
@@ -269,9 +269,9 @@ type JournalStore interface {
 	List(ctx context.Context, includeClosed bool) ([]models.JournalSummary, error)
 	GetByID(ctx context.Context, id int64) (*models.Journal, error)
 	Detail(ctx context.Context, slug string, includeClosed bool) (*models.JournalDetail, error)
-	Create(ctx context.Context, j *models.Journal) error
+	Create(ctx context.Context, j *models.Journal, actor models.ClosureActor, reason string) error
 	Update(ctx context.Context, j *models.Journal) error
-	CreateIssue(ctx context.Context, issue *models.JournalIssue, work *models.Work) error
+	CreateIssue(ctx context.Context, issue *models.JournalIssue, work *models.Work, actor models.ClosureActor, reason string) error
 	GetIssue(ctx context.Context, id int64) (*models.JournalIssue, error)
 	UpdateIssue(ctx context.Context, issue *models.JournalIssue, title string) error
 }
@@ -324,4 +324,13 @@ type EventStore interface {
 	EventDetail(ctx context.Context, slug string) (*models.EventDetail, error)
 	ReplaceAgenda(ctx context.Context, eventID int64, in models.AgendaInput) error
 	ChapterEvents(ctx context.Context, workID, chapterID int64) ([]models.ChapterEventLink, error)
+}
+
+// ClosedSpansStore — срез репозитория закрытости, нужный обработчикам глав:
+// диапазоны закрытых полос работы и множество действительно закрытых глав
+// (своим признаком или через предка-главу).
+// *repository.ClosedRepository удовлетворяет ему как есть.
+type ClosedSpansStore interface {
+	ClosedSpans(ctx context.Context, workID int64) ([]models.PageSpan, error)
+	ClosedChapterIDs(ctx context.Context, workID int64) (map[int64]bool, error)
 }

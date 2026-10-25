@@ -35,6 +35,9 @@ func NewApparatusRepository(pool *pgxpool.Pool) *ApparatusRepository {
 	return &ApparatusRepository{pool: pool}
 }
 
+// ErrApparatusClosed — среди уносимых снятием аппарата глав есть закрытая.
+var ErrApparatusClosed = errors.New("среди глав аппарата есть закрытая")
+
 // runner — то общее у пула и транзакции, что нужно здесь. План читается и
 // снаружи транзакции (для --plan), и внутри неё (перед сносом), и это обязан
 // быть один и тот же код: разойдись они, подтверждение оператора относилось бы
@@ -116,6 +119,12 @@ func (r *ApparatusRepository) Remove(ctx context.Context, workID int64) (models.
 		// Пустой план не ошибка репозитория: отказывать вслух — дело
 		// обработчика, он знает, что сказать оператору.
 		return plan, nil
+	}
+	// Закрытую главу снос не уносит. Обработчик отказывает по плану раньше,
+	// а здесь — та же проверка в транзакции сноса: главу могли закрыть между
+	// планом и сносом.
+	if plan.ClosedChapters > 0 {
+		return plan, ErrApparatusClosed
 	}
 
 	// Замки — полосы раньше дорожек, тем же порядком, что у SaveEdit (правка
@@ -261,6 +270,22 @@ func apparatusPlan(ctx context.Context, q runner, workID int64) (models.Apparatu
 		`SELECT count(*)::int FROM chapters WHERE work_id = $1 AND is_apparatus`, workID,
 	).Scan(&plan.ChapterCount); err != nil {
 		return plan, fmt.Errorf("failed to count apparatus chapters: %w", err)
+	}
+
+	// Закрытые среди уносимых: главы аппарата с поддеревьями (снос идёт по
+	// is_apparatus, подглавы уходят каскадом по parent_id) и все главы
+	// служебных работ (уходят вместе с работой).
+	if err := q.QueryRow(ctx, `
+		WITH RECURSIVE gone AS (
+			SELECT id FROM chapters WHERE work_id = $1 AND is_apparatus
+			UNION
+			SELECT c.id FROM chapters c JOIN gone g ON c.parent_id = g.id
+		)
+		SELECT count(*)::int FROM closed_chapters cc
+		WHERE cc.id IN (SELECT id FROM gone)
+		   OR cc.work_id IN (SELECT id FROM works WHERE parent_work_id = $1)`, workID,
+	).Scan(&plan.ClosedChapters); err != nil {
+		return plan, fmt.Errorf("failed to count closed apparatus chapters: %w", err)
 	}
 
 	// Полосы: счёт и ключи превью одним проходом. Ключи нужны обработчику —

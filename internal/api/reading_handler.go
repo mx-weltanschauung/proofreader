@@ -28,6 +28,9 @@ type ReadingPage struct {
 	HTML       string `json:"html"`
 	NotesHTML  string `json:"notes_html"`
 	Blank      bool   `json:"blank"`
+	// ClosedChapter — заглавие закрытой главы, накрывающей полосу; только
+	// сотруднику (остальным закрытой полосы нет вовсе).
+	ClosedChapter string `json:"closed_chapter,omitempty"`
 }
 
 // ReadingWindowResponse — окно страниц работы и указание, откуда брать
@@ -46,6 +49,15 @@ type ReadingWindowResponse struct {
 type ReadingHandler struct {
 	pageRepo PageStore
 	renderer *markdown.Renderer
+	// markers — дерево глав для пометки закрытых полос сотруднику; nil —
+	// пометок нет.
+	markers ChapterTreeStore
+}
+
+// WithClosedMarkers подключает пометку закрытых полос для сотрудника.
+func (h *ReadingHandler) WithClosedMarkers(chapters ChapterTreeStore) *ReadingHandler {
+	h.markers = chapters
+	return h
 }
 
 // NewReadingHandler creates a new reading handler
@@ -110,7 +122,20 @@ func (h *ReadingHandler) Window(w http.ResponseWriter, r *http.Request) {
 	// ответ на вопрос, есть ли продолжение. Отдельного запроса ради этого не
 	// нужно. Приём держится на сплошной нумерации страниц; на дыре поток
 	// остановился бы перед ней.
-	pages, err := h.pageRepo.GetPageRange(ctx, workID, from, from+count)
+	//
+	// Закрытые полосы — не дыра: конец диапазона отодвигается за них, чтобы
+	// окно добрало count+1 открытых полос, и поток идёт сквозь закрытую
+	// главу дальше по тому.
+	hidden, err := hiddenSpansOf(ctx, h.pageRepo, workID)
+	if err != nil {
+		http.Error(w, "Failed to retrieve pages", http.StatusInternalServerError)
+		return
+	}
+	end := from + count
+	if len(hidden) > 0 {
+		end = visibleWindowEnd(from, count+1, total, hidden)
+	}
+	pages, err := h.pageRepo.GetPageRange(ctx, workID, from, end)
 	if err != nil {
 		http.Error(w, "Failed to retrieve pages", http.StatusInternalServerError)
 		return
@@ -121,6 +146,23 @@ func (h *ReadingHandler) Window(w http.ResponseWriter, r *http.Request) {
 		next := pages[count].PageNumber
 		nextFrom = &next
 		pages = pages[:count]
+	}
+
+	// Сотруднику — пометка закрытой главы на её полосах.
+	var mark func(int) string
+	if h.markers != nil && len(pages) > 0 && staffContext(ctx) {
+		last := pages[len(pages)-1].PageNumber
+		hasClosed, err := rangeHasClosed(ctx, h.pageRepo, workID, from, last)
+		if err != nil {
+			http.Error(w, "Failed to retrieve pages", http.StatusInternalServerError)
+			return
+		}
+		if hasClosed {
+			if mark, err = closedMarkers(ctx, h.markers, workID); err != nil {
+				http.Error(w, "Failed to retrieve pages", http.StatusInternalServerError)
+				return
+			}
+		}
 	}
 
 	// make, а не var: nil-срез уехал бы в JSON как null, и фронт упал бы на
@@ -138,6 +180,9 @@ func (h *ReadingHandler) Window(w http.ResponseWriter, r *http.Request) {
 			HTML:       html[0],
 			NotesHTML:  markdown.RenderNotes(notes),
 			Blank:      strings.TrimSpace(page.ContentMarkdown) == "",
+		}
+		if mark != nil {
+			result[i].ClosedChapter = mark(page.PageNumber)
 		}
 	}
 

@@ -29,12 +29,22 @@ const (
 type HighlightHandler struct {
 	store  HighlightStore
 	closed ClosedStore
+	// chapters — закрытые главы; nil — закрытых глав нет.
+	chapters closedChapterLister
 }
 
 // WithClosed подключает хранилище закрытых работ: пункты избранного, чья
 // работа закрыта, не-сотрудник не видит. nil — ничего не скрывается.
 func (h *HighlightHandler) WithClosed(c ClosedStore) *HighlightHandler {
 	h.closed = c
+	return h
+}
+
+// WithClosedChapters подключает закрытые главы: пункт избранного на закрытой
+// главе (своим признаком или через предка) несёт её заглавие и подпись, и
+// не-сотрудник его не видит, как пункт закрытой работы.
+func (h *HighlightHandler) WithClosedChapters(c closedChapterLister) *HighlightHandler {
+	h.chapters = c
 	return h
 }
 
@@ -75,9 +85,16 @@ func (h *HighlightHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать избранное")
 		return
 	}
+	var closedChapters ClosedSet
+	if !isStaffRequest(r) {
+		if closedChapters, err = allClosedChapters(r.Context(), h.chapters); err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать избранное")
+			return
+		}
+	}
 	open := make([]models.EditionHighlight, 0, len(list))
 	for _, item := range list {
-		if !closed.Has(item.WorkID) {
+		if !closed.Has(item.WorkID) && !closedChapters.Has(item.ChapterID) {
 			open = append(open, item)
 		}
 	}

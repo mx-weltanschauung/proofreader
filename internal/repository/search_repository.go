@@ -186,6 +186,63 @@ func scopeConditionFor(editionExpr, closedParam string) string {
 	  AND (` + closedParam + ` OR w.id IS NULL OR w.id NOT IN (SELECT id FROM closed_works))`
 }
 
+// closedSpansSQL — диапазоны полос закрытых глав всех работ одним значением
+// int8multirange: полоса p работы w кодируется числом w * closedSpanBand + p.
+// Подзапрос НЕкоррелирован, Postgres считает его один раз на запрос
+// (InitPlan), а проверка полосы — поиск по значению за O(log n).
+//
+// Почему не closed_pages и не closed_chapters в коррелированном EXISTS: вид
+// closed_pages обходит ВСЕ полосы корпуса с проверкой глав на каждой —
+// подзапрос по нему на частом слове стоил 1,38 с против 0,11 с без него
+// (замер на 320 тыс. полос). Диапазоны с end < start полос не накрывают (как
+// BETWEEN в closed_pages) и в значение не входят; границы глав зажаты в
+// [0, band-1], чтобы кривая глава не вылезала в соседнюю работу. Номер полосы меньше
+// closedSpanBand — с запасом на порядки.
+const (
+	closedSpanBand = "10000000"
+	closedSpansAgg = `coalesce(range_agg(int8range(
+	      cc.work_id * ` + closedSpanBand + ` + greatest(cc.start_page, 0),
+	      cc.work_id * ` + closedSpanBand + ` + least(cc.end_page, ` + closedSpanBand + ` - 1), '[]')), '{}'::int8multirange)`
+	closedSpansFrom = `FROM closed_chapters cc WHERE cc.end_page >= cc.start_page
+	      AND cc.end_page >= 0 AND cc.start_page < ` + closedSpanBand
+	closedSpansSQL = `(SELECT ` + closedSpansAgg + ` ` + closedSpansFrom + `)`
+)
+
+// closedSpansCTE — то же значение именованным материализованным CTE
+// closed_spans(mr) и тома, несущие закрытую главу,
+// closed_volumes(work_id, edition_id, volume_number, volume_part, page_offset):
+// для запросов указателя, где проверка стоит внутри коррелированных
+// подзапросов. Рекурсивное closed_chapters внутри такого подзапроса
+// планировщик оценивает целиком на каждую строку, цена плана вырастала до
+// сотен тысяч и миллионов, Postgres включал JIT, и витрина понятий вместо
+// 0,1 с шла 2—3 с (замер — отчёт задачи 5); чтение готового CTE стоит одну
+// строку. Запрос, зовущий closedProbeSQL или closedReferenceSQL, обязан
+// начинаться с `WITH ` + closedSpansCTE.
+const closedSpansCTE = `closed_spans AS MATERIALIZED (SELECT ` + closedSpansAgg + ` AS mr ` + closedSpansFrom + `),
+	closed_volumes AS MATERIALIZED (
+	  SELECT w.id AS work_id, w.edition_id, w.volume_number,
+	         coalesce(w.volume_part, '') AS volume_part, w.page_offset
+	  FROM works w WHERE w.id IN (SELECT work_id FROM closed_chapters))`
+
+// closedProbeSQL — «хоть одна полоса [lo, hi] работы workID накрыта закрытой
+// главой» (нужен CTE closed_spans). Границы зажаты в полосу работы: лишнее
+// вылезло бы в соседнюю работу, а перевёрнутый диапазон int8range отвергает
+// ошибкой.
+func closedProbeSQL(workID, lo, hi string) string {
+	l := "greatest(" + lo + ", 0)"
+	h := "least(" + hi + ", " + closedSpanBand + " - 1)"
+	return `(SELECT mr FROM closed_spans) && CASE WHEN ` + l + ` <= ` + h + `
+	      THEN int8range(` + workID + ` * ` + closedSpanBand + ` + ` + l + `,
+	                     ` + workID + ` * ` + closedSpanBand + ` + ` + h + `, '[]')
+	      ELSE 'empty'::int8range END`
+}
+
+// pageOpenSQL — полоса pg не закрыта: ни работа не закрыта (closed_works), ни
+// полоса не накрыта диапазоном закрытой главы. То же множество, что вне
+// closed_pages.
+const pageOpenSQL = `(pg.work_id NOT IN (SELECT id FROM closed_works)
+	    AND NOT (` + closedSpansSQL + ` @> (pg.work_id * ` + closedSpanBand + ` + pg.page_number)))`
+
 // Собрание строки, у которой работа есть всегда: главы, тома, полосы тома.
 const workEditionExpr = `coalesce(w.edition_id, p.edition_id)`
 
@@ -212,6 +269,7 @@ var searchChaptersQuery = `
 	LEFT JOIN editions e ON e.id = coalesce(w.edition_id, p.edition_id)
 	WHERE to_tsvector('ru', c.title) @@ q.tsq
 	` + scopeConditionLim + `
+	  AND ($5 OR c.id NOT IN (SELECT id FROM closed_chapters))
 	ORDER BY c.is_apparatus, ts_rank(to_tsvector('ru', c.title), q.tsq) DESC, c.id
 	LIMIT $4
 `
@@ -233,7 +291,7 @@ var searchChaptersQuery = `
 // NULL = ANY(...) — то есть ложь. Область по ТОМУ такую статью по-прежнему не
 // ловит, и это названная спекой граница, а не забытый случай.
 var searchConceptsQuery = `
-	WITH q AS (SELECT websearch_to_tsquery('ru', $1) AS tsq)
+	WITH q AS (SELECT websearch_to_tsquery('ru', $1) AS tsq), ` + closedSpansCTE + `
 	SELECT ic.slug, ic.title
 	FROM index_concepts ic
 	CROSS JOIN q
@@ -264,6 +322,7 @@ var searchVolumesQuery = `
 	  SELECT pg.work_id, pg.page_number
 	  FROM pages pg CROSS JOIN q
 	  WHERE pg.search_vector @@ q.tsq
+	    AND ($4 OR ` + pageOpenSQL + `)
 	),
 	flagged AS (
 	  SELECT h.work_id,
@@ -457,7 +516,7 @@ const searchPagesQuery = `
 	CROSS JOIN q
 	JOIN works w ON w.id = pg.work_id` + pageHitChapterJoin + `
 	WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq` + chapterCondition + `
-	  AND ($6 OR pg.work_id NOT IN (SELECT id FROM closed_works))
+	  AND ($6 OR ` + pageOpenSQL + `)
 	ORDER BY pg.page_number
 	LIMIT $4 OFFSET $5
 `
@@ -476,6 +535,7 @@ var searchVolumePagesQuery = `
 	  SELECT pg.work_id, pg.page_number
 	  FROM pages pg CROSS JOIN q
 	  WHERE pg.search_vector @@ q.tsq
+	    AND ($5 OR ` + pageOpenSQL + `)
 	),
 	volumes AS (
 	  SELECT DISTINCT h.work_id
@@ -538,7 +598,7 @@ const searchPagesFacetQuery = `
 	  SELECT pg.page_number
 	  FROM pages pg CROSS JOIN q
 	  WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq
-	    AND ($4 OR pg.work_id NOT IN (SELECT id FROM closed_works))
+	    AND ($4 OR ` + pageOpenSQL + `)
 	)
 	SELECT ch.id, ch.title, count(*)::int AS hits, (count(*) OVER ())::int AS total
 	FROM hits h
@@ -556,7 +616,7 @@ const searchPagesCountQuery = `
 	WITH q AS (SELECT websearch_to_tsquery('ru', $1) AS tsq)
 	SELECT count(*)::int FROM pages pg CROSS JOIN q
 	WHERE pg.work_id = $2 AND pg.search_vector @@ q.tsq` + chapterCondition + `
-	  AND ($4 OR pg.work_id NOT IN (SELECT id FROM closed_works))
+	  AND ($4 OR ` + pageOpenSQL + `)
 `
 
 // SearchPages — полосы одного тома в порядке чтения. Неизвестный том — пустой

@@ -877,7 +877,7 @@ func seedEditionAndWork(t *testing.T, pool *pgxpool.Pool) (editionID, workID int
 
 	editions := NewEditionRepository(pool)
 	edition := &models.Edition{Title: "проба-статьи", Slug: fmt.Sprintf("proba-articles-%d", seq)}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("seedEditionAndWork: create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })

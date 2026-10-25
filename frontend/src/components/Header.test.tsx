@@ -369,6 +369,7 @@ describe('Header', () => {
         '/admin/readers',
         '/admin/feedback',
         '/admin/cache',
+        '/admin/closures',
         '/admin/stats',
       ]);
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());

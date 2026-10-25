@@ -98,29 +98,6 @@ test_plan_is_not_empty_when_only_children_remain() {
   return 0
 }
 
-test_index_anchor_note_stays_quiet_when_articles_are_counted() {
-  # Счётчик непустой — он говорит сам за себя, подпись не нужна.
-  assert_eq "" "$(index_anchor_note 12 300)" "подпись при непустом счёте"
-}
-
-test_index_anchor_note_distinguishes_no_index_from_no_anchor() {
-  # Ноль статей тома при НУЛЕ статей собрания — указателя действительно нет.
-  local none anchorless
-  none="$(index_anchor_note 0 0)"
-  anchorless="$(index_anchor_note 0 2819)"
-  case "$none" in
-    *"у собрания статей указателя нет"*) ;;
-    *) fail "подпись про отсутствующий указатель не названа: $none" ;;
-  esac
-  # Ноль статей тома при непустом указателе собрания — снятие их не тронет, и
-  # оператор обязан это увидеть ДО необратимой операции.
-  case "$anchorless" in
-    *2819*"work_id"*) ;;
-    *) fail "подпись про отсутствующий якорь не названа: $anchorless" ;;
-  esac
-  [[ "$none" != "$anchorless" ]] || fail "две разные причины нуля напечатаны одинаково"
-}
-
 test_plan_is_empty_survives_missing_keys() {
   plan_is_empty '{}' || fail "ответ без ключей не опознан пустым"
 }
@@ -146,7 +123,7 @@ test_api_ok_follows_the_status() {
   api GET /api/works/45/apparatus
   api_ok || fail "успешный ответ не принят api_ok"
   STUB_BODY='{}' STUB_CODE=409
-  api DELETE /api/works/45/apparatus
+  api PUT /api/works/45/closed
   api_ok && fail "409 принят api_ok за успех"
   return 0
 }
@@ -213,59 +190,120 @@ test_api_base_prod_uses_prod_url() {
   ( PROD_API_URL="https://lib.example"; assert_eq "https://lib.example" "$(api_base --prod)" "боевой адрес" )
 }
 
-# --- статическая читальня --------------------------------------------------
+# --- закрытие --------------------------------------------------------------
 
-test_exclude_line_forms() {
-  assert_eq "145  # 2026-10-07: том снят по жалобе (takedown.sh volume)" \
-    "$(exclude_line volume 145 2026-10-07)" "строка тома"
-  assert_eq "145 apparatus  # 2026-10-07: снят аппарат по жалобе (takedown.sh apparatus)" \
-    "$(exclude_line apparatus 145 2026-10-07)" "строка аппарата"
+test_parse_target_chapter_takes_pair() {
+  assert_eq "chapter 12 345" "$(parse_target chapter 12/345)" "разбор главы"
 }
 
-test_static_after_takedown_appends_and_withdraws() {
+test_parse_target_chapter_rejects_bare_id() {
+  local bad rc
+  for bad in 345 "12/" "/345" "12/0" "0/5" "12/345/6" "a/b" "12/3-слаг" ""; do
+    rc=0
+    parse_target chapter "$bad" >/dev/null || rc=$?
+    (( rc != 0 )) || fail "цель главы «$bad» принята"
+  done
+}
+
+test_parse_target_volume_rejects_pair() {
+  local rc=0
+  parse_target volume 12/345 >/dev/null || rc=$?
+  (( rc != 0 )) || fail "пара принята как номер тома"
+}
+
+test_require_reason_refuses_blank() {
+  local bad rc
+  for bad in "" "   " $'\n\t'; do
+    rc=0
+    require_reason "$bad" >/dev/null 2>&1 || rc=$?
+    (( rc != 0 )) || fail "пустая причина «$bad» принята"
+  done
+  require_reason "письмо правообладателя" || fail "причина отвергнута"
+}
+
+test_closed_body_has_reason_and_flag() {
+  local b
+  b="$(closed_body true "письмо")"
+  assert_eq "письмо" "$(jq -r .reason <<<"$b")" "причина"
+  assert_eq "true" "$(jq -r .closed <<<"$b")" "признак"
+  b="$(closed_body false "ошибка")"
+  assert_eq "false" "$(jq -r .closed <<<"$b")" "признак открытия"
+}
+
+test_closed_body_survives_quotes_and_newlines() {
+  local reason=$'он сказал "снять"\nвторая строка \\ и слэш'
+  local b
+  b="$(closed_body true "$reason")"
+  [[ "$(jq -r .reason <<<"$b"; printf x)" == "$reason"$'\nx' ]] || fail "причина искажена: $b"
+}
+
+test_probe_ok_verdicts() {
+  probe_ok 410 410 || fail "410 при ожидании 410 не принят"
+  probe_ok 410 404 && fail "404 принят за 410"
+  probe_ok 404 404 || fail "404 при ожидании 404 не принят"
+  probe_ok open 200 || fail "200 при ожидании открытого не принят"
+  probe_ok open 410 && fail "410 принят за открытое"
+  probe_ok open 404 && fail "404 принят за открытое"
+  probe_ok open 000000 && fail "обрыв связи (000000) принят за открытое"
+  probe_ok open 000 && fail "000 принят за открытое"
+  probe_ok open "" && fail "пустой код принят за открытое"
+  probe_ok 410 000000 && fail "обрыв принят за 410"
+  probe_ok open 200000 || fail "первые три знака не отсечены"
+  return 0
+}
+
+test_crawler_chapter_path() {
+  assert_eq "/seo/works/12/chapters/345" "$(crawler_chapter_path --local 12 345)" "локально"
+  assert_eq "/works/12/chapters/345" "$(crawler_chapter_path --prod 12 345)" "боевой"
+}
+
+test_script_never_calls_delete_on_works() {
+  if grep -vE '^\s*#' "$TESTS_DIR/../takedown.sh" | grep -qE '(-X *DELETE|api +DELETE).*/api/works'; then
+    fail "скрипт зовёт DELETE по /api/works"
+  fi
+}
+
+# Общая полоса закрывается ЦЕЛИКОМ (спека, ClosedSpans): план обязан
+# говорить, что сосед потеряет на ней кусок, а не что она «остаётся видна
+# через соседа» — так оператор думал бы, что текст на ней жив.
+test_chapter_plan_says_shared_page_closes_whole() {
+  STUB_CODE=200
+  STUB_BODY='{"chapters":1,"pages":3,"shared":[{"page_number":19,"neighbors":["Сосед"]}]}'
+  ACTION_TITLE="Закрытие"
+  REOPENING=0
+  local out
+  out="$(chapter_plan 145 9923)"
+  [[ "$out" == *"закрывается целиком"* && "$out" == *"потеряют"* && "$out" == *"Сосед"* ]] ||
+    fail "план главы не говорит, что общая полоса закрывается целиком: $out"
+  [[ "$out" != *"остаются видны"* ]] || fail "план главы обещает, что общая полоса видна через соседа: $out"
+}
+
+test_static_after_takedown_withdraws_without_exclude_line() {
   STATIC_EXCLUDE="$TMPROOT/exclude.txt"
   printf '# шапка\n' > "$STATIC_EXCLUDE"
   STATIC_PUBLISH="$TMPROOT/publish"
   printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/calls"\n' "$TMPROOT" > "$STATIC_PUBLISH"
   chmod +x "$STATIC_PUBLISH"
-  ( static_after_takedown apparatus 145 ) 2>/dev/null || fail "снятие в бакете упало"
-  grep -qE '^145 apparatus  # [0-9-]+: снят аппарат' "$STATIC_EXCLUDE" || fail "строка аппарата не дописана: $(cat "$STATIC_EXCLUDE")"
-  head -1 "$STATIC_EXCLUDE" | grep -qx '# шапка' || fail "шапка списка затёрта"
+  ( static_after_takedown 145 ) 2>/dev/null || fail "снятие в бакете упало"
+  assert_eq "# шапка" "$(cat "$STATIC_EXCLUDE")" "список исключений тронут"
   assert_eq "--withdraw 145 --yes" "$(cat "$TMPROOT/calls")" "вызов выкладки"
 }
 
 test_static_after_takedown_fails_loudly() {
-  STATIC_EXCLUDE="$TMPROOT/exclude.txt"
   STATIC_PUBLISH="$TMPROOT/publish"
   printf '#!/usr/bin/env bash\nexit 1\n' > "$STATIC_PUBLISH"
   chmod +x "$STATIC_PUBLISH"
   local err
-  err="$( ( static_after_takedown volume 145 ) 2>&1 )" && fail "упавшее снятие в бакете прошло молча"
+  err="$( ( static_after_takedown 145 ) 2>&1 )" && fail "упавшее снятие в бакете прошло молча"
   [[ "$err" == *"static-publish.sh --withdraw 145"* ]] || fail "нет команды повтора: $err"
-  grep -qE '^145  # ' "$STATIC_EXCLUDE" || fail "строка тома не дописана, хотя бакет упал"
-}
-
-# У читальни без своего инструмента выкладки (в платформе его нет) снятие не
-# падает: строка в список дописана, а про выложенные сборки сказано словами.
-# Читальня без каталога instance/: снятие на сайте уже прошло, и падать
-# после него на записи строки нельзя — каталог заводится сам.
-test_static_after_takedown_creates_instance_dir() {
-  STATIC_EXCLUDE="$TMPROOT/нет-каталога/static-exclude.txt"
-  STATIC_PUBLISH="$TMPROOT/нет-такого"
-  local rc=0
-  ( static_after_takedown volume 145 ) >/dev/null 2>&1 || rc=$?
-  (( rc == 0 )) || fail "без каталога списка снятие упало (код $rc)"
-  grep -qE '^145  # ' "$STATIC_EXCLUDE" || fail "строка тома не дописана"
 }
 
 test_static_after_takedown_without_publisher() {
-  STATIC_EXCLUDE="$TMPROOT/exclude.txt"
   STATIC_PUBLISH="$TMPROOT/нет-такого"
   local err rc=0
-  err="$( ( static_after_takedown volume 145 ) 2>&1 )" || rc=$?
-  (( rc == 0 )) || fail "без инструмента выкладки снятие упало: $err"
-  grep -qE '^145  # ' "$STATIC_EXCLUDE" || fail "строка тома не дописана"
-  [[ "$err" == *"сами"* ]] || fail "не сказано, что выложенные сборки снимать самим: $err"
+  err="$( ( static_after_takedown 145 ) 2>&1 )" || rc=$?
+  (( rc == 0 )) || fail "без инструмента выкладки упало: $err"
+  [[ "$err" == *"сами"* ]] || fail "не сказано, что сборки снимать самим: $err"
 }
 
 run_tests

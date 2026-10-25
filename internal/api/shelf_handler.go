@@ -23,6 +23,14 @@ type ShelfHandler struct {
 	journals ShelfJournals
 	closed   ClosedStore
 	events   EventStore
+	chapters closedChapterLister
+}
+
+// WithClosedChapters подключает закрытые главы: организация, чьи материалы
+// закрыты главами, не-сотруднику на полке не видна.
+func (h *ShelfHandler) WithClosedChapters(c closedChapterLister) *ShelfHandler {
+	h.chapters = c
+	return h
 }
 
 // WithEvents подключает организации с событиями; без них полка отдаёт
@@ -141,8 +149,13 @@ func (h *ShelfHandler) Get(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "Не удалось прочитать организации")
 			return
 		}
+		closedChapters, err := allClosedChapters(ctx, h.chapters)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать организации")
+			return
+		}
 		for i := range orgs {
-			vis, ok := visibleOrganization(&orgs[i], closed, staff)
+			vis, ok := visibleOrganization(&orgs[i], closed, closedChapters, staff)
 			if !ok {
 				continue
 			}

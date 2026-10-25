@@ -2,6 +2,7 @@ package staticsite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -23,6 +24,10 @@ func (g *Generator) writeConcepts(ctx context.Context) error {
 	loaded := map[string]*Concept{}
 	for _, c := range list {
 		concept, err := g.Src.Concept(ctx, c.Slug)
+		if errors.Is(err, ErrConceptHidden) {
+			g.logf("понятие %q: скрыто закрытым — в архив не идёт", c.Slug)
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("понятие %q: %w", c.Slug, err)
 		}

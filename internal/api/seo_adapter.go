@@ -123,7 +123,7 @@ func (a *SEOCollectionSource) GetByAuthorSlug(ctx context.Context, nickname, slu
 
 	// Тот же вызов, что и в CollectionHandler.Get — состав не должен
 	// разойтись между API и страницей краулера.
-	collection.Items = buildCollectionTOC(rows, chapters, closed)
+	collection.Items = buildCollectionTOC(rows, chapters, closed, true)
 
 	return collection, nil
 }

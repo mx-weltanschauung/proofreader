@@ -374,7 +374,12 @@ func (h *EventHandler) ReplaceAgenda(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, err)
 		return
 	}
-	out, ok := visibleEvent(d, closed, true)
+	closedChapters, err := allClosedChapters(r.Context(), h.chapters)
+	if err != nil {
+		h.fail(w, err)
+		return
+	}
+	out, ok := visibleEvent(d, closed, closedChapters, true)
 	if !ok {
 		writeError(w, http.StatusNotFound, "Не найдено")
 		return

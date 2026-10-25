@@ -23,8 +23,15 @@ func NewChapterRepository(pool *pgxpool.Pool) *ChapterRepository {
 }
 
 // chapterColumns — колонки главы в порядке, который читает scanChapter.
-const chapterColumns = `id, work_id, parent_id, title, type, order_number,
-	start_page, end_page, is_apparatus, article_kind, created_at, updated_at`
+//
+// Запросы называют главу c и берут chapterFrom: closed_by — вычисляемое
+// (собственный признак, иначе предок-глава из closed_chapters), соединением, а
+// не функцией на строку.
+const chapterColumns = `c.id, c.work_id, c.parent_id, c.title, c.type, c.order_number,
+	c.start_page, c.end_page, c.is_apparatus, c.article_kind, c.created_at, c.updated_at,
+	c.closed, CASE WHEN c.closed THEN 'chapter' WHEN cc.id IS NOT NULL THEN 'parent' ELSE '' END`
+
+const chapterFrom = `FROM chapters c LEFT JOIN closed_chapters cc ON cc.id = c.id`
 
 // scanChapter — единственный разбор строки главы. Заведён вместо пяти копий
 // подряд: слаг считается здесь, и любая забытая копия оставила бы главу без
@@ -34,6 +41,7 @@ func scanChapter(row rowScanner) (*models.Chapter, error) {
 	err := row.Scan(
 		&c.ID, &c.WorkID, &c.ParentID, &c.Title, &c.Type, &c.OrderNumber,
 		&c.StartPage, &c.EndPage, &c.IsApparatus, &c.ArticleKind, &c.CreatedAt, &c.UpdatedAt,
+		&c.Closed, &c.ClosedBy,
 	)
 	if err != nil {
 		return nil, err
@@ -87,8 +95,8 @@ func (r *ChapterRepository) Create(ctx context.Context, chapter *models.Chapter)
 // GetByID retrieves a chapter by ID
 func (r *ChapterRepository) GetByID(ctx context.Context, id int64) (*models.Chapter, error) {
 	query := `SELECT ` + chapterColumns + `
-		FROM chapters
-		WHERE id = $1
+		` + chapterFrom + `
+		WHERE c.id = $1
 	`
 
 	chapter, err := scanChapter(r.pool.QueryRow(ctx, query, id))
@@ -123,9 +131,9 @@ func (r *ChapterRepository) FindByPage(
 	ctx context.Context, workID int64, pageNumber int,
 ) (*models.Chapter, error) {
 	query := `SELECT ` + chapterColumns + `
-		FROM chapters
-		WHERE work_id = $1 AND $2 BETWEEN start_page AND end_page
-		ORDER BY end_page - start_page, id
+		` + chapterFrom + `
+		WHERE c.work_id = $1 AND $2 BETWEEN c.start_page AND c.end_page
+		ORDER BY c.end_page - c.start_page, c.id
 		LIMIT 1
 	`
 
@@ -143,9 +151,9 @@ func (r *ChapterRepository) FindByPage(
 // ListByWork retrieves all chapters for a work (flat list)
 func (r *ChapterRepository) ListByWork(ctx context.Context, workID int64) ([]*models.Chapter, error) {
 	query := `SELECT ` + chapterColumns + `
-		FROM chapters
-		WHERE work_id = $1
-		ORDER BY order_number
+		` + chapterFrom + `
+		WHERE c.work_id = $1
+		ORDER BY c.order_number
 	`
 
 	rows, err := r.pool.Query(ctx, query, workID)
@@ -205,9 +213,9 @@ func buildChapterTree(chapters []*models.Chapter) []*models.Chapter {
 // GetChildren retrieves direct children of a chapter
 func (r *ChapterRepository) GetChildren(ctx context.Context, parentID int64) ([]*models.Chapter, error) {
 	query := `SELECT ` + chapterColumns + `
-		FROM chapters
-		WHERE parent_id = $1
-		ORDER BY order_number
+		` + chapterFrom + `
+		WHERE c.parent_id = $1
+		ORDER BY c.order_number
 	`
 
 	rows, err := r.pool.Query(ctx, query, parentID)

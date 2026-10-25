@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { Chapter, Work } from '../types';
 import { VolumeManagePanel } from './VolumeManagePanel';
+import { useAuth } from '../hooks/useAuth';
+import type { User } from '../types';
 
 const WORK = { id: 41, title: 'Том 16', file_path: 'works/41/original/t16.pdf' } as Work;
 const CHAPTERS = [
@@ -11,6 +13,13 @@ const CHAPTERS = [
 ];
 
 function setup(props: Partial<React.ComponentProps<typeof VolumeManagePanel>> = {}) {
+  // Кнопка «Закрыть» — только администратору.
+  useAuth.setState({
+    user: { id: 1, role: 'administrator' } as User,
+    token: 't',
+    isAuthenticated: true,
+    isLoading: false,
+  });
   const handlers = {
     onUpload: vi.fn(),
     onCreatePages: vi.fn().mockResolvedValue(true),

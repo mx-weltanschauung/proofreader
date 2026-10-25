@@ -37,7 +37,7 @@ func (f *fakeEditionStore) GetByID(ctx context.Context, id int64) (*models.Editi
 	}
 	return nil, context.Canceled
 }
-func (f *fakeEditionStore) Create(ctx context.Context, e *models.Edition) error {
+func (f *fakeEditionStore) Create(ctx context.Context, e *models.Edition, _ models.ClosureActor, _ string) error {
 	if f.createErr != nil {
 		return f.createErr
 	}

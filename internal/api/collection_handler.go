@@ -263,7 +263,7 @@ func (h *CollectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить состав подборки")
 		return
 	}
-	collection.Items = buildCollectionTOC(rows, chapters, closed)
+	collection.Items = buildCollectionTOC(rows, chapters, closed, !isStaffRequest(r))
 
 	writeJSON(w, collection)
 }
@@ -534,6 +534,18 @@ func (h *CollectionHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusNotFound, "Не найдено")
 				return
 			}
+			// Закрытая глава — то же: заглавие-снимок в ответе назвало бы её.
+			if req.Kind == models.CollectionItemKindChapter {
+				chapterClosed, err := h.chapterClosed(ctx, *targetWork, *req.ChapterID)
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, "Не удалось проверить доступность источника")
+					return
+				}
+				if chapterClosed {
+					writeError(w, http.StatusNotFound, "Не найдено")
+					return
+				}
+			}
 		}
 	}
 
@@ -662,7 +674,7 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
+	ctx := r.Context()
 	nickname, slug := collectionKey(r)
 	collection, err := h.collectionStore.GetByAuthorSlug(ctx, nickname, slug)
 	if err != nil || collection == nil {
@@ -695,6 +707,19 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusGone, "Источник элемента недоступен")
 		return
 	}
+	// Пункт на закрытой главе — то же, что пункт на закрытой работе.
+	if !isStaffRequest(r) && item.Kind == models.CollectionItemKindChapter &&
+		item.ChapterID != nil && item.WorkID != nil {
+		chapterClosed, err := h.chapterClosed(ctx, *item.WorkID, *item.ChapterID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось определить доступность элемента")
+			return
+		}
+		if chapterClosed {
+			writeError(w, http.StatusGone, "Источник элемента недоступен")
+			return
+		}
+	}
 
 	// Источник пересоздан или удалён. 410, а не 404: элемент на месте, читать
 	// нечего — и составителю это надо показать по-разному.
@@ -718,14 +743,25 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 	// подборка: глава и элемент подборки, накрывающие один диапазон,
 	// обязаны читать один и тот же файл.
 	key := pagecache.Key{WorkID: *item.WorkID, Start: start, End: end}
-	h.cache.Serve(w, r, key, func() (any, error) {
+	// Диапазон с закрытыми полосами — мимо кэша для любого зрителя, как у
+	// главы: файл общий с главой того же диапазона.
+	cache := h.cache
+	hasClosed, err := rangeHasClosed(ctx, h.pageStore, *item.WorkID, start, end)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось собрать страницы")
+		return
+	}
+	if hasClosed {
+		cache = nil
+	}
+	cache.Serve(w, r, key, func() (any, error) {
 		pages, err := h.pageStore.GetPageRange(ctx, *item.WorkID, start, end)
 		if err != nil {
 			return nil, err
 		}
 		pageHTML, notes := renderPageRange(h.renderer, pages)
 		return ChapterPagesResponse{
-			Pages:         chapterPagesFromRange(pages, pageHTML),
+			Pages:         chapterPagesFromRange(pages, pageHTML, nil),
 			FootnotesHTML: markdown.RenderNotes(notes),
 		}, nil
 	})
@@ -812,4 +848,20 @@ func topLevelPageRange(chapters []*models.Chapter, workID int64) (start, end int
 	}
 
 	return start, end, ok
+}
+
+// chapterClosed — закрыта ли глава действующе (своим признаком или через
+// предка). Главу, которой в работе нет, закрытой не считает: «нет» решает
+// вызывающий своим путём.
+func (h *CollectionHandler) chapterClosed(ctx context.Context, workID, chapterID int64) (bool, error) {
+	chapters, err := h.collectionStore.ChaptersForWorks(ctx, []int64{workID})
+	if err != nil {
+		return false, err
+	}
+	for _, c := range chapters {
+		if c.ID == chapterID {
+			return chapterIsClosed(c), nil
+		}
+	}
+	return false, nil
 }

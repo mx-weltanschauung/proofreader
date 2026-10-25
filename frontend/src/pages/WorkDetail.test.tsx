@@ -41,6 +41,7 @@ const { user: authUser } = vi.hoisted(() => ({ user: { value: null as unknown } 
 vi.mock('../hooks/useAuth', () => ({
   useAuth: () => ({ user: authUser.value }),
   canEdit: (u: unknown) => u !== null,
+  isAdmin: (u: { role?: string } | null) => u?.role === 'administrator',
 }));
 
 vi.mock('../services/api', () => ({

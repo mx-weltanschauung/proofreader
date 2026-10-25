@@ -19,12 +19,16 @@ import (
 
 // ChapterHandler handles chapter endpoints
 type ChapterHandler struct {
+	// chapterRepo — голое хранилище: запись и охрана закрытого (409) обязаны
+	// видеть закрытые главы на любом контексте. Чтение для ответа — через
+	// reads().
 	chapterRepo ChapterStore
 	pageRepo    PageStore
 	renderer    *markdown.Renderer
 	cache       *RangeCache
 	recordings  RecordingCounter
 	credits     CreditLister
+	closed      ClosedSpansStore
 }
 
 // RecordingCounter — сколько записей человека у главы и её подглав.
@@ -36,6 +40,69 @@ type RecordingCounter interface {
 func (h *ChapterHandler) WithRecordings(c RecordingCounter) *ChapterHandler {
 	h.recordings = c
 	return h
+}
+
+// WithClosedChapters включает отказ менять, переносить и удалять закрытые
+// главы (409). Без хранилища охраны нет.
+func (h *ChapterHandler) WithClosedChapters(s ClosedSpansStore) *ChapterHandler {
+	h.closed = s
+	return h
+}
+
+// reads — хранилище глав за обёрткой зрителя: не-сотруднику закрытых глав
+// нет. Строится здесь, а не приходит снаружи, — так запись не получит обёртку
+// по ошибке проводки.
+func (h *ChapterHandler) reads() *ViewChapters {
+	return viewOfChapterStore(h.chapterRepo, h.closed)
+}
+
+const chapterClosedMessage = "Глава закрыта — сначала откройте её"
+
+// refuseClosed пишет 409 и сообщает true, если хоть одна из глав ids в
+// множестве закрытых главы workID. Ошибка проверки — 500: молча пропустить
+// правку нельзя.
+func (h *ChapterHandler) refuseClosed(ctx context.Context, w http.ResponseWriter, workID int64, ids ...*int64) bool {
+	if h.closed == nil {
+		return false
+	}
+	set, err := h.closed.ClosedChapterIDs(ctx, workID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить закрытость главы")
+		return true
+	}
+	for _, id := range ids {
+		if id != nil && set[*id] {
+			writeError(w, http.StatusConflict, chapterClosedMessage)
+			return true
+		}
+	}
+	return false
+}
+
+// subtreeHasClosed — есть ли среди глав поддерева корня id закрытая.
+func (h *ChapterHandler) subtreeHasClosed(ctx context.Context, w http.ResponseWriter, workID, id int64) bool {
+	if h.closed == nil {
+		return false
+	}
+	tree, err := h.chapterRepo.ListByWorkHierarchical(ctx, workID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить закрытость главы")
+		return true
+	}
+	var ids []*int64
+	var collect func(cs []*models.Chapter, in bool)
+	collect = func(cs []*models.Chapter, in bool) {
+		for _, c := range cs {
+			here := in || c.ID == id
+			if here {
+				cid := c.ID
+				ids = append(ids, &cid)
+			}
+			collect(c.Children, here)
+		}
+	}
+	collect(tree, false)
+	return h.refuseClosed(ctx, w, workID, ids...)
 }
 
 // WithCredits подключает подписи статей журнала к ответам глав.
@@ -81,6 +148,12 @@ func NewChapterHandler(
 	renderer *markdown.Renderer,
 	cache *RangeCache,
 ) *ChapterHandler {
+	// Обёрнутое хранилище спрятало бы закрытые главы от охраны записи на
+	// context.Background(): удаление родителя закрытой подглавы прошло бы
+	// мимо 409 и унесло её каскадом. Обёртку обработчик строит себе сам.
+	if _, wrapped := chapterRepo.(*ViewChapters); wrapped {
+		panic("NewChapterHandler: нужно голое хранилище глав, обёртку чтения обработчик строит сам")
+	}
 	return &ChapterHandler{
 		chapterRepo: chapterRepo,
 		pageRepo:    pageRepo,
@@ -120,8 +193,8 @@ func (h *ChapterHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
-	chapters, err := h.chapterRepo.ListByWorkHierarchical(ctx, workID)
+	ctx := r.Context()
+	chapters, err := h.reads().ListByWorkHierarchical(ctx, workID)
 	if err != nil {
 		http.Error(w, "Failed to retrieve chapters", http.StatusInternalServerError)
 		return
@@ -201,6 +274,9 @@ func (h *ChapterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
+	if h.refuseClosed(ctx, w, workID, req.ParentID) {
+		return
+	}
 	if err := h.chapterRepo.Create(ctx, chapter); err != nil {
 		http.Error(w, "Failed to create chapter", http.StatusInternalServerError)
 		return
@@ -229,8 +305,8 @@ func (h *ChapterHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
-	chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
+	ctx := r.Context()
+	chapter, err := h.reads().GetByID(ctx, chapterID)
 	if err != nil || !chapterInPathWork(r, chapter) {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
 		return
@@ -265,6 +341,9 @@ func (h *ChapterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
 	if err != nil {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
+		return
+	}
+	if h.refuseClosed(ctx, w, chapter.WorkID, &chapterID, req.ParentID) {
 		return
 	}
 
@@ -334,6 +413,9 @@ func (h *ChapterHandler) Move(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Chapter does not belong to this work", http.StatusBadRequest)
 		return
 	}
+	if h.refuseClosed(ctx, w, workID, &chapterID, req.ParentID) {
+		return
+	}
 
 	if err := h.chapterRepo.Move(ctx, chapterID, req.ParentID, req.OrderNumber); err != nil {
 		http.Error(w, "Failed to move chapter", http.StatusInternalServerError)
@@ -360,6 +442,16 @@ func (h *ChapterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
+	if h.closed != nil {
+		chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
+		if err != nil {
+			http.Error(w, "Chapter not found", http.StatusNotFound)
+			return
+		}
+		if h.subtreeHasClosed(ctx, w, chapter.WorkID, chapterID) {
+			return
+		}
+	}
 	// Каскад унёс бы строки записей человека, а файлы в аудиобакете остались
 	// бы сиротами молча. Публикатор тома главы на боевом не удаляет, так что
 	// отказ задевает только ручное удаление.
@@ -391,6 +483,9 @@ type ChapterPage struct {
 	PageNumber int    `json:"page_number"`
 	HTML       string `json:"html"`
 	Blank      bool   `json:"blank"`
+	// ClosedChapter — заглавие закрытой главы, накрывающей полосу; только
+	// сотруднику.
+	ClosedChapter string `json:"closed_chapter,omitempty"`
 }
 
 // ChapterPagesResponse represents the response for chapter pages with aggregated footnotes
@@ -402,7 +497,10 @@ type ChapterPagesResponse struct {
 // chapterPagesFromRange собирает слим-полосы из отрендеренного диапазона.
 // Общая для глав и элементов подборок: их ответы читает один и тот же
 // ReadingSurface, и форма провода обязана оставаться одной.
-func chapterPagesFromRange(pages []*models.Page, pageHTML []string) []ChapterPage {
+//
+// mark — заглавие закрытой главы полосы для сотрудника (closedMarkers); nil —
+// пометок нет.
+func chapterPagesFromRange(pages []*models.Page, pageHTML []string, mark func(page int) string) []ChapterPage {
 	result := make([]ChapterPage, len(pages))
 	for i, page := range pages {
 		result[i] = ChapterPage{
@@ -412,6 +510,9 @@ func chapterPagesFromRange(pages []*models.Page, pageHTML []string) []ChapterPag
 			// возится, а маркер номера пустой полосе рисовать нельзя — её
 			// секция схлопывается, и маркер сел бы на номер соседа.
 			Blank: strings.TrimSpace(page.ContentMarkdown) == "",
+		}
+		if mark != nil {
+			result[i].ClosedChapter = mark(page.PageNumber)
 		}
 	}
 	return result
@@ -426,22 +527,42 @@ func (h *ChapterHandler) ListPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := context.Background()
-	chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
+	ctx := r.Context()
+	chapter, err := h.reads().GetByID(ctx, chapterID)
 	if err != nil || !chapterInPathWork(r, chapter) {
 		http.Error(w, "Chapter not found", http.StatusNotFound)
 		return
 	}
 
+	// Диапазон с закрытыми полосами собирается мимо кэша для любого
+	// зрителя: не-сотрудник иначе получил бы файл, прогретый сотрудником, а
+	// сотрудник — файл с дырой. Сотруднику на нём — пометки закрытой главы.
+	hasClosed, err := rangeHasClosed(ctx, h.pageRepo, chapter.WorkID, chapter.StartPage, chapter.EndPage)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось собрать страницы")
+		return
+	}
+	cache := h.cache
+	var mark func(int) string
+	if hasClosed {
+		cache = nil
+		if staffContext(ctx) {
+			if mark, err = closedMarkers(ctx, h.chapterRepo, chapter.WorkID); err != nil {
+				writeError(w, http.StatusInternalServerError, "Не удалось собрать страницы")
+				return
+			}
+		}
+	}
+
 	key := pagecache.Key{WorkID: chapter.WorkID, Start: chapter.StartPage, End: chapter.EndPage}
-	h.cache.Serve(w, r, key, func() (any, error) {
+	cache.Serve(w, r, key, func() (any, error) {
 		pages, err := h.pageRepo.GetPageRange(ctx, chapter.WorkID, chapter.StartPage, chapter.EndPage)
 		if err != nil {
 			return nil, err
 		}
 		pageHTML, notes := renderPageRange(h.renderer, pages)
 		return ChapterPagesResponse{
-			Pages:         chapterPagesFromRange(pages, pageHTML),
+			Pages:         chapterPagesFromRange(pages, pageHTML, mark),
 			FootnotesHTML: markdown.RenderNotes(notes),
 		}, nil
 	})

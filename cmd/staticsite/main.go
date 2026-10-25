@@ -2,11 +2,15 @@
 // Спека: docs/superpowers/specs/2026-10-06-static-reading-room-design.md.
 //
 //	go run ./cmd/staticsite build -out static/chitalnya-2026-10-06.partial [-edition 7] [-date 2026-10-06]
-//	    [-exclude scripts/static-exclude.txt] [-only works.json] [-built built.json]
+//	    [-exclude scripts/static-exclude.txt] [-only works.json] [-only-pages pages.json] [-built built.json]
 //	go run ./cmd/staticsite check [-edition 7] [-exclude …] [-only …] static/chitalnya-2026-10-06.partial
 //
 // -only — ответ GET /api/works боевого: в архив идут только его работы
 // (спека docs/superpowers/specs/2026-10-07-static-reading-room-publish-design.md).
+//
+// -only-pages — карты полос боевого (GET /api/works/{id}/page-map) по
+// работам из -only: полоса, которой там нет (закрыта на боевом), в архив не
+// идёт. Без флага — как раньше, плюс закрытое в локальной базе.
 //
 // Целиком (pagefind, serve, zip) — scripts/static-release.sh.
 package main
@@ -25,18 +29,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
-	"proofreader/internal/api"
 	"proofreader/internal/config"
 	"proofreader/internal/database"
 	"proofreader/internal/repository"
 	"proofreader/internal/staticsite"
 	"proofreader/internal/staticsite/sitecheck"
-	"proofreader/pkg/markdown"
 )
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: staticsite build -out DIR [-edition ID] [-date YYYY-MM-DD] [-base URL] [-exclude FILE] [-only FILE] [-built FILE]")
-	fmt.Fprintln(os.Stderr, "       staticsite check [-edition ID] [-allow URL] [-exclude FILE] [-only FILE] DIR")
+	fmt.Fprintln(os.Stderr, "usage: staticsite build -out DIR [-edition ID] [-date YYYY-MM-DD] [-base URL] [-exclude FILE] [-only FILE] [-only-pages FILE] [-built FILE]")
+	fmt.Fprintln(os.Stderr, "       staticsite children ONLY_FILE")
+	fmt.Fprintln(os.Stderr, "       staticsite check [-edition ID] [-allow URL] [-exclude FILE] [-only FILE] [-only-pages FILE] DIR")
 	os.Exit(2)
 }
 
@@ -65,6 +68,11 @@ func main() {
 		err = build(ctx, db.Pool, os.Args[2:])
 	case "check":
 		err = check(ctx, db.Pool, os.Args[2:])
+	case "children":
+		if len(os.Args) != 3 {
+			usage()
+		}
+		err = printChildren(ctx, db.Pool, os.Args[2])
 	default:
 		usage()
 	}
@@ -81,36 +89,36 @@ func build(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	base := fs.String("base", os.Getenv("PUBLIC_BASE_URL"), "читальня онлайн — для ссылки «эта страница в читальне онлайн»")
 	excludeFile := fs.String("exclude", "", "список работ, не идущих в архив (scripts/static-exclude.txt)")
 	onlyFile := fs.String("only", "", "ответ GET /api/works боевого: в архив идут только его работы")
+	onlyPagesFile := fs.String("only-pages", "", "полосы боевого у работ из -only: {\"id\": [номера]} (GET /api/works/{id}/page-map); полос, которых там нет, в архиве нет")
 	builtFile := fs.String("built", "", "куда записать состав сборки (catalog_ids, work_ids)")
 	_ = fs.Parse(args)
 	if *out == "" {
 		return errors.New("нужен -out")
 	}
-	pol, err := loadPolicy(ctx, pool, *excludeFile, *onlyFile)
+	pol, err := loadPolicy(ctx, pool, *excludeFile, *onlyFile, *onlyPagesFile)
 	if err != nil {
 		return err
 	}
 
-	works := repository.NewWorkRepository(pool)
-	chapters := repository.NewChapterRepository(pool)
-	pages := repository.NewPageRepository(pool)
-	editions := repository.NewEditionRepository(pool)
-	collections := repository.NewCollectionRepository(pool)
 	closedRepo := repository.NewClosedRepository(pool)
-	index := api.NewTokenlessIndex(repository.NewIndexRepository(pool), closedRepo)
-	renderer := markdown.NewRenderer()
-
-	// Архив раздают всем, токена у него нет: работы и издания — открытым
-	// видом, закрытое для сборки не существует. Кроме того, loadPolicy кладёт
-	// закрытые работы в exclude, и самопроверка роняет выпуск, если они всё
-	// же попали в сборку.
-	openWorks := api.NewOpenWorks(works, closedRepo)
-	openEditions := api.NewOpenEditions(editions, closedRepo)
-	books := api.NewDownloadSource(openWorks, chapters, pages, openEditions, collections, renderer, *base).WithChapterAnchors()
-	documents := api.NewSEODocumentSource(
-		repository.NewDocumentRepository(pool), repository.NewDocumentCutRepository(pool), openWorks, renderer).WithClosed(closedRepo)
-	src := api.NewStaticSource(openEditions, openWorks, books, pages, index, repository.NewSEORepository(pool),
-		collections, documents, renderer).WithClosed(closedRepo)
+	spans := &prodSpans{base: closedRepo, extra: pol.closedPages}
+	whole, err := pol.wholeWorksOut(ctx, pool)
+	if err != nil {
+		return err
+	}
+	arch := newArchive(archiveInputs{
+		Works:       repository.NewWorkRepository(pool),
+		Editions:    repository.NewEditionRepository(pool),
+		Chapters:    repository.NewChapterRepository(pool),
+		Pages:       repository.NewPageRepository(pool),
+		Collections: repository.NewCollectionRepository(pool),
+		Index:       repository.NewIndexRepository(pool),
+		Concepts:    repository.NewSEORepository(pool),
+		Documents:   repository.NewDocumentRepository(pool),
+		Cuts:        repository.NewDocumentCutRepository(pool),
+		Closed:      closedRepo,
+	}, spans, whole, *base)
+	src := arch.Static
 
 	g := &staticsite.Generator{Src: src, Out: *out, BaseURL: *base, BuildDate: *date, EditionID: *edition,
 		Exclude: pol.exclude, Only: pol.only, Apparatus: pol.apparatus, Logf: log.Printf}
@@ -145,12 +153,13 @@ func check(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	allow := fs.String("allow", strings.TrimSuffix(os.Getenv("PUBLIC_BASE_URL"), "/")+"/", "допустимый префикс внешних ссылок <a href>")
 	excludeFile := fs.String("exclude", "", "список работ, не идущих в архив (как у build)")
 	onlyFile := fs.String("only", "", "ответ GET /api/works боевого (как у build)")
+	onlyPagesFile := fs.String("only-pages", "", "полосы боевого у работ из -only (как у build)")
 	prodPagesFile := fs.String("prod-pages", "", "полосы боевого у работ со снятым аппаратом: {\"id\": [номера]}")
 	_ = fs.Parse(args)
 	if fs.NArg() != 1 {
 		return errors.New("нужен каталог сборки")
 	}
-	pol, err := loadPolicy(ctx, pool, *excludeFile, *onlyFile)
+	pol, err := loadPolicy(ctx, pool, *excludeFile, *onlyFile, *onlyPagesFile)
 	if err != nil {
 		return err
 	}
@@ -179,6 +188,15 @@ func check(ctx context.Context, pool *pgxpool.Pool, args []string) error {
 	forbidden, err := apparatusPrinted(ctx, pool, pol.apparatus)
 	if err != nil {
 		return err
+	}
+	// Закрытые полосы (локально и на боевом) — туда же: полноты они не
+	// требуют, а в сборке их быть не может.
+	closed, err := apparatusPrinted(ctx, pool, pol.closedPages)
+	if err != nil {
+		return err
+	}
+	for id, nums := range closed {
+		forbidden[id] = append(forbidden[id], nums...)
 	}
 	for id, nums := range forbidden {
 		gone := map[int]bool{}

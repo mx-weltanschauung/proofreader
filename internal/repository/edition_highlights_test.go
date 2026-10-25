@@ -32,7 +32,7 @@ func newHighlightsFixture(t *testing.T) highlightsFixture {
 		chapters: NewChapterRepository(pool),
 	}
 	f.edition = &models.Edition{Title: "проба-избранное", Slug: "proba-izbrannoe"}
-	if err := f.editions.Create(ctx, f.edition); err != nil {
+	if err := f.editions.Create(ctx, f.edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	f.volume = newVolume(t, f.works, "проба-избранное-том")
@@ -189,7 +189,7 @@ func TestEditionHighlightsDropWhenVolumeMovesToAnotherEdition(t *testing.T) {
 	ctx := context.Background()
 	f := newHighlightsFixture(t)
 	other := &models.Edition{Title: "проба-избранное-другое", Slug: "proba-izbrannoe-drugoe"}
-	if err := f.editions.Create(ctx, other); err != nil {
+	if err := f.editions.Create(ctx, other, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create other edition: %v", err)
 	}
 	// Вторая книга остаётся в старом собрании, чтобы список после переезда не пустел.

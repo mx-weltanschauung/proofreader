@@ -17,7 +17,8 @@ interface Props {
   onDeleteWork: () => void;
   onDeleteChapter: (chapterId: number) => void;
   onMoveChapter: (chapterId: number, parentId: number | null, orderNumber: number) => Promise<void>;
-  onToggleClosed: (next: boolean) => Promise<void>;
+  onToggleClosed: (next: boolean, reason: string) => Promise<void>;
+  onToggleChapterClosed?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
   reordering: boolean;
   onReorderingChange: (on: boolean) => void;
 }
@@ -33,6 +34,7 @@ export const VolumeManagePanel: React.FC<Props> = ({
   onDeleteChapter,
   onMoveChapter,
   onToggleClosed,
+  onToggleChapterClosed,
   reordering,
   onReorderingChange,
 }) => {
@@ -113,6 +115,7 @@ export const VolumeManagePanel: React.FC<Props> = ({
               canEdit
               onMove={onMoveChapter}
               onDelete={onDeleteChapter}
+              onToggleClosed={onToggleChapterClosed}
             />
           )}
         </section>

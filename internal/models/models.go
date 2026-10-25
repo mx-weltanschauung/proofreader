@@ -285,10 +285,47 @@ type Chapter struct {
 	// ArticleKind — вид статьи журнала (models.ArticleKinds); nil — не статья.
 	ArticleKind *string `json:"article_kind,omitempty" db:"article_kind"`
 	// Credits — подпись статьи; заполняется обработчиком, в базе — article_credits.
-	Credits   []ArticleCredit `json:"credits,omitempty" db:"-"`
-	CreatedAt time.Time       `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at" db:"updated_at"`
-	Children  []*Chapter      `json:"children,omitempty" db:"-"`
+	Credits []ArticleCredit `json:"credits,omitempty" db:"-"`
+	// Closed — собственный признак «закрыта». Общий Update его не пишет:
+	// меняет ClosedRepository.SetChapterClosed.
+	Closed bool `json:"closed" db:"closed"`
+	// ClosedBy — вычисляемая причина закрытости: "" — открыта, "chapter" —
+	// закрыта своим признаком, "parent" — закрыт предок-глава. Закрытость
+	// самой работы сюда не входит (Work.ClosedBy).
+	ClosedBy  string     `json:"closed_by" db:"-"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at" db:"updated_at"`
+	Children  []*Chapter `json:"children,omitempty" db:"-"`
+}
+
+// Причины закрытости главы (Chapter.ClosedBy).
+const (
+	ChapterClosedBySelf   = "chapter"
+	ChapterClosedByParent = "parent"
+)
+
+// PageSpan — диапазон полос работы, включительно.
+type PageSpan struct {
+	Start int `json:"start"`
+	End   int `json:"end"`
+}
+
+// ClosureActor — кто закрыл или открыл: id учётной записи (nil, если её уже
+// нет или она неизвестна) и подпись, которая переживёт удаление учётки.
+type ClosureActor struct {
+	ID   *int64
+	Name string
+}
+
+// Closure — строка журнала закрытий.
+type Closure struct {
+	Kind      string    `json:"kind"`
+	EntityID  int64     `json:"entity_id"`
+	Title     string    `json:"title"`
+	Closed    bool      `json:"closed"`
+	Reason    string    `json:"reason"`
+	ActorName string    `json:"actor_name"`
+	At        time.Time `json:"at"`
 }
 
 // Footnote represents a footnote in a page

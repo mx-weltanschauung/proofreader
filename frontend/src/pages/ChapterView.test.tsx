@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import type { AudioQueueItem, Chapter, User, Work } from '../types';
-import { audioApi, chaptersApi, worksApi, cacheApi } from '../services/api';
+import { audioApi, chaptersApi, worksApi, cacheApi, closuresApi } from '../services/api';
 import { findChapterById } from '../utils/chapterTree';
 import { shareFrom, stubShare, unstubShare } from '../test/shareStub';
 import { RECENT_KEY, readRecent, storageKey } from '../hooks/useReadingProgress';
@@ -1776,5 +1776,93 @@ describe('ChapterView: статья журнала', () => {
       '/authors/i-rubin',
     );
     expect(screen.getByText('рецензия')).toHaveClass('chapter-type-badge');
+  });
+});
+
+describe('ChapterView: закрытая глава', () => {
+  const CLOSED = { ...CHAPTER, closed: true, closed_by: 'chapter' } as Chapter;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(worksApi, 'get').mockImplementation(() => ok(WORK));
+    vi.spyOn(chaptersApi, 'listPages').mockImplementation(() =>
+      ok({ pages: PAGES, footnotes_html: '' }),
+    );
+    vi.spyOn(chaptersApi, 'list').mockImplementation(() => ok([] as Chapter[]));
+  });
+
+  afterEach(() => {
+    useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+  });
+
+  const signIn = (role: User['role']) =>
+    useAuth.setState({
+      user: { id: 1, role } as User,
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+
+  it('администратору печатает дату и причину закрытия', async () => {
+    signIn('administrator');
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CLOSED));
+    const latest = vi
+      .spyOn(closuresApi, 'latest')
+      .mockImplementation(() =>
+        ok({ closed: true, at: '2026-10-23T10:00:00Z', reason: 'письмо правообладателя' }),
+      );
+    renderChapter();
+    expect(
+      await screen.findByText('закрыто 23.10.2026: письмо правообладателя'),
+    ).toBeInTheDocument();
+    expect(latest).toHaveBeenCalledWith('chapter', 127);
+  });
+
+  it('редактору — дата без причины, а кнопки закрытия нет', async () => {
+    signIn('editor');
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CLOSED));
+    vi.spyOn(closuresApi, 'latest').mockImplementation(() =>
+      ok({ closed: true, at: '2026-10-23T10:00:00Z', reason: '' }),
+    );
+    renderChapter();
+    expect(await screen.findByText('закрыто 23.10.2026')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Открыть' })).toBeNull();
+  });
+
+  it('закрытая через главу выше: пометка и кнопка без права открыть', async () => {
+    signIn('administrator');
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() =>
+      ok({ ...CHAPTER, closed: false, closed_by: 'parent' } as Chapter),
+    );
+    vi.spyOn(closuresApi, 'latest').mockImplementation(() => ok({ closed: false }) as never);
+    renderChapter();
+    const open = await screen.findByRole('button', { name: 'Открыть' });
+    expect(open).toBeDisabled();
+    expect(screen.getByText('закрыта вместе с главой выше')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Закрыть' })).toBeNull();
+    expect(document.querySelector('h1')?.textContent).toContain('закрыт');
+  });
+
+  it('читателю и анониму журнал закрытий не запрашивается', async () => {
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CHAPTER));
+    const latest = vi.spyOn(closuresApi, 'latest');
+    renderChapter();
+    await screen.findByRole('link', { name: 'Страница 245' });
+    expect(latest).not.toHaveBeenCalled();
+  });
+
+  it('«Открыть» у администратора шлёт причину и перечитывает главу', async () => {
+    signIn('administrator');
+    const get = vi.spyOn(chaptersApi, 'get');
+    get.mockImplementationOnce(() => ok(CLOSED)).mockImplementation(() => ok(CHAPTER));
+    vi.spyOn(closuresApi, 'latest').mockImplementation(() =>
+      ok({ closed: true, at: '2026-10-23T10:00:00Z', reason: 'жалоба' }),
+    );
+    const set = vi.spyOn(chaptersApi, 'setClosed').mockImplementation(() => ok({}) as never);
+    vi.spyOn(window, 'prompt').mockReturnValue('закрыли по ошибке');
+    renderChapter();
+    await userEvent.click(await screen.findByRole('button', { name: 'Открыть' }));
+    await waitFor(() => expect(set).toHaveBeenCalledWith(3, 127, false, 'закрыли по ошибке'));
+    expect(await screen.findByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
   });
 });

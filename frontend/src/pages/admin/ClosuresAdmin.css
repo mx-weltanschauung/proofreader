@@ -1,0 +1,28 @@
+.closures-admin {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+.closures-admin-note {
+  color: var(--color-text-secondary);
+}
+
+.closures-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.closures-admin-table th,
+.closures-admin-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.closures-admin-kind {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}

@@ -38,10 +38,21 @@ import (
 // в ответе анониму или читателю маркер — утечка, где бы он ни нашёлся.
 const closedMarker = "ЗАКРЫТО-7f3a"
 
-// closedLeak ловит маркер в любом виде, в каком его печатают каналы: как
-// есть, строчными, транслитом слага (zakryto-7f3a) и с границами совпадения
-// поиска (U+0001/U+0002) внутри — отрывок ts_headline режет маркер по дефису.
-var closedLeak = regexp.MustCompile(`(?i)(закрыто|zakryto)[^\p{L}\p{N}]{0,12}7f3a`)
+// chapterMarker — маркер закрытой подглавы открытого тома: её заглавие, текст
+// её полос (и общей с соседкой), статья указателя на её полосе, цель события,
+// пункт подборки, исходная полоса вклейки. Свой маркер, а не closedMarker:
+// сотрудник обязан увидеть именно его, иначе проверка «сотрудник видит»
+// прошла бы на закрытом томе рядом.
+const chapterMarker = "ЗАКРЫТО-ГЛ-5c1d"
+
+// closedLeak ловит любой из двух маркеров в любом виде, в каком его печатают
+// каналы: как есть, строчными, транслитом слага (zakryto-7f3a,
+// zakryto-gl-5c1d) и с границами совпадения поиска (U+0001/U+0002) внутри —
+// отрывок ts_headline режет маркер по дефису.
+var closedLeak = regexp.MustCompile(`(?i)(закрыто|zakryto)[^\p{L}\p{N}]{0,12}(7f3a|(гл|gl)[^\p{L}\p{N}]{0,12}5c1d)`)
+
+// chapterLeak — только маркер закрытой подглавы.
+var chapterLeak = regexp.MustCompile(`(?i)(закрыто|zakryto)[^\p{L}\p{N}]{0,12}(гл|gl)[^\p{L}\p{N}]{0,12}5c1d`)
 
 // closedSweep — фикстура сторожа: закрытое всеми четырьмя путями и открытое
 // рядом, которое на закрытое ссылается.
@@ -71,6 +82,50 @@ type closedSweep struct {
 	// Событие вида с маркером в первой организации: вид держит только его,
 	// и оно закрыто — вид не должен появиться на странице организации.
 	eventKindClosed string
+
+	adminTok string
+	// ch — закрытая подглава открытого тома (сторож закрытых глав).
+	ch closedChapterSweep
+}
+
+// closedChapterSweep — открытый том с закрытой подглавой и всё, что на неё
+// или на её полосы ссылается. Том (work) открыт, в собрании openEd, 4 полосы:
+//
+//	1 — только соседка (открыта);
+//	2 — общая: конец соседки и начало закрытой речи (закрыта целиком);
+//	3 — только закрытая речь и её подглава (закрыта);
+//	4 — заключение родителя (открыта).
+//
+// Главы: parent «Прения» 1—4 → neighbour 1—2, closed 2—3 (свой признак) →
+// grandchild 3—3 (закрыта через предка). Признак ставит администратор
+// маршрутом в самом тесте (closeSweepChapter), после того как аноним прогрел
+// кэши, — пока его нет, маркер виден всем.
+type closedChapterSweep struct {
+	work                                  int64
+	parent, neighbour, closed, grandchild int64
+	pages                                 map[int]int64 // номер полосы → id
+	// Звук: дорожка закрытой речи, дорожка соседки через общую полосу,
+	// открытая дорожка заключения; записи человека — в закрытой главе и в
+	// родителе (его диапазон задевает закрытые полосы).
+	track, sharedTrack, openTrack int64
+	recording, parentRecording    int64
+	// Пункты подборок: на закрытую главу, на родителя, на подглаву под
+	// закрытой (читательская подборка).
+	staffItem, parentItem, readerItem int64
+	// Вклейки сотруднического разбора: с закрытой и с общей полосы.
+	cuts []int64
+	// Понятие, чья единственная статья выросла из закрытой полосы.
+	concept string
+	// Организация, у которой все цели — закрытые главы, и её событие;
+	// смешанное событие первой организации.
+	org, event, eventMixed string
+	// suggestion — правка читателя на закрытой полосе, openSuggestion — на
+	// открытой полосе того же тома (без неё пустые «мои правки» прошли бы).
+	suggestion, openSuggestion int64
+	// Номер открытого журнала с закрытой статьёй и человек, подписанный
+	// только под ней.
+	issue, article int64
+	person         string
 }
 
 func (f *closedSweep) closedWorks() []int64 { return []int64{f.self, f.front, f.edVol, f.issue} }
@@ -102,6 +157,10 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 		t.Fatal(err)
 	}
 	if f.editorTok, err = authService.GenerateToken(&models.User{ID: editor, Email: "editor@example.org", Role: models.RoleEditor}); err != nil {
+		t.Fatal(err)
+	}
+	admin := one(`INSERT INTO users (email, password_hash, role) VALUES ('admin@example.org', 'x', 'administrator') RETURNING id`)
+	if f.adminTok, err = authService.GenerateToken(&models.User{ID: admin, Email: "admin@example.org", Role: models.RoleAdministrator}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -152,6 +211,30 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 			VALUES ($1, $2, 'chapter', 1, 1, 2, $3) RETURNING id`, w, title, kind)
 	}
 
+	// Открытый том с подглавой, которую тест закроет (closedChapterSweep).
+	// Слово «сокровенном» стоит на открытой и на закрытых полосах: поиск по
+	// нему находит том, и отрывок закрытой полосы был бы утечкой.
+	f.ch.work = work("Том с прениями", &f.openEd, ptr(3), models.WorkRoleVolume, nil, false)
+	f.ch.pages = map[int]int64{}
+	for n, text := range map[int]string{
+		1: "Открытая речь соседки о сокровенном, полоса 1.",
+		2: "Конец речи соседки о сокровенном. Речь " + chapterMarker + " начинается.",
+		3: "Речь " + chapterMarker + " о сокровенном продолжается, полоса 3.",
+		4: "Открытое заключение прений, полоса 4.",
+	} {
+		f.ch.pages[n] = one(`INSERT INTO pages (work_id, page_number, content_markdown, preview_path)
+			VALUES ($1::bigint, $2::int, $3, 'works/' || $1::bigint || '/pages/page_' || $2::int || '.png') RETURNING id`,
+			f.ch.work, n, text)
+	}
+	chapter := func(title string, parent *int64, order, start, end int) int64 {
+		return one(`INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page, parent_id)
+			VALUES ($1, $2, 'chapter', $3, $4, $5, $6) RETURNING id`, f.ch.work, title, order, start, end, parent)
+	}
+	f.ch.parent = chapter("Прения по докладу", nil, 1, 1, 4)
+	f.ch.neighbour = chapter("Речь соседки", &f.ch.parent, 1, 1, 2)
+	f.ch.closed = chapter("Речь "+chapterMarker, &f.ch.parent, 2, 2, 3)
+	f.ch.grandchild = chapter("Подглава речи "+chapterMarker, &f.ch.closed, 1, 3, 3)
+
 	// Подписанная статья номера: человек, у которого все статьи закрыты.
 	person := one(`INSERT INTO persons (name, sort_key, slug) VALUES ('Иванов И. И.', 'иванов', 'ivanov') RETURNING id`)
 	f.person = "ivanov"
@@ -166,12 +249,24 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 	openIssue := work(models.IssueTitle("Открытый журнал", 1928, "1"), nil, nil, models.WorkRoleJournalIssue, nil, false)
 	exec(`INSERT INTO journal_issues (journal_id, year, number_from, number_to, label, work_id)
 		VALUES ($1, 1928, 1, 1, '1', $2)`, openJournal, openIssue)
-	exec(`INSERT INTO pages (work_id, page_number, content_markdown) VALUES ($1, 1, 'Открытая статья.')`, openIssue)
+	exec(`INSERT INTO pages (work_id, page_number, content_markdown, preview_path)
+		VALUES ($1::bigint, 1, 'Открытая статья.', 'works/' || $1::bigint || '/pages/page_1.png')`, openIssue)
 	openArticle := one(`INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page, article_kind)
 		VALUES ($1, 'Открытая статья', 'chapter', 1, 1, 1, 'статья') RETURNING id`, openIssue)
 	openPerson := one(`INSERT INTO persons (name, sort_key, slug) VALUES ('Петров П. П.', 'петров', $1) RETURNING id`, f.openPerson)
 	exec(`INSERT INTO article_credits (chapter_id, position, role, printed, person_id)
 		VALUES ($1, 1, 'author', 'П. Петров', $2)`, openArticle, openPerson)
+	// Закрытая статья открытого номера (своим признаком) и человек, у которого
+	// других статей нет: страница человека — 404, номер — без статьи.
+	f.ch.issue, f.ch.person = openIssue, "sidorov"
+	exec(`INSERT INTO pages (work_id, page_number, content_markdown, preview_path)
+		VALUES ($1::bigint, 2, $2, 'works/' || $1::bigint || '/pages/page_2.png')`,
+		openIssue, "Статья "+chapterMarker+" номера.")
+	f.ch.article = one(`INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page, article_kind, closed)
+		VALUES ($1, $2, 'chapter', 2, 2, 2, 'статья', true) RETURNING id`, openIssue, "Статья "+chapterMarker)
+	sidorov := one(`INSERT INTO persons (name, sort_key, slug) VALUES ('Сидоров С. С.', 'сидоров', $1) RETURNING id`, f.ch.person)
+	exec(`INSERT INTO article_credits (chapter_id, position, role, printed, person_id)
+		VALUES ($1, 1, 'author', 'С. Сидоров', $2)`, f.ch.article, sidorov)
 
 	f.category = one(`INSERT INTO categories (name, slug, description) VALUES ('Раздел', 'razdel', '') RETURNING id`)
 	exec(`INSERT INTO work_categories (work_id, category_id) VALUES ($1, $2), ($3, $2)`, f.self, f.category, f.open)
@@ -192,7 +287,18 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 	f.closedConcept, f.openConcept = "zakrytoe", "otkrytoe"
 	ca := article(concept("Сокровенное", f.closedConcept), f.closedEd, "Сокровенное", "Статья "+closedMarker+" указателя.")
 	oa := article(concept("Открытое", f.openConcept), f.openEd, "Открытое", "Статья открытого понятия.")
-	f.refs = []int64{ref(ca, 1, 1, 1), ref(oa, 1, 1, 1), ref(oa, 2, 1, 2)}
+	f.refs = []int64{ref(ca, 1, 1, 1), ref(oa, 1, 1, 1), ref(oa, 2, 1, 2),
+		// Открытое понятие: адрес в закрытую полосу тома с прениями и адрес
+		// в открытую его полосу.
+		ref(oa, 3, 3, 3), ref(oa, 3, 1, 4)}
+	// Понятие, единственная статья которого выросла из закрытой полосы
+	// (работа-указатель — том с прениями, полоса 3).
+	f.ch.concept = "zakrytoe-gl"
+	exec(`INSERT INTO index_concept_articles (concept_id, edition_id, work_id, title, title_key, article_markdown,
+			source_page_start, source_page_end)
+		VALUES ($1, $2, $3, $4, $4, $5, 3, 3)`,
+		concept("Понятие "+chapterMarker, f.ch.concept), f.openEd, f.ch.work,
+		"Понятие "+chapterMarker, "Статья "+chapterMarker+" указателя.")
 	exec(`INSERT INTO index_fragments (reference_id, order_number, start_page_id, start_offset, end_page_id,
 			end_offset, head_quote, tail_quote, start_hash, end_hash)
 		SELECT $1, 1, id, 0, id, octet_length(content_markdown), 'Полоса', 'номер 1.', repeat('0', 64), repeat('0', 64)
@@ -213,11 +319,14 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 		item(staff, "work", nil, f.edVol, "Пункт тома "+closedMarker, 2),
 		item(staff, "chapter", ch(f.open), f.open, "Открытый пункт", 3),
 	}
+	f.ch.staffItem = item(staff, "chapter", &f.ch.closed, f.ch.work, "Пункт "+chapterMarker, 4)
+	f.ch.parentItem = item(staff, "chapter", &f.ch.parent, f.ch.work, "Прения по докладу", 5)
 	f.readerItems = []int64{
 		item(readerColl, "chapter", ch(f.issue), f.issue, "Статья "+closedMarker, 1),
 		item(readerColl, "chapter", ch(f.front), f.front, "Титул "+closedMarker, 2),
 		item(readerColl, "chapter", ch(f.open), f.open, "Открытый пункт", 3),
 	}
+	f.ch.readerItem = item(readerColl, "chapter", &f.ch.grandchild, f.ch.work, "Подглава "+chapterMarker, 4)
 
 	// Одобренные разборы, сотруднический и читательский, под одним слагом;
 	// вклейки из закрытого и из открытого.
@@ -248,12 +357,20 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 		cut(readerDoc, f.pages[f.issue], "Вклейка номера "+closedMarker),
 		cut(readerDoc, f.pages[f.open], "Открытая вклейка"),
 	}
-	body(staffDoc, f.cuts[0], f.cuts[1])
+	// Вклейки с закрытой и с общей полосы тома с прениями: подпись без
+	// маркера у второй — утечку выдал бы только текст полосы.
+	f.ch.cuts = []int64{
+		cut(staffDoc, f.ch.pages[3], "Вклейка "+chapterMarker),
+		cut(staffDoc, f.ch.pages[2], "Вклейка с общей полосы"),
+	}
+	body(staffDoc, f.cuts[0], f.cuts[1], f.ch.cuts[0], f.ch.cuts[1])
 	body(readerDoc, f.cuts[2], f.cuts[3])
 
 	// Избранное открытого собрания указывает на главу закрытого тома.
 	exec(`INSERT INTO edition_highlights (edition_id, chapter_id, position, label) VALUES ($1, $2, 1, $3)`,
 		f.openEd, f.chapters[f.self], "Избранное "+closedMarker)
+	exec(`INSERT INTO edition_highlights (edition_id, chapter_id, position, label) VALUES ($1, $2, 2, $3)`,
+		f.openEd, f.ch.closed, "Избранное "+chapterMarker)
 
 	// Звук закрытого тома: синтез и запись человека.
 	f.track = one(`INSERT INTO audio_tracks (work_id, title, start_page, end_page, s3_key, duration_ms, bytes, md5,
@@ -273,6 +390,23 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 			bytes, duration_ms)
 		VALUES ($1::bigint, $2, 1, 'Чтец', 'works/' || $1::bigint || '/rec/1.ogg', 'audio/ogg', 10, 1000) RETURNING id`,
 		f.open, f.chapters[f.open])
+	track := func(start, end int, title string) int64 {
+		return one(`INSERT INTO audio_tracks (work_id, title, start_page, end_page, s3_key, duration_ms, bytes, md5,
+				recipe_sha256, pages_sha256)
+			VALUES ($1::bigint, $2, $3::int, $4::int, 'works/' || $1::bigint || '/r/' || $3::int || '-' || $4::int || '.opus',
+				1000, 10, 'md5', 'recipe', 'pages') RETURNING id`, f.ch.work, title, start, end)
+	}
+	f.ch.track = track(2, 3, "Речь "+chapterMarker)
+	f.ch.sharedTrack = track(1, 2, "Речь соседки")
+	f.ch.openTrack = track(4, 4, "Заключение прений")
+	recording := func(chapter int64, pos int) int64 {
+		return one(`INSERT INTO audio_recordings (work_id, chapter_id, position, reader, s3_key, content_type,
+				bytes, duration_ms)
+			VALUES ($1::bigint, $2, $3::int, 'Чтец', 'works/' || $1::bigint || '/rec/' || $2::bigint || '.ogg',
+				'audio/ogg', 10, 1000) RETURNING id`, f.ch.work, chapter, pos)
+	}
+	f.ch.recording = recording(f.ch.closed, 1)
+	f.ch.parentRecording = recording(f.ch.parent, 1)
 
 	// События. Повестку пишет настоящий ReplaceAgenda. Событие 1 — целиком из
 	// закрытого тома (подпись строки и заглавие пункта несут маркер); событие
@@ -351,10 +485,58 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 		}},
 	}}}))
 
+	// События над закрытой подглавой открытого тома. Третья организация
+	// держит только цели в закрытых главах — её нет ни на полке, ни по адресу;
+	// смешанное событие первой организации отдаёт строку с открытой целью без
+	// закрытой цели рядом, а строку и пункт, у которых цели только закрытые, —
+	// не отдаёт вовсе.
+	f.ch.org, f.ch.event, f.ch.eventMixed = "org-c", "event-gl", "event-gl-mixed"
+	chTarget := func(chapter int64, label string) models.AgendaTargetInput {
+		return models.AgendaTargetInput{Kind: models.EventTargetChapter, WorkID: f.ch.work, ChapterID: ptr(chapter), Label: label}
+	}
+	orgC := &models.EventOrganization{Slug: f.ch.org, Title: "Третья организация " + chapterMarker, Position: 3}
+	mustEvent(events.CreateOrganization(ctx, orgC))
+	kindC := &models.EventKind{OrganizationID: orgC.ID, Title: "Вид третьей организации", Position: 1}
+	mustEvent(events.CreateKind(ctx, kindC))
+	eventC := &models.Event{KindID: kindC.ID, Slug: f.ch.event, Title: "Событие " + chapterMarker, Dates: "5 января", Position: 1}
+	eventMixedC := &models.Event{KindID: kindA.ID, Slug: f.ch.eventMixed, Title: "Прения открытого тома", Dates: "6 января", Position: 3}
+	mustEvent(events.CreateEvent(ctx, eventC))
+	mustEvent(events.CreateEvent(ctx, eventMixedC))
+	mustEvent(events.ReplaceAgenda(ctx, eventC.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Пункт " + chapterMarker,
+		Entries: []models.AgendaEntryInput{{
+			Label: "Строка " + chapterMarker,
+			Targets: []models.AgendaTargetInput{chTarget(f.ch.closed, "Цель "+chapterMarker),
+				chTarget(f.ch.grandchild, "")},
+		}},
+	}}}))
+	mustEvent(events.ReplaceAgenda(ctx, eventMixedC.ID, models.AgendaInput{Sections: []models.AgendaSectionInput{{
+		Title: "Открытый пункт прений",
+		Entries: []models.AgendaEntryInput{
+			{Label: "Открытая речь", Targets: []models.AgendaTargetInput{chTarget(f.ch.neighbour, ""),
+				chTarget(f.ch.closed, "Цель "+chapterMarker)}},
+			{Label: "Строка " + chapterMarker, Targets: []models.AgendaTargetInput{chTarget(f.ch.closed, "")}},
+		},
+	}, {
+		Title: "Пункт " + chapterMarker,
+		Entries: []models.AgendaEntryInput{{
+			Label:   "Строка подглавы",
+			Targets: []models.AgendaTargetInput{chTarget(f.ch.grandchild, "")},
+		}},
+	}}}))
+
 	// Правка читателя на полосе, которую потом закрыли.
 	f.suggestion = one(`INSERT INTO page_suggestions (page_id, base_markdown, proposed_markdown, user_id)
 		SELECT id, content_markdown, content_markdown || ' правка', $2 FROM pages WHERE id = $1 RETURNING id`,
 		f.pages[f.self], reader)
+	// Правка читателя на полосе подглавы, которую потом закроют: в «моих
+	// правках» её нет (номер полосы и заглавие тома выдали бы закрытое место).
+	f.ch.suggestion = one(`INSERT INTO page_suggestions (page_id, base_markdown, proposed_markdown, user_id)
+		SELECT id, content_markdown, content_markdown || ' правка', $2 FROM pages WHERE id = $1 RETURNING id`,
+		f.ch.pages[3], reader)
+	f.ch.openSuggestion = one(`INSERT INTO page_suggestions (page_id, base_markdown, proposed_markdown, user_id)
+		SELECT id, content_markdown, content_markdown || ' правка', $2 FROM pages WHERE id = $1 RETURNING id`,
+		f.ch.pages[1], reader)
 	return f
 }
 
@@ -418,37 +600,42 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		}
 		return out
 	}
-	works := ids(f.open, f.self, f.front, f.edVol, f.issue)
+	works := ids(f.open, f.self, f.front, f.edVol, f.issue, f.ch.work)
 	var chapters, pages []string
 	for _, w := range []int64{f.open, f.self, f.front, f.edVol, f.issue} {
 		chapters = append(chapters, itoa(f.chapters[w]))
 		pages = append(pages, itoa(f.pages[w]))
 	}
+	chapters = append(chapters, ids(f.ch.parent, f.ch.neighbour, f.ch.closed, f.ch.grandchild)...)
+	for n := 1; n <= 4; n++ {
+		pages = append(pages, itoa(f.ch.pages[n]))
+	}
 	return map[string][]string{
-		"works/{id}":                works,
-		"works/{workId}":            works,
-		"chapters/{id}":             chapters,
-		"pages/{pageId}":            pages,
-		"by-number/{pageNumber}":    {"1"},
-		"versions/{versionId}":      {"1"},
-		"editions/{id}":             ids(f.openEd, f.closedEd),
-		"journals/{slug}":           {f.journalSlug, f.openJournal},
-		"persons/{slug}":            {f.person, f.openPerson},
-		"categories/{id}":           ids(f.category),
-		"concepts/{slug}":           {f.closedConcept, f.openConcept},
-		"references/{refId}":        ids(f.refs...),
-		"audio/{id}":                ids(f.track, f.openTrack),
-		"rec/{id}":                  ids(f.recording, f.openRecording),
-		"suggestions/{id}":          ids(f.suggestion),
-		"documents/{slug}":          {"razbor"},
-		"documents/{nickname}":      {f.readerNick},
-		"cuts/{cutId}":              ids(f.cuts...),
-		"collections/{slug}":        {"podborka"},
-		"collections/{nickname}":    {f.readerNick},
-		"items/{itemId}":            ids(append(append([]int64{}, f.staffItems...), f.readerItems...)...),
+		"works/{id}":             works,
+		"works/{workId}":         works,
+		"chapters/{id}":          chapters,
+		"pages/{pageId}":         pages,
+		"by-number/{pageNumber}": {"1", "3"},
+		"versions/{versionId}":   {"1"},
+		"editions/{id}":          ids(f.openEd, f.closedEd),
+		"journals/{slug}":        {f.journalSlug, f.openJournal},
+		"persons/{slug}":         {f.person, f.openPerson, f.ch.person},
+		"categories/{id}":        ids(f.category),
+		"concepts/{slug}":        {f.closedConcept, f.openConcept, f.ch.concept},
+		"references/{refId}":     ids(f.refs...),
+		"audio/{id}":             ids(f.track, f.openTrack, f.ch.track, f.ch.sharedTrack, f.ch.openTrack),
+		"rec/{id}":               ids(f.recording, f.openRecording, f.ch.recording, f.ch.parentRecording),
+		"suggestions/{id}":       ids(f.suggestion, f.ch.suggestion),
+		"documents/{slug}":       {"razbor"},
+		"documents/{nickname}":   {f.readerNick},
+		"cuts/{cutId}":           ids(append(append([]int64{}, f.cuts...), f.ch.cuts...)...),
+		"collections/{slug}":     {"podborka"},
+		"collections/{nickname}": {f.readerNick},
+		"items/{itemId}": ids(append(append(append([]int64{}, f.staffItems...), f.readerItems...),
+			f.ch.staffItem, f.ch.parentItem, f.ch.readerItem)...),
 		"readers/{nickname}":        {f.readerNick},
-		"organizations/{slug}":      {f.orgA, f.orgB},
-		"organizations/{eventSlug}": {f.eventClosed, f.eventMixed, f.eventOther, f.eventKindClosed},
+		"organizations/{slug}":      {f.orgA, f.orgB, f.ch.org},
+		"organizations/{eventSlug}": {f.eventClosed, f.eventMixed, f.eventOther, f.eventKindClosed, f.ch.event, f.ch.eventMixed},
 	}
 }
 
@@ -457,15 +644,15 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 func closedSweepQueries(f *closedSweep) map[string][]string {
 	q := url.QueryEscape("ЗАКРЫТО")
 	var searchPages []string
-	for _, w := range append(f.closedWorks(), f.open) {
+	for _, w := range append(f.closedWorks(), f.open, f.ch.work) {
 		searchPages = append(searchPages, "q="+q+"&work_id="+itoa(w))
 	}
-	all := strings.Join([]string{itoa(f.open), itoa(f.self), itoa(f.front), itoa(f.edVol), itoa(f.issue)}, ",")
+	all := strings.Join([]string{itoa(f.open), itoa(f.self), itoa(f.front), itoa(f.edVol), itoa(f.issue), itoa(f.ch.work)}, ",")
 	downloads := []string{"format=md", "format=html", "format=fb2", "format=m3u"}
 	return map[string][]string{
 		"/api/search": {"q=" + q, "q=" + url.QueryEscape("сокровенном"), "q=" + q + "&terms_only=1",
 			"q=" + q + "&editions=" + itoa(f.openEd) + "," + itoa(f.closedEd), "q=" + q + "&works=" + all},
-		"/api/search/pages":        searchPages,
+		"/api/search/pages":        append(searchPages, "q="+url.QueryEscape("сокровенном")+"&work_id="+itoa(f.ch.work)),
 		"/api/works":               {"", "limit=500"},
 		"/api/persons":             {"q=" + url.QueryEscape("Иван")},
 		"/api/concepts":            {"", "q=" + url.QueryEscape("Сокровен")},
@@ -487,32 +674,35 @@ func closedSweepSilent() map[string]string {
 	const admin = "только администратор: анониму 401, читателю 403"
 	const staff = "только сотрудник: анониму 401, читателю 403"
 	return map[string]string{
-		"/api/admin/stats/crawlers":                   admin,
-		"/api/admin/stats/devices":                    admin,
-		"/api/admin/stats/health":                     admin,
-		"/api/admin/stats/referrers":                  admin,
-		"/api/admin/stats/searches":                   admin,
-		"/api/admin/stats/top":                        admin,
-		"/api/admin/stats/traffic":                    admin,
-		"/api/cache/stats":                            admin,
-		"/api/export":                                 admin,
-		"/api/feedback":                               admin,
-		"/api/feedback/unread-count":                  admin,
-		"/api/readers":                                admin,
-		"/api/readers/{nickname}/collections":         admin,
-		"/api/users":                                  admin,
-		"/api/audio/queue":                            staff,
-		"/api/documents/review":                       staff,
-		"/api/suggestions":                            staff,
-		"/api/suggestions/{id}":                       staff,
-		"/api/works/{id}/apparatus":                   staff,
-		"/api/works/{workId}/pages/{pageId}/versions": staff,
+		"/api/admin/stats/crawlers":                               admin,
+		"/api/admin/stats/devices":                                admin,
+		"/api/admin/stats/health":                                 admin,
+		"/api/admin/stats/referrers":                              admin,
+		"/api/admin/stats/searches":                               admin,
+		"/api/admin/stats/top":                                    admin,
+		"/api/admin/stats/traffic":                                admin,
+		"/api/cache/stats":                                        admin,
+		"/api/admin/closures":                                     admin,
+		"/api/works/{workId}/chapters/{id}/closed-plan":           admin,
+		"/api/export":                                             admin,
+		"/api/feedback":                                           admin,
+		"/api/feedback/unread-count":                              admin,
+		"/api/readers":                                            admin,
+		"/api/readers/{nickname}/collections":                     admin,
+		"/api/users":                                              admin,
+		"/api/audio/queue":                                        staff,
+		"/api/documents/review":                                   staff,
+		"/api/suggestions":                                        staff,
+		"/api/suggestions/{id}":                                   staff,
+		"/api/works/{id}/apparatus":                               staff,
+		"/api/closures/latest":                                    staff,
+		"/api/works/{workId}/pages/{pageId}/versions":             staff,
 		"/api/works/{workId}/pages/{pageId}/versions/{versionId}": staff,
-		"/api/static-archive":          "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
-		"/api/static-archive/download": "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
-		"/mcp":                         "GET отвечает 405 по устройству; MCP проверяет sweepMCP",
-		"/og/":                         "голый префикс — 404; карточки обходит sweepTokenless",
-		"/sitemap-":                    "голый префикс — 404; куски карты обходит sweepTokenless от /sitemap.xml",
+		"/api/static-archive":                                     "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
+		"/api/static-archive/download":                            "архива в тесте нет (STATIC_ARCHIVE_URL пуст) — 404 всем",
+		"/mcp":                                                    "GET отвечает 405 по устройству; MCP проверяет sweepMCP",
+		"/og/":                                                    "голый префикс — 404; карточки обходит sweepTokenless",
+		"/sitemap-":                                               "голый префикс — 404; куски карты обходит sweepTokenless от /sitemap.xml",
 	}
 }
 
@@ -533,14 +723,19 @@ func closedDirectValues(f *closedSweep) map[string]map[string]bool {
 		"works/{workId}":  works,
 		"editions/{id}":   set(itoa(f.closedEd)),
 		"journals/{slug}": set(f.journalSlug),
-		"persons/{slug}":  set(f.person),
-		"concepts/{slug}": set(f.closedConcept),
-		"audio/{id}":      set(itoa(f.track)),
-		"rec/{id}":        set(itoa(f.recording)),
+		"concepts/{slug}": set(f.closedConcept, f.ch.concept),
+		"persons/{slug}":  set(f.person, f.ch.person),
+		"audio/{id}":      set(itoa(f.track), itoa(f.ch.track), itoa(f.ch.sharedTrack)),
+		"rec/{id}":        set(itoa(f.recording), itoa(f.ch.recording), itoa(f.ch.parentRecording)),
 		// Вторая организация и событие 1 видны только закрытым: 404 всем,
 		// кроме сотрудника.
-		"organizations/{slug}":      set(f.orgB),
-		"organizations/{eventSlug}": set(f.eventClosed, f.eventKindClosed),
+		"organizations/{slug}":      set(f.orgB, f.ch.org),
+		"organizations/{eventSlug}": set(f.eventClosed, f.eventKindClosed, f.ch.event),
+		// Закрытая подглава и её потомок, закрытые полосы (общая с соседкой —
+		// тоже) и номер закрытой полосы: 404 в любом сочетании.
+		"chapters/{id}":          set(itoa(f.ch.closed), itoa(f.ch.grandchild)),
+		"pages/{pageId}":         set(itoa(f.ch.pages[2]), itoa(f.ch.pages[3])),
+		"by-number/{pageNumber}": set("3"),
 	}
 }
 
@@ -591,7 +786,8 @@ func expandRoute(t *testing.T, tpl string, vars map[string][]string, direct map[
 		}
 		out = next
 	}
-	if len(out) > 64 {
+	// Самый широкий — понятие × адрес × полоса (3 × 5 × 9).
+	if len(out) > 160 {
 		t.Fatalf("маршрут %s разворачивается в %d адресов — сократи значения", tpl, len(out))
 	}
 	return out
@@ -635,6 +831,53 @@ func sweepDo(t *testing.T, h http.Handler, path, token string) sweepResponse {
 	return sweepResponse{code: rec.Code, text: text, loc: rec.Header().Get("Location")}
 }
 
+// sweepFollow — sweepDo, который идёт по постоянному редиректу краулера на
+// канонический адрес (голый номер → номер со слагом).
+func sweepFollow(t *testing.T, h http.Handler, path, token string) sweepResponse {
+	t.Helper()
+	res := sweepDo(t, h, path, token)
+	for i := 0; i < 3 && res.code == http.StatusMovedPermanently; i++ {
+		loc := strings.TrimPrefix(res.loc, sweepBase)
+		if strings.HasPrefix(path, "/seo") && !strings.HasPrefix(loc, "/seo") {
+			loc = "/seo" + loc
+		}
+		res = sweepDo(t, h, loc, token)
+	}
+	return res
+}
+
+// sweepETag — ETag краулерской страницы после редиректов на канон и сам
+// канонический путь (под /seo).
+func sweepETag(t *testing.T, h http.Handler, path string) (string, string) {
+	t.Helper()
+	for i := 0; i < 4; i++ {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusMovedPermanently {
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s: %d, ждали 200", path, rec.Code)
+			}
+			return path, rec.Header().Get("ETag")
+		}
+		loc := strings.TrimPrefix(rec.Header().Get("Location"), sweepBase)
+		if !strings.HasPrefix(loc, "/seo") {
+			loc = "/seo" + loc
+		}
+		path = loc
+	}
+	t.Fatalf("%s: петля редиректов", path)
+	return "", ""
+}
+
+// sweepRevalidate — код ответа на перепроверку краулером: GET с If-None-Match.
+func sweepRevalidate(h http.Handler, path, etag string) int {
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Header.Set("If-None-Match", etag)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
+}
+
 // percentRun — подряд идущие %XX: один закодированный знак UTF-8 занимает
 // несколько.
 var percentRun = regexp.MustCompile(`(?:%[0-9A-Fa-f]{2})+`)
@@ -665,15 +908,38 @@ func leakIn(f *closedSweep, text string) string {
 			return "ключ хранилища " + key
 		}
 	}
+	for _, key := range f.ch.hiddenKeys() {
+		if strings.Contains(norm, key) {
+			return "ключ хранилища " + key
+		}
+	}
 	return ""
 }
 
-// TestClosedNeverReachesOutsiders — сквозной сторож закрытых работ: закрытое
+// hiddenKeys — объекты тома с закрытой подглавой, которых анониму не
+// выдают: оригинал тома (в нём и закрытая речь), сканы закрытых полос,
+// дорожки, задевшие закрытую полосу, записи человека в закрытой главе и в
+// родителе поверх неё. Пустая фикстура (TestLeakIn…) — пустой список.
+func (c closedChapterSweep) hiddenKeys() []string {
+	if c.work == 0 {
+		return nil
+	}
+	w := "s3.invalid/works/" + itoa(c.work) + "/"
+	return []string{
+		w + "original/",
+		w + "pages/page_2.png", w + "pages/page_3.png",
+		w + "r/2-3.opus", w + "r/1-2.opus",
+		w + "rec/" + itoa(c.closed) + ".ogg", w + "rec/" + itoa(c.parent) + ".ogg",
+	}
+}
+
+// TestClosedNeverReachesOutsiders — сквозной сторож закрытого: закрытое
 // любым из четырёх путей (само; служебная закрытого тома; том закрытого
-// собрания; номер закрытого журнала) анониму и читателю не отдаётся ни одним
-// маршрутом GET роутера, ни бестокенными каналами (краулер, тексты для
-// нейросетей, карта сайта, OPDS, MCP), а сотруднику отдаётся — иначе
-// фикстура ничего бы не доказывала.
+// собрания; номер закрытого журнала) и закрытая подглава открытого тома
+// (closedChapterSweep: её полосы, общая с соседкой, всё, что на неё
+// ссылается) анониму и читателю не отдаётся ни одним маршрутом GET роутера,
+// ни бестокенными каналами (краулер, тексты для нейросетей, карта сайта,
+// OPDS, MCP), а сотруднику отдаётся — иначе фикстура ничего бы не доказывала.
 //
 // Маршруты берутся обходом настоящего роутера, а не списком: маршрут,
 // заведённый позже, попадает в обход сам, и если его переменной нет в
@@ -703,6 +969,9 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 			t.Errorf("аноним: открытое %s отвечает %d — проверка ничего не значит", path, res.code)
 		}
 	}
+
+	closeSweepChapter(t, router, f, cache)
+	checkClosedChapter(t, router, f, cache)
 
 	// Сотрудник видит закрытое — и заодно прогревает кэш главы, который
 	// анониму обязан не достаться.
@@ -873,6 +1142,205 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 	sweepMCP(t, router, f)
 }
 
+// closeSweepChapter — аноним прогревает кэши тома с прениями, пока подглава
+// открыта (маркер виден — фикстура верна), администратор закрывает её
+// маршрутом, а потом устаревший файл главы-родителя кладётся в кэш обратно:
+// так выглядел бы файл, переживший сброс (другой процесс, гонка). Проверка
+// закрытости обязана идти раньше кэша, а не надеяться на сброс.
+func closeSweepChapter(t *testing.T, router http.Handler, f *closedSweep, cache *pagecache.Store) {
+	t.Helper()
+	c := f.ch
+	vol := "/api/works/" + itoa(c.work)
+	parentPages := vol + "/chapters/" + itoa(c.parent) + "/pages"
+	for _, path := range []string{
+		parentPages, vol + "/chapters/" + itoa(c.neighbour) + "/pages",
+		"/seo/works/" + itoa(c.work) + "/chapters/" + itoa(c.parent),
+		"/seo/works/" + itoa(c.work) + "/chapters/" + itoa(c.parent) + ".md",
+		"/seo/works/" + itoa(c.work) + ".md",
+	} {
+		res := sweepFollow(t, router, path, "")
+		if res.code != http.StatusOK || chapterLeak.FindString(res.text) == "" {
+			t.Fatalf("до закрытия: %s (%d) не отдаёт подглаву анониму — фикстура неверна", path, res.code)
+		}
+	}
+	// ETag родителя, его .md и .md тома — до закрытия: краулер, который их
+	// уже забрал, перепроверяет копию с If-None-Match и обязан после
+	// закрытия получить новую страницу, а не 304 на копию с подглавой.
+	revalidate := []string{
+		"/seo/works/" + itoa(c.work) + "/chapters/" + itoa(c.parent),
+		"/seo/works/" + itoa(c.work) + "/chapters/" + itoa(c.parent) + ".md",
+		"/seo/works/" + itoa(c.work) + ".md",
+	}
+	etags := map[string]string{}
+	for i, path := range revalidate {
+		final, etag := sweepETag(t, router, path)
+		if etag == "" {
+			t.Fatalf("до закрытия: %s не отдаёт ETag — проверка перепроверки ничего не значит", final)
+		}
+		if code := sweepRevalidate(router, final, etag); code != http.StatusNotModified {
+			t.Fatalf("до закрытия: %s с тем же ETag ответил %d, ждали 304 — проверка ничего не значит", final, code)
+		}
+		revalidate[i] = final
+		etags[final] = etag
+	}
+
+	parentKey := pagecache.Key{WorkID: c.work, Start: 1, End: 4}
+	rc, _, ok := cache.Open(parentKey)
+	if !ok {
+		t.Fatal("глава-родитель не легла в кэш до закрытия — проверка кэша ничего не значит")
+	}
+	zr, err := gzip.NewReader(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := io.ReadAll(zr)
+	rc.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Редактор закрыть не может, администратор — да.
+	put := func(token string) int {
+		req := httptest.NewRequest(http.MethodPut, vol+"/chapters/"+itoa(c.closed)+"/closed",
+			strings.NewReader(`{"closed": true, "reason": "сторож: письмо наследников"}`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := put(f.editorTok); code != http.StatusForbidden {
+		t.Fatalf("редактор закрывает главу: %d, ждали 403", code)
+	}
+	if code := put(f.adminTok); code != http.StatusOK {
+		t.Fatalf("администратор закрывает главу: %d, ждали 200", code)
+	}
+	if err := cache.Put(parentKey, stale); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range revalidate {
+		if code := sweepRevalidate(router, path, etags[path]); code == http.StatusNotModified {
+			t.Errorf("после закрытия подглавы %s с прежним ETag ответил 304 — краулер держит копию с закрытым", path)
+		}
+	}
+}
+
+// checkClosedChapter — закрытая подглава открытого тома: аноним и читатель
+// получают том, соседку и родителя без закрытых полос (общая с соседкой —
+// тоже), сотрудник видит маркер. Прочее (маркер ни в одном ответе, 404 на
+// прямые адреса) проверяет общий обход маршрутов.
+func checkClosedChapter(t *testing.T, router http.Handler, f *closedSweep, cache *pagecache.Store) {
+	t.Helper()
+	c := f.ch
+	vol := "/api/works/" + itoa(c.work)
+	chPages := func(id int64) string { return vol + "/chapters/" + itoa(id) + "/pages" }
+	const sharedText = "Конец речи соседки"
+	type want struct {
+		code       int
+		has, hasNo []string
+	}
+	outsider := map[string]want{
+		vol:                         {200, []string{"Том с прениями"}, nil},
+		vol + "/pages":              {200, []string{"Открытая речь соседки", "Открытое заключение"}, []string{sharedText}},
+		vol + "/page-map":           {200, []string{`"page_number":4`}, []string{`"page_number":2`, `"page_number":3`}},
+		vol + "/reading":            {200, []string{"Открытая речь соседки", "Открытое заключение"}, []string{sharedText}},
+		vol + "/chapters":           {200, []string{"Речь соседки", "Прения по докладу"}, nil},
+		chPages(c.neighbour):        {200, []string{"Открытая речь соседки"}, []string{sharedText}},
+		chPages(c.parent):           {200, []string{"Открытая речь соседки", "Открытое заключение"}, []string{sharedText}},
+		vol + "/download?format=md": {200, []string{"Открытое заключение"}, []string{sharedText}},
+		vol + "/chapters/" + itoa(c.parent) + "/download?format=md": {200, []string{"Открытое заключение"}, []string{sharedText}},
+		vol + "/chapters/" + itoa(c.neighbour) + "/events":          {200, []string{c.eventMixed}, nil},
+		vol + "/audio": {200, []string{"Заключение прений"}, nil},
+		"/api/audio/" + itoa(c.openTrack) + ".opus":         {302, nil, nil},
+		"/api/organizations/" + f.orgA + "/" + c.eventMixed: {200, []string{"Открытая речь"}, []string{"Строка подглавы"}},
+		"/api/shelf": {200, []string{f.orgA}, []string{c.org}},
+		"/api/editions/" + itoa(f.openEd) + "/highlights":                  {200, nil, nil},
+		"/api/collections/podborka":                                        {200, []string{"Прения по докладу"}, nil},
+		"/api/collections/podborka/items/" + itoa(c.parentItem) + "/pages": {200, []string{"Открытое заключение"}, []string{sharedText}},
+		"/api/collections/podborka/items/" + itoa(c.staffItem) + "/pages":  {410, nil, nil},
+		"/api/collections/podborka/download?format=md":                     {200, []string{"Открытое заключение"}, []string{sharedText}},
+		"/api/documents/razbor/view":                                       {200, []string{"Текст разбора"}, []string{sharedText}},
+		// Догрузка вклейки целиком: с закрытой и с общей полосы — 404 (в
+		// чужом разборе та же вклейка — 410 «нет в этом разборе», общий обход).
+		"/api/documents/razbor/cuts/" + itoa(c.cuts[0]): {404, nil, nil},
+		"/api/documents/razbor/cuts/" + itoa(c.cuts[1]): {404, nil, nil},
+		"/api/concepts/" + f.openConcept:                {200, nil, nil},
+		"/api/search/pages?q=" + url.QueryEscape("сокровенном") + "&work_id=" + itoa(c.work): {200,
+			[]string{`"page_number":1`}, []string{`"page_number":2`, `"page_number":3`}},
+		// Номер открытого журнала с закрытой статьёй.
+		"/api/works/" + itoa(c.issue) + "/chapters":                               {200, []string{"Открытая статья"}, nil},
+		"/api/works/" + itoa(c.issue) + "/pages":                                  {200, []string{"Открытая статья."}, nil},
+		"/api/works/" + itoa(c.issue) + "/download?format=md":                     {200, []string{"Открытая статья."}, nil},
+		"/api/works/" + itoa(c.issue) + "/chapters/" + itoa(c.article) + "/pages": {404, nil, nil},
+		"/api/journals/" + f.openJournal:                                          {200, nil, nil},
+		"/api/persons/" + f.openPerson:                                            {200, []string{"Открытая статья"}, nil},
+	}
+	for _, who := range []struct{ name, token string }{{"аноним", ""}, {"читатель", f.readerTok}} {
+		for path, w := range outsider {
+			res := sweepDo(t, router, path, who.token)
+			if res.code != w.code {
+				t.Errorf("закрытая глава, %s: %s отвечает %d, ждали %d", who.name, path, res.code, w.code)
+			}
+			if leak := leakIn(f, res.text); leak != "" {
+				t.Errorf("закрытая глава: %s — %s", path, leak)
+			}
+			for _, s := range w.has {
+				if !strings.Contains(res.text, s) {
+					t.Errorf("закрытая глава: %s не отдаёт открытого %q", path, s)
+				}
+			}
+			for _, s := range w.hasNo {
+				if strings.Contains(res.text, s) {
+					t.Errorf("закрытая глава: %s отдаёт %q — закрытое (общую полосу, закрытую цель, организацию)", path, s)
+				}
+			}
+		}
+	}
+	// Мои правки: правка на открытой полосе на месте, на закрытой — нет.
+	res := sweepDo(t, router, "/api/suggestions/mine", f.readerTok)
+	if res.code != http.StatusOK || !strings.Contains(res.text, fmt.Sprintf(`"id":%d,`, c.openSuggestion)) {
+		t.Errorf("мои правки (%d): нет правки на открытой полосе — проверка ничего не значит", res.code)
+	}
+	if strings.Contains(res.text, fmt.Sprintf(`"page_id":%d,`, c.pages[3])) {
+		t.Errorf("мои правки: правка на закрытой полосе %d видна читателю", c.pages[3])
+	}
+
+	// Сотрудник видит именно маркер подглавы, и его чтение закрытого в кэш не
+	// ложится.
+	for _, path := range []string{
+		chPages(c.closed), chPages(c.parent), chPages(c.grandchild),
+		vol + "/pages/" + itoa(c.pages[3]),
+		"/api/search?q=" + url.QueryEscape("ЗАКРЫТО"),
+		"/api/search/pages?q=" + url.QueryEscape("сокровенном") + "&work_id=" + itoa(c.work),
+		"/api/organizations/" + c.org, "/api/organizations/" + c.org + "/" + c.event,
+		"/api/organizations/" + f.orgA + "/" + c.eventMixed,
+		"/api/concepts/" + c.concept, "/api/persons/" + c.person,
+		"/api/editions/" + itoa(f.openEd) + "/highlights",
+		"/api/works/" + itoa(c.issue) + "/chapters",
+		vol + "/download?format=md",
+	} {
+		res := sweepDo(t, router, path, f.editorTok)
+		if res.code != http.StatusOK || chapterLeak.FindString(res.text) == "" {
+			t.Errorf("сотрудник: %s (%d) не видит закрытой подглавы — фикстура ничего не доказывает", path, res.code)
+		}
+	}
+	if res := sweepDo(t, router, vol, f.editorTok); !strings.Contains(res.text, c.hiddenKeys()[0]) {
+		t.Errorf("сотрудник: оригинал тома с закрытой главой не выдан (%d) — проверка анонима ничего не значит", res.code)
+	}
+	for path, key := range map[string]string{
+		"/api/audio/" + itoa(c.track) + ".opus":     c.hiddenKeys()[3],
+		"/api/audio/rec/" + itoa(c.parentRecording): c.hiddenKeys()[6],
+	} {
+		if res := sweepDo(t, router, path, f.editorTok); res.code != http.StatusFound || !strings.Contains(res.loc, key) {
+			t.Errorf("сотрудник: %s (%d, %q) — ждали 302 на %s", path, res.code, res.loc, key)
+		}
+	}
+	if rc, _, ok := cache.Open(pagecache.Key{WorkID: c.work, Start: 2, End: 3}); ok {
+		rc.Close()
+		t.Error("чтение закрытой подглавы сотрудником легло в файловый кэш")
+	}
+}
+
 // sweepTokenless — каналы без токена: прямые адреса закрытого отвечают
 // отказом, а обход по ссылкам от главной краулера, llms.txt, карты сайта и
 // корня OPDS не встречает закрытого ни в одном ответе и ни разу не приводит
@@ -894,6 +1362,18 @@ func sweepTokenless(t *testing.T, router http.Handler, f *closedSweep, prefixes 
 	gone["/seo/editions/"+itoa(f.closedEd)] = http.StatusGone
 	gone["/og/edition/"+itoa(f.closedEd)+".png"] = http.StatusNotFound
 	gone["/opds/editions/"+itoa(f.closedEd)] = http.StatusNotFound
+	// Закрытая подглава открытого тома и её потомок: 410 на странице и в
+	// тексте, карточки нет, в OPDS узла нет; закрытые полосы (и общая с
+	// соседкой) — 410.
+	cv := itoa(f.ch.work)
+	for _, ch := range []int64{f.ch.closed, f.ch.grandchild} {
+		gone["/seo/works/"+cv+"/chapters/"+itoa(ch)] = http.StatusGone
+		gone["/seo/works/"+cv+"/chapters/"+itoa(ch)+".md"] = http.StatusGone
+		gone["/og/chapter/"+itoa(ch)+".png"] = http.StatusNotFound
+		gone["/opds/works/"+cv+"/chapters/"+itoa(ch)] = http.StatusNotFound
+	}
+	gone["/seo/works/"+cv+"/pages/2"] = http.StatusGone
+	gone["/seo/works/"+cv+"/pages/3"] = http.StatusGone
 	for path, want := range gone {
 		res := sweepDo(t, router, path, "")
 		if res.code != want {
@@ -911,7 +1391,10 @@ func sweepTokenless(t *testing.T, router http.Handler, f *closedSweep, prefixes 
 		"/seo/collections/podborka", "/seo/collections/" + f.readerNick + "/podborka",
 		"/seo/documents/razbor", "/seo/documents/" + f.readerNick + "/razbor",
 		"/robots.txt", "/sitemap.xml", "/opds", "/opds/search?q=" + url.QueryEscape("ЗАКРЫТО"),
-		"/opds/search?q=" + url.QueryEscape("сокровенном")}
+		"/opds/search?q=" + url.QueryEscape("сокровенном"),
+		"/seo/works/" + cv, "/seo/works/" + cv + ".md", "/opds/works/" + cv,
+		"/seo/works/" + cv + "/chapters/" + itoa(f.ch.neighbour), "/seo/works/" + cv + "/chapters/" + itoa(f.ch.parent) + ".md",
+		"/seo/concepts/" + f.ch.concept, "/seo/concepts/" + f.ch.concept + ".md"}
 	// Каждый канал-префикс роутера — хотя бы голым адресом: новый канал
 	// попадает в обход сам, без правки списка выше.
 	seeds = append(seeds, prefixes...)
@@ -1000,6 +1483,29 @@ func sweepTokenless(t *testing.T, router http.Handler, f *closedSweep, prefixes 
 	if visited < 40 {
 		t.Errorf("обход бестокенных каналов подозрительно мал: %d адресов", visited)
 	}
+	// Обход дошёл до тома с закрытой подглавой по ссылкам, а не только по
+	// затравкам: из карты сайта и llms.txt — до соседки, из OPDS — до
+	// выгрузки тома (FB2 — текстом, его маркер виден).
+	reached := func(what string, ok func(string) bool) {
+		for p := range seen {
+			if ok(p) {
+				return
+			}
+		}
+		t.Errorf("обход бестокенных каналов не дошёл до %s", what)
+	}
+	reached("соседки по ссылке", func(p string) bool {
+		return strings.Contains(p, "/chapters/"+itoa(f.ch.neighbour)+"-") && !strings.HasSuffix(p, ".md")
+	})
+	reached("текста тома (.md) по ссылке", func(p string) bool {
+		return strings.HasPrefix(p, "/seo/works/"+cv+"-") && strings.HasSuffix(p, ".md")
+	})
+	reached("выгрузки тома из OPDS", func(p string) bool {
+		return strings.HasPrefix(p, "/api/works/"+cv+"/download?format=fb2")
+	})
+	reached("выгрузки родителя из OPDS", func(p string) bool {
+		return strings.HasPrefix(p, "/api/works/"+cv+"/chapters/"+itoa(f.ch.parent)+"/download?format=fb2")
+	})
 }
 
 // sweepMCP — MCP через тот же роутер: поиск, полосы тома и тексты по
@@ -1025,6 +1531,19 @@ func sweepMCP(t *testing.T, router http.Handler, f *closedSweep) {
 		{"fetch", map[string]any{"id": "/concepts"}},
 		{"fetch", map[string]any{"id": "/concepts/" + f.closedConcept}},
 		{"fetch", map[string]any{"id": "/concepts/" + f.openConcept}},
+		{"fetch", map[string]any{"id": "/concepts/" + f.ch.concept}},
+		{"search_volume", map[string]any{"query": "сокровенном", "work": f.ch.work}},
+		{"search_volume", map[string]any{"query": "ЗАКРЫТО", "work": f.ch.work}},
+	}
+	cv := "/works/" + itoa(f.ch.work)
+	calls = append(calls, call{"fetch", map[string]any{"id": cv}},
+		call{"fetch", map[string]any{"id": cv + "/pages/1-4"}},
+		call{"fetch", map[string]any{"id": cv + "/pages/2-3"}},
+		// Края диапазона на закрытой полосе: шапка называет главы краёв.
+		call{"fetch", map[string]any{"id": cv + "/pages/3-4"}},
+		call{"fetch", map[string]any{"id": cv + "/pages/1-3"}})
+	for _, ch := range []int64{f.ch.parent, f.ch.neighbour, f.ch.closed, f.ch.grandchild} {
+		calls = append(calls, call{"fetch", map[string]any{"id": cv + "/chapters/" + itoa(ch)}})
 	}
 	for _, w := range f.closedWorks() {
 		id := "/works/" + itoa(w)

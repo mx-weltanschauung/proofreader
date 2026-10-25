@@ -41,7 +41,7 @@ func newNumberingFixture(t *testing.T, numbering, slug string) numberingFixture 
 		numbering: numbering,
 	}
 	f.edition = &models.Edition{Title: "Стенограммы " + slug, Slug: slug, VolumeNumbering: numbering}
-	if err := f.editions.Create(ctx, f.edition); err != nil {
+	if err := f.editions.Create(ctx, f.edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	f.volume = newVolume(t, f.works, "XII пленум ИККИ "+slug)
@@ -62,7 +62,7 @@ func newNumberingFixture(t *testing.T, numbering, slug string) numberingFixture 
 		EditionID: &f.edition.ID, PrecedesVolume: &number,
 		NumberingStyle: models.NumberingArabic, OwnerID: 1,
 	}
-	if err := f.works.Create(ctx, preface); err != nil {
+	if err := f.works.Create(ctx, preface, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create preface: %v", err)
 	}
 	t.Cleanup(func() { _ = f.works.Delete(context.Background(), preface.ID) })
@@ -222,7 +222,7 @@ func TestEditionVolumeNumberingRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	repo := NewEditionRepository(testPool(t))
 	e := &models.Edition{Title: "Собрание", Slug: "sobranie"}
-	if err := repo.Create(ctx, e); err != nil {
+	if err := repo.Create(ctx, e, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	got, err := repo.GetByID(ctx, e.ID)

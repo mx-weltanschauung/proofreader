@@ -323,14 +323,15 @@ var _ WorkRepo = (*repository.WorkRepository)(nil)
 
 // fakeWorkRepo — подставной WorkRepo: помнит детей и удалённые id.
 type fakeWorkRepo struct {
-	children    map[int64][]*models.Work
-	childrenErr error
-	deleted     []int64
-	created     *models.Work
-	createErr   error
-	role        string
-	closed      bool
-	list        []*models.Work
+	createdReason string
+	children      map[int64][]*models.Work
+	childrenErr   error
+	deleted       []int64
+	created       *models.Work
+	createErr     error
+	role          string
+	closed        bool
+	list          []*models.Work
 }
 
 func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int64) ([]*models.Work, error) {
@@ -340,8 +341,8 @@ func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int6
 func (f *fakeWorkRepo) GetByID(_ context.Context, id int64) (*models.Work, error) {
 	return &models.Work{ID: id, Role: f.role, Closed: f.closed}, nil
 }
-func (f *fakeWorkRepo) Create(_ context.Context, w *models.Work) error {
-	f.created = w
+func (f *fakeWorkRepo) Create(_ context.Context, w *models.Work, _ models.ClosureActor, reason string) error {
+	f.created, f.createdReason = w, reason
 	return f.createErr
 }
 func (f *fakeWorkRepo) Update(context.Context, *models.Work) error { return nil }

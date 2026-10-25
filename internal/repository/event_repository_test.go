@@ -268,6 +268,17 @@ func TestOrganizationsCarryTargetWorkIDs(t *testing.T) {
 	if s.MaterialsTotal != 3 {
 		t.Fatalf("MaterialsTotal: %d", s.MaterialsTotal)
 	}
+	// TargetChapterIDs идёт параллельно TargetWorkIDs; 0 — цель целая работа.
+	pairs := map[[2]int64]bool{}
+	if len(s.TargetChapterIDs) != len(s.TargetWorkIDs) {
+		t.Fatalf("TargetChapterIDs: %v при %v", s.TargetChapterIDs, s.TargetWorkIDs)
+	}
+	for i := range s.TargetWorkIDs {
+		pairs[[2]int64{s.TargetWorkIDs[i], s.TargetChapterIDs[i]}] = true
+	}
+	if !pairs[[2]int64{10, 100}] || !pairs[[2]int64{10, 101}] || !pairs[[2]int64{11, 0}] || len(pairs) != 3 {
+		t.Fatalf("пары работа/глава: %v", pairs)
+	}
 	od, err := f.repo.OrganizationDetail(ctx, "org-a")
 	if err != nil || len(od.Kinds[0].Events[0].TargetWorkIDs) != 3 {
 		t.Fatalf("OrganizationDetail: %v %+v", err, od)

@@ -17,6 +17,43 @@ type IndexRepository struct {
 	pool *pgxpool.Pool
 }
 
+// jitOffRows — строки запроса, идущего в своей транзакции с jit = off;
+// Close освобождает и строки, и транзакцию.
+type jitOffRows struct {
+	pgx.Rows
+	tx  pgx.Tx
+	ctx context.Context
+}
+
+func (r *jitOffRows) Close() {
+	r.Rows.Close()
+	_ = r.tx.Rollback(r.ctx) // читающая транзакция: откат = завершение
+}
+
+// queryJITOff — запрос видимости указателя под SET LOCAL jit = off. Условие
+// видимости (visibleArticleSQL и closedReferenceSQL) стоит внутри
+// коррелированных подзапросов, цена плана переваливает за jit_above_cost, и
+// компиляция выражений съедает больше, чем экономит: витрина понятий на копии
+// боевого корпуса — 0,2 с без jit против 3 с с ним (замер — отчёт задачи 5).
+// Так же поиск ставит jit = off в searchSettings. Настройка живёт внутри
+// транзакции и соединение пула не трогает.
+func queryJITOff(ctx context.Context, pool *pgxpool.Pool, sql string, args ...any) (pgx.Rows, error) {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, "SET LOCAL jit = off"); err != nil {
+		_ = tx.Rollback(ctx)
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, sql, args...)
+	if err != nil {
+		_ = tx.Rollback(ctx)
+		return nil, err
+	}
+	return &jitOffRows{Rows: rows, tx: tx, ctx: ctx}, nil
+}
+
 // NewIndexRepository creates a new index repository.
 func NewIndexRepository(pool *pgxpool.Pool) *IndexRepository {
 	return &IndexRepository{pool: pool}
@@ -754,11 +791,30 @@ func (r *IndexRepository) IncomingLinks(ctx context.Context, conceptID int64) ([
 // Подзапрос по closed_works — НЕкоррелированный IN: Postgres считает его
 // множество один раз (см. scopeConditionFor в search_repository.go).
 func closedReferenceSQL(ref, art string) string {
-	return `EXISTS (SELECT 1 FROM works cw
+	return `(EXISTS (SELECT 1 FROM works cw
 	      WHERE cw.edition_id = ` + art + `.edition_id
 	        AND cw.volume_number = ` + ref + `.volume_number
 	        AND coalesce(cw.volume_part, '') = coalesce(` + ref + `.volume_part, '')
-	        AND cw.id IN (SELECT id FROM closed_works))`
+	        AND cw.id IN (SELECT id FROM closed_works))
+	  OR ((` + art + `.edition_id, ` + ref + `.volume_number, coalesce(` + ref + `.volume_part, ''))
+	        IN (SELECT edition_id, volume_number, volume_part FROM closed_volumes)
+	      AND EXISTS (SELECT 1 FROM closed_volumes cv
+	        WHERE cv.edition_id = ` + art + `.edition_id
+	          AND cv.volume_number = ` + ref + `.volume_number
+	          AND cv.volume_part = coalesce(` + ref + `.volume_part, '')
+	          AND ` + closedProbeSQL("cv.work_id", ref+".page_start - cv.page_offset",
+		"greatest("+ref+".page_end, "+ref+".page_start) - cv.page_offset") + `)))`
+}
+
+// closedArticleSourceSQL — статья берёт текст с полос работы-указателя
+// [source_page_start, source_page_end] (при start > 0) и закрыта, если хоть
+// одна из них накрыта закрытой главой: снятие аппарата тома уносит вместе с
+// полосами и статьи указателя, выросшие из них. Закрытая работа статьи
+// уходит условием work_id выше.
+func closedArticleSourceSQL(art string) string {
+	return `(` + art + `.work_id IS NOT NULL AND ` + art + `.source_page_start > 0
+	  AND ` + closedProbeSQL(art+".work_id", art+".source_page_start",
+		"greatest("+art+".source_page_end, "+art+".source_page_start)") + `)`
 }
 
 // visibleArticleSQL — условие «статья видна не-сотруднику» над статьёй art.
@@ -766,6 +822,7 @@ func visibleArticleSQL(art string) string {
 	return `(
 	  NOT EXISTS (SELECT 1 FROM editions ae WHERE ae.id = ` + art + `.edition_id AND ae.closed)
 	  AND (` + art + `.work_id IS NULL OR ` + art + `.work_id NOT IN (SELECT id FROM closed_works))
+	  AND NOT ` + closedArticleSourceSQL(art) + `
 	  AND (
 	    NOT EXISTS (SELECT 1 FROM index_references vr WHERE vr.article_id = ` + art + `.id)
 	    OR btrim(` + art + `.article_markdown, '` + models.BlankCutset + `') <> ''
@@ -786,6 +843,7 @@ var visibleConceptCond = `(
 // (visibleConceptCond), — один запрос на пачку слагов вместо понятия и карты
 // томов на каждый.
 var hiddenConceptSlugsQuery = `
+	WITH ` + closedSpansCTE + `
 	SELECT c.slug FROM index_concepts c
 	WHERE c.slug = ANY($1::text[]) AND NOT ` + visibleConceptCond
 
@@ -797,7 +855,7 @@ func (r *IndexRepository) HiddenConceptSlugs(ctx context.Context, slugs []string
 	if len(slugs) == 0 {
 		return out, nil
 	}
-	rows, err := r.pool.Query(ctx, hiddenConceptSlugsQuery, slugs)
+	rows, err := queryJITOff(ctx, r.pool, hiddenConceptSlugsQuery, slugs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find hidden concepts: %w", err)
 	}
@@ -813,6 +871,7 @@ func (r *IndexRepository) HiddenConceptSlugs(ctx context.Context, slugs []string
 }
 
 var listConceptsQuery = `
+	WITH ` + closedSpansCTE + `
 	SELECT c.id, c.title, c.slug, c.sort_key, c.title_key,
 	       CASE WHEN EXISTS (
 	           SELECT 1 FROM index_concept_articles a
@@ -840,7 +899,7 @@ var listConceptsQuery = `
 // видимой статьи, выпадает из списка, а kind и edition_ids считаются по
 // видимым статьям (id закрытого собрания в агрегате сам рассказал бы о нём).
 func (r *IndexRepository) ListConcepts(ctx context.Context, query, letter string, limit, offset int, includeClosed bool) ([]*models.IndexConcept, error) {
-	rows, err := r.pool.Query(ctx, listConceptsQuery, query, letter, limit, offset, includeClosed)
+	rows, err := queryJITOff(ctx, r.pool, listConceptsQuery, query, letter, limit, offset, includeClosed)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list concepts: %w", err)
 	}

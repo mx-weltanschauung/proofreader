@@ -15,7 +15,7 @@ func newVolume(t *testing.T, repo *WorkRepository, title string) *models.Work {
 		Status: models.WorkStatusDraft, Role: models.WorkRoleVolume,
 		NumberingStyle: models.NumberingArabic, OwnerID: 1,
 	}
-	if err := repo.Create(context.Background(), w); err != nil {
+	if err := repo.Create(context.Background(), w, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	t.Cleanup(func() { _ = repo.Delete(context.Background(), w.ID) })
@@ -35,7 +35,7 @@ func TestWorkRepository_ListWithoutEdition(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "проба-вне", Slug: "proba-vne"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -55,7 +55,7 @@ func TestWorkRepository_ListWithoutEdition(t *testing.T) {
 		Status: models.WorkStatusDraft, Role: models.WorkRoleFrontMatter,
 		NumberingStyle: models.NumberingRoman, ParentWorkID: &loose.ID, OwnerID: 1,
 	}
-	if err := repo.Create(ctx, child); err != nil {
+	if err := repo.Create(ctx, child, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create child: %v", err)
 	}
 	t.Cleanup(func() { _ = repo.Delete(ctx, child.ID) })
@@ -94,7 +94,7 @@ func TestWorkRepository_ChildRoundTrip(t *testing.T) {
 		NumberingStyle: models.NumberingRoman, PageOffset: -1,
 		ParentWorkID: &parent.ID, OwnerID: 1,
 	}
-	if err := repo.Create(ctx, child); err != nil {
+	if err := repo.Create(ctx, child, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create child: %v", err)
 	}
 	t.Cleanup(func() { _ = repo.Delete(ctx, child.ID) })
@@ -136,7 +136,7 @@ func TestWorkRepository_ListSkipsChildren(t *testing.T) {
 		Status: models.WorkStatusDraft, Role: models.WorkRoleFrontMatter,
 		NumberingStyle: models.NumberingRoman, ParentWorkID: &parent.ID, OwnerID: 1,
 	}
-	if err := repo.Create(ctx, child); err != nil {
+	if err := repo.Create(ctx, child, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create child: %v", err)
 	}
 	t.Cleanup(func() { _ = repo.Delete(ctx, child.ID) })
@@ -164,7 +164,7 @@ func TestWorkRepository_CreateDefaultsEmptyRole(t *testing.T) {
 		Title: "defaultrole-без-роли", Author: "проба", Language: "ru", Country: "ru",
 		Status: models.WorkStatusDraft, OwnerID: 1,
 	}
-	if err := repo.Create(ctx, w); err != nil {
+	if err := repo.Create(ctx, w, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	t.Cleanup(func() { _ = repo.Delete(ctx, w.ID) })
@@ -190,7 +190,7 @@ func TestWorkRepository_ChildWithoutParentRejected(t *testing.T) {
 		Status: models.WorkStatusDraft, Role: models.WorkRoleFrontMatter,
 		NumberingStyle: models.NumberingRoman, OwnerID: 1,
 	}
-	if err := repo.Create(ctx, orphan); err == nil {
+	if err := repo.Create(ctx, orphan, models.ClosureActor{}, ""); err == nil {
 		_ = repo.Delete(ctx, orphan.ID)
 		t.Fatal("создание служебной работы без parent_work_id должно падать")
 	}
@@ -283,7 +283,7 @@ func TestWorkRepository_EditionTitleTravelsWithWork(t *testing.T) {
 	editions := NewEditionRepository(pool)
 
 	edition := &models.Edition{Title: "Проба. Сочинения, 2-е изд.", Slug: "proba-izd"}
-	if err := editions.Create(ctx, edition); err != nil {
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create edition: %v", err)
 	}
 	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
@@ -309,7 +309,7 @@ func TestWorkRepository_EditionTitleTravelsWithWork(t *testing.T) {
 		Status: models.WorkStatusDraft, Role: models.WorkRoleFrontMatter,
 		NumberingStyle: models.NumberingRoman, ParentWorkID: &volume.ID, OwnerID: 1,
 	}
-	if err := repo.Create(ctx, child); err != nil {
+	if err := repo.Create(ctx, child, models.ClosureActor{}, ""); err != nil {
 		t.Fatalf("create child: %v", err)
 	}
 	t.Cleanup(func() { _ = repo.Delete(ctx, child.ID) })

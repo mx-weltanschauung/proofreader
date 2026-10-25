@@ -42,7 +42,7 @@ func TestCollectionTOCClosedItemHasNoTitle(t *testing.T) {
 	row := closedItemRow()
 	row.WorkTitle = nil
 	row.ChapterTitle = nil
-	entries := buildCollectionTOC([]repository.ItemRow{row}, nil, ClosedSet{41: true})
+	entries := buildCollectionTOC([]repository.ItemRow{row}, nil, ClosedSet{41: true}, false)
 
 	raw, _ := json.Marshal(entries)
 	if strings.Contains(string(raw), closedTitle) || strings.Contains(string(raw), "снимок") {
@@ -58,7 +58,7 @@ func TestCollectionTOCClosedItemHasNoTitle(t *testing.T) {
 }
 
 func TestCollectionTOCOpenItemNotUnavailable(t *testing.T) {
-	entries := buildCollectionTOC([]repository.ItemRow{chapterRow(1, 1, 100, 41)}, nil, ClosedSet{99: true})
+	entries := buildCollectionTOC([]repository.ItemRow{chapterRow(1, 1, 100, 41)}, nil, ClosedSet{99: true}, false)
 	raw, _ := json.Marshal(entries)
 	if entries[0].Unavailable || strings.Contains(string(raw), `"unavailable"`) {
 		t.Fatalf("открытый пункт помечен недоступным: %s", raw)
@@ -262,7 +262,7 @@ func TestAssembleDocumentForClosedCut(t *testing.T) {
 	cuts.pagesByCutID = map[int64][]*models.Page{7: {cutPage(10, 4, "Текст закрытой работы")}}
 	doc := &models.Document{ID: 3, MarkdownContent: `<cut id="7">`}
 
-	html, _, err := assembleDocumentFor(context.Background(), markdown.NewRenderer(), cuts, &fakeWorkStore{}, doc, ClosedSet{41: true})
+	html, _, err := assembleDocumentFor(context.Background(), markdown.NewRenderer(), cuts, &fakeWorkStore{}, doc, ClosedSet{41: true}, nil)
 	if err != nil || !strings.Contains(html, "document-cut--unavailable") ||
 		strings.Contains(html, "Секретный источник") || strings.Contains(html, "Текст закрытой") {
 		t.Fatalf("err=%v html=%s", err, html)
@@ -272,7 +272,7 @@ func TestAssembleDocumentForClosedCut(t *testing.T) {
 	}
 
 	works := &fakeWorkStore{getFn: func(context.Context, int64) (*models.Work, error) { return &models.Work{ID: 41}, nil }}
-	html, _, _ = assembleDocumentFor(context.Background(), markdown.NewRenderer(), cuts, works, doc, nil)
+	html, _, _ = assembleDocumentFor(context.Background(), markdown.NewRenderer(), cuts, works, doc, nil, nil)
 	if strings.Contains(html, "document-cut--unavailable") || !strings.Contains(html, "document-cut-body") {
 		t.Fatalf("при пустом множестве вклейка должна собираться: %s", html)
 	}

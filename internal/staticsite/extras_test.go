@@ -49,6 +49,8 @@ func extrasFixture() *fakeSource {
 		{Title: "Том 1 целиком", WorkID: 100},
 		{Title: "Удалённая глава", Broken: true},
 		{Title: "Глава вне сборки", WorkID: 500, ChapterID: 501, StartPage: 1},
+		// Глава тома из сборки, чьих полос в сборке нет (закрыта на боевом).
+		{Title: "Речь без полос", WorkID: 100, ChapterID: 98, StartPage: 900},
 	}}}
 	src.documents = []Document{{ID: 3, Slug: "chto-delat", Title: "Что делать с методом", Author: "читатель",
 		BodyHTML: `<p>Текст.</p><a class="document-cut-folio" href="/works/100/pages/2">2</a>` +
@@ -66,6 +68,9 @@ func TestCollectionLinksItems(t *testing.T) {
 		`<li class="broken">Удалённая глава <span class="note">(источник недоступен)</span></li>`,
 		`<li class="absent">Глава вне сборки <span class="note">(нет в этой копии)</span></li>`)
 	mustContain(t, "главная", read(t, out, HomeFile), "<h2>Подборки</h2>", `<a href="collections/5-manifest.html">Начала</a>`)
+	if strings.Contains(body, "Речь без полос") {
+		t.Error("глава тома из сборки, чьих полос в сборке нет, напечатана заглавием")
+	}
 }
 
 func TestCollectionItemFallsBackToStartPage(t *testing.T) {

@@ -76,6 +76,16 @@ describe('ReadingSurface', () => {
 
   // Полоса прогресса рисуется потребителем экрана поверх окна и цифр не
   // несёт; доля прочитанного называется словом в панели, под самой полосой.
+  it('над полосой закрытой главы стоит плашка с заглавием', () => {
+    renderSurface([
+      { ...page(10, '<p>Открытая полоса.</p>') },
+      { ...page(11, '<p>Закрытая полоса.</p>'), closed_chapter: 'Письмо издателя' },
+    ]);
+    const notes = screen.getAllByText('Полоса закрыта вместе с главой «Письмо издателя»');
+    expect(notes).toHaveLength(1);
+    expect(notes[0].closest('[data-page]')).toHaveAttribute('data-page', '11');
+  });
+
   it('называет долю прочитанного в панели', () => {
     renderSurface([page(265, '<p>текст</p>')], { progressPercent: 42 });
     expect(screen.getByText('42 %')).toBeInTheDocument();

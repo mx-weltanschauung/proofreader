@@ -58,6 +58,56 @@ fetch_apparatus_pages() {
   printf '%s\n' "$acc" > "$out"
 }
 
+# merge_page_maps <id> <файл> [<id> <файл>…] — карты полос боевого
+# (GET /api/works/N/page-map: [{page_number, status}]) в один объект
+# {"N": [номера…]} на stdout. Файл не из массива записей с page_number —
+# отказ: иначе работа молча вышла бы без полос или со всеми.
+merge_page_maps() {
+  local acc='{}' id file
+  while (( $# >= 2 )); do
+    id="$1" file="$2"
+    shift 2
+    acc="$(jq -c --arg id "$id" --slurpfile p "$file" \
+      '. + {($id): ($p[0] | if type == "array" then [.[].page_number | if type == "number" then . else error("page_number") end] else error("не массив") end)}' \
+      <<<"$acc")" || { echo "карта полос работы $id не разобрана: $file" >&2; return 1; }
+  done
+  printf '%s\n' "$acc"
+}
+
+# fetch_work_pages <список работ боевого> <файл> [<файл с номерами служебных
+# работ>] — полосы боевого по каждой работе списка (-only) в файл для
+# -only-pages: {"N": [номера…]}. Архив не должен опережать сайт и на уровне
+# полосы: закрытую на боевом главу анонимная карта не показывает, и её полос в
+# архиве нет. У работы списка сбой запроса и 404 — отказ: «карты нет» нельзя
+# читать как «закрытого нет». Служебные работы (передние листы; в
+# GET /api/works их нет, номера даёт `staticsite children`) спрашиваются так
+# же, но их 404 значит «закрыта на боевом или ещё не выложена»: работа просто
+# не попадает в файл, и сборка исключает её из архива. Любой другой сбой — отказ.
+fetch_work_pages() {
+  local list="$1" out="$2" kids_file="${3:-}" one="$2.one" id code
+  local -a args=()
+  for id in $(jq -r '.[].id' "$list"); do
+    code="$(curl -sS --max-time 60 -o "$one" -w '%{http_code}' "$PROD_API_URL/api/works/$id/page-map")" ||
+      die "полосы работы $id на боевом не получены ($PROD_API_URL/api/works/$id/page-map)"
+    [[ "$code" == 200 ]] || die "полосы работы $id на боевом: HTTP $code ($PROD_API_URL/api/works/$id/page-map)"
+    args+=("$id" "$one.$id")
+    mv "$one" "$one.$id"
+  done
+  if [[ -n "$kids_file" ]]; then
+    for id in $(cat "$kids_file"); do
+      code="$(curl -sS --max-time 60 -o "$one" -w '%{http_code}' "$PROD_API_URL/api/works/$id/page-map")" ||
+        die "полосы служебной работы $id на боевом не получены ($PROD_API_URL/api/works/$id/page-map)"
+      case "$code" in
+        200) args+=("$id" "$one.$id"); mv "$one" "$one.$id" ;;
+        404) log "служебная работа $id: на боевом её нет (закрыта или не выложена) — в архив не идёт" ;;
+        *) die "полосы служебной работы $id на боевом: HTTP $code" ;;
+      esac
+    done
+  fi
+  merge_page_maps "${args[@]}" > "$out" || { rm -f "$one".*; die "карты полос боевого не разобраны"; }
+  rm -f "$one" "$one".*
+}
+
 # build_json <дата> <коммит> <zip> <число файлов> <состав> <исключения> —
 # сведения о сборке (chitalnya-<дата>.build.json). <состав> — файл -built
 # генератора: {catalog_ids, work_ids}. sha256 списка исключений, с которым
@@ -82,7 +132,7 @@ main() {
   load_config
   [[ -n "$PROD_API_URL" ]] || die "задайте PROD_API_URL — адрес живой читальни, с которой сверяется состав"
 
-  local DATE NAME DEST OUT PARTIAL EXCLUDE PROD BUILT PRODPAGES
+  local DATE NAME DEST OUT PARTIAL EXCLUDE PROD BUILT PRODPAGES ONLYPAGES
   DATE="$(date -u +%F)"
   NAME="chitalnya-$DATE"
   DEST="${1:-$REPO_ROOT/static}"
@@ -96,6 +146,7 @@ main() {
   PROD="$DEST/$NAME.prod-works.json"
   BUILT="$DEST/$NAME.built.json"
   PRODPAGES="$DEST/$NAME.prod-pages.json"
+  ONLYPAGES="$DEST/$NAME.only-pages.json"
 
   command -v zip >/dev/null || die "zip не найден (apt install zip)"
   command -v jq >/dev/null || die "jq не найден (apt install jq)"
@@ -113,10 +164,12 @@ main() {
   log "состав боевого: $PROD_API_URL"
   fetch_prod_works "$PROD"
   fetch_apparatus_pages "$EXCLUDE" "$PRODPAGES"
+  (cd "$REPO_ROOT" && go run ./cmd/staticsite children "$PROD") > "$ONLYPAGES.kids"
+  fetch_work_pages "$PROD" "$ONLYPAGES" "$ONLYPAGES.kids"
 
   log "генерация → $PARTIAL"
   (cd "$REPO_ROOT" && go run ./cmd/staticsite build -out "$PARTIAL" -date "$DATE" -base "$(prod_base)" -exclude "$EXCLUDE" \
-    -only "$PROD" -built "$BUILT" "${edition_flag[@]}")
+    -only "$PROD" -only-pages "$ONLYPAGES" -built "$BUILT" "${edition_flag[@]}")
 
   log "индекс поиска по тексту"
   (cd "$REPO_ROOT/frontend" && npx --no-install pagefind --site "$PARTIAL")
@@ -131,7 +184,7 @@ main() {
   done
 
   log "самопроверка"
-  (cd "$REPO_ROOT" && go run ./cmd/staticsite check -allow "$(prod_base)/" -exclude "$EXCLUDE" -only "$PROD" -prod-pages "$PRODPAGES" "${edition_flag[@]}" "$PARTIAL")
+  (cd "$REPO_ROOT" && go run ./cmd/staticsite check -allow "$(prod_base)/" -exclude "$EXCLUDE" -only "$PROD" -only-pages "$ONLYPAGES" -prod-pages "$PRODPAGES" "${edition_flag[@]}" "$PARTIAL")
 
   mv "$PARTIAL" "$OUT"
   log "архив"
@@ -140,7 +193,7 @@ main() {
     && sha256sum "$NAME.zip" > "$NAME.zip.sha256")
   build_json "$DATE" "$(git -C "$REPO_ROOT" rev-parse --short HEAD)" "$DEST/$NAME.zip" \
     "$(find "$OUT" -type f | wc -l)" "$BUILT" "$EXCLUDE" > "$DEST/$NAME.build.json"
-  rm -f "$PROD" "$BUILT" "$PRODPAGES"
+  rm -f "$PROD" "$BUILT" "$PRODPAGES" "$ONLYPAGES" "$ONLYPAGES.kids"
   log "готово: $DEST/$NAME.zip ($(du -h "$DEST/$NAME.zip" | cut -f1)), файлов: $(find "$OUT" -type f | wc -l), работ каталога: $(jq .works "$DEST/$NAME.build.json")"
 }
 

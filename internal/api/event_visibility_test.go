@@ -30,7 +30,7 @@ func visibilityFixture() *models.EventDetail {
 
 func TestVisibleEventDropsClosedTargetsAndEmptyEntries(t *testing.T) {
 	src := visibilityFixture()
-	got, ok := visibleEvent(src, ClosedSet{2: true}, false)
+	got, ok := visibleEvent(src, ClosedSet{2: true}, nil, false)
 	if !ok {
 		t.Fatal("событие с открытой целью исчезло")
 	}
@@ -54,21 +54,21 @@ func TestVisibleEventDropsClosedTargetsAndEmptyEntries(t *testing.T) {
 
 func TestVisibleEventKeepsPositionOfLaterSection(t *testing.T) {
 	src := visibilityFixture()
-	got, ok := visibleEvent(src, ClosedSet{1: true}, false)
+	got, ok := visibleEvent(src, ClosedSet{1: true}, nil, false)
 	if !ok || len(got.Sections) != 2 {
 		t.Fatalf("ok=%v %+v", ok, got)
 	}
 	if got.Sections[0].Position != 0 || got.Sections[1].Position != 1 {
 		t.Error("позиции сбились")
 	}
-	_, ok = visibleEvent(src, ClosedSet{1: true, 2: true}, false)
+	_, ok = visibleEvent(src, ClosedSet{1: true, 2: true}, nil, false)
 	if ok {
 		t.Error("всё закрыто, а событие есть")
 	}
 }
 
 func TestVisibleEventAllClosedIsGone(t *testing.T) {
-	_, ok := visibleEvent(visibilityFixture(), ClosedSet{1: true, 2: true}, false)
+	_, ok := visibleEvent(visibilityFixture(), ClosedSet{1: true, 2: true}, nil, false)
 	if ok {
 		t.Fatal("всё закрыто, а событие видно")
 	}
@@ -78,18 +78,18 @@ func TestVisibleEventHidesBrokenFromOutsiders(t *testing.T) {
 	d := &models.EventDetail{Sections: []models.EventSection{{Title: "П", Entries: []models.EventEntry{
 		{Label: "С битой", Targets: []models.EventTarget{{Kind: "chapter", Broken: true, Label: "снимок"}, tgt(1, "")}},
 	}}}}
-	got, ok := visibleEvent(d, nil, false)
+	got, ok := visibleEvent(d, nil, nil, false)
 	if !ok || len(got.Sections[0].Entries[0].Targets) != 1 {
 		t.Fatalf("битая цель не выброшена: %+v", got)
 	}
-	got, ok = visibleEvent(d, nil, true)
+	got, ok = visibleEvent(d, nil, nil, true)
 	if !ok || len(got.Sections[0].Entries[0].Targets) != 2 || !got.Sections[0].Entries[0].Targets[0].Broken {
 		t.Fatalf("сотруднику битая цель пропала: %+v", got)
 	}
 }
 
 func TestVisibleEventMarksClosedForStaff(t *testing.T) {
-	got, ok := visibleEvent(visibilityFixture(), ClosedSet{2: true}, true)
+	got, ok := visibleEvent(visibilityFixture(), ClosedSet{2: true}, nil, true)
 	if !ok || len(got.Sections) != 2 || len(got.Sections[0].Entries) != 2 {
 		t.Fatalf("сотруднику выброшено: %+v", got)
 	}
@@ -109,7 +109,7 @@ func TestVisibleOrganizationCountsOpenMaterials(t *testing.T) {
 			{Slug: "c", MaterialsTotal: 1, TargetWorkIDs: []int64{2}},
 		}},
 	}}
-	got, ok := visibleOrganization(org, ClosedSet{2: true}, false)
+	got, ok := visibleOrganization(org, ClosedSet{2: true}, nil, false)
 	if !ok || len(got.Kinds) != 1 || len(got.Kinds[0].Events) != 1 {
 		t.Fatalf("%+v", got)
 	}
@@ -119,11 +119,11 @@ func TestVisibleOrganizationCountsOpenMaterials(t *testing.T) {
 	if len(org.Kinds) != 2 || len(org.Kinds[0].Events) != 2 {
 		t.Error("исходное значение изменено")
 	}
-	staff, ok := visibleOrganization(org, ClosedSet{2: true}, true)
+	staff, ok := visibleOrganization(org, ClosedSet{2: true}, nil, true)
 	if !ok || len(staff.Kinds) != 2 || staff.Kinds[0].Events[0].MaterialsTotal != 3 {
 		t.Errorf("сотруднику урезано: %+v", staff)
 	}
-	if _, ok := visibleOrganization(&models.EventOrganizationDetail{}, nil, false); ok {
+	if _, ok := visibleOrganization(&models.EventOrganizationDetail{}, nil, nil, false); ok {
 		t.Error("организация без событий видна")
 	}
 }

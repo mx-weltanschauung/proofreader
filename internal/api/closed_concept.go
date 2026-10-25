@@ -23,9 +23,51 @@ import (
 type closedView struct {
 	editions map[int64]bool
 	works    ClosedSet
+	// chapterWorks — работы, у которых закрыта хоть одна глава; spans читает
+	// их диапазоны (nil у хранилища без закрытых глав), spanCache держит
+	// прочитанное на время запроса.
+	chapterWorks map[int64]bool
+	spans        ClosedSpansStore
+	spanCache    map[int64][]models.PageSpan
 }
 
-func (v closedView) none() bool { return len(v.editions) == 0 && len(v.works) == 0 }
+func (v closedView) none() bool {
+	return len(v.editions) == 0 && len(v.works) == 0 && len(v.chapterWorks) == 0
+}
+
+// chapterWorksStore — необязательное умение хранилища закрытого: какие работы
+// несут закрытые главы. Есть у *repository.ClosedRepository.
+type chapterWorksStore interface {
+	WorksWithClosedChapters(ctx context.Context) (map[int64]bool, error)
+}
+
+var (
+	_ chapterWorksStore = (*repository.ClosedRepository)(nil)
+	_ ClosedSpansStore  = (*repository.ClosedRepository)(nil)
+)
+
+// closedPagesFunc читает диапазоны закрытых глав тех работ, что в них нуждаются
+// (workIDs), и возвращает closedPages для visibleConcept. Ничего не закрыто —
+// nil. Диапазон работы читается один раз на запрос.
+func (v closedView) closedPagesFunc(ctx context.Context, workIDs []int64) (func(int64, int) bool, error) {
+	if len(v.chapterWorks) == 0 || v.spans == nil {
+		return nil, nil
+	}
+	for _, id := range workIDs {
+		if !v.chapterWorks[id] {
+			continue
+		}
+		if _, ok := v.spanCache[id]; ok {
+			continue
+		}
+		sp, err := v.spans.ClosedSpans(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		v.spanCache[id] = sp
+	}
+	return func(workID int64, page int) bool { return inSpans(v.spanCache[workID], page) }, nil
+}
 
 // closedViewFor — закрытое для запроса API: сотруднику не скрывается ничего.
 func closedViewFor(r *http.Request, store ClosedStore) (closedView, error) {
@@ -49,30 +91,44 @@ func fullClosedView(ctx context.Context, store ClosedStore) (closedView, error) 
 	if err != nil {
 		return closedView{}, err
 	}
-	return closedView{editions: editions, works: ClosedSet(works)}, nil
+	v := closedView{editions: editions, works: ClosedSet(works)}
+	if cw, ok := store.(chapterWorksStore); ok {
+		if v.chapterWorks, err = cw.WorksWithClosedChapters(ctx); err != nil {
+			return closedView{}, err
+		}
+		v.spans, _ = store.(ClosedSpansStore)
+		v.spanCache = map[int64][]models.PageSpan{}
+	}
+	return v, nil
 }
 
 // visibleConcept — копия понятия без статей закрытых изданий и закрытых работ
 // (a.work_id) и без адресов, что разрешаются в закрытую работу. vols — карты
-// томов по изданиям статей. Второй результат false только тогда, когда
+// томов по изданиям статей. closedPages — закрыта ли полоса работы (закрытая
+// глава накрывает её); nil — полосы не закрыты. Адрес, чей диапазон хоть
+// одной полосой попадает в закрытую, скрыт; статья, чей источник
+// [SourcePageStart, SourcePageEnd] (при Start > 0) накрыт закрытой полосой,
+// уходит целиком. Второй результат false только тогда, когда
 // фильтр что-то СНЯЛ и от понятия ничего не осталось — «ни видимой статьи, ни
 // видимого адреса»; понятие, пустое с самого начала (у ленинского указателя
 // нет статей-текстов, только адреса — но и у него есть статья-носитель),
 // возвращается как было. Статья, у которой все адреса скрыты, а своего текста
 // нет, ничего не несёт и уходит вместе с ними — иначе понятие, чьи адреса
 // лежат целиком в закрытом томе, оставалось бы пустой оболочкой с заглавием.
-func visibleConcept(c *models.IndexConcept, closedEditions map[int64]bool, closedWorks ClosedSet, vols map[int64][]models.VolumeLocation) (*models.IndexConcept, bool) {
+func visibleConcept(c *models.IndexConcept, closedEditions map[int64]bool, closedWorks ClosedSet, vols map[int64][]models.VolumeLocation, closedPages func(workID int64, page int) bool) (*models.IndexConcept, bool) {
 	if c == nil {
 		return nil, false
 	}
-	if len(closedEditions) == 0 && len(closedWorks) == 0 {
+	if len(closedEditions) == 0 && len(closedWorks) == 0 && closedPages == nil {
 		return c, true
 	}
 	out := *c
 	out.Articles = make([]*models.IndexArticle, 0, len(c.Articles))
 	removed := false
 	for _, a := range c.Articles {
-		if closedEditions[a.EditionID] || (a.WorkID != nil && closedWorks.Has(*a.WorkID)) {
+		if closedEditions[a.EditionID] || (a.WorkID != nil && closedWorks.Has(*a.WorkID)) ||
+			(a.WorkID != nil && a.SourcePageStart > 0 && closedPages != nil &&
+				anyPageClosed(closedPages, *a.WorkID, a.SourcePageStart, a.SourcePageEnd)) {
 			removed = true
 			continue
 		}
@@ -81,7 +137,9 @@ func visibleConcept(c *models.IndexConcept, closedEditions map[int64]bool, close
 			volMap := buildVolumeMap(vols[a.EditionID])
 			kept := make([]*models.IndexReference, 0, len(a.References))
 			for _, ref := range a.References {
-				if loc, ok := volMap[keyOf(ref.VolumeNumber, ref.VolumePart)]; ok && closedWorks.Has(loc.WorkID) {
+				if loc, ok := volMap[keyOf(ref.VolumeNumber, ref.VolumePart)]; ok &&
+					(closedWorks.Has(loc.WorkID) ||
+						(closedPages != nil && anyPageClosed(closedPages, loc.WorkID, ref.PageStart-loc.PageOffset, ref.PageEnd-loc.PageOffset))) {
 					continue
 				}
 				kept = append(kept, ref)
@@ -113,6 +171,20 @@ func visibleConcept(c *models.IndexConcept, closedEditions map[int64]bool, close
 	return &out, true
 }
 
+// anyPageClosed — закрыта ли хоть одна полоса [from, to] (to < from читается
+// как одна полоса from). Страница ниже первой закрытой быть не может.
+func anyPageClosed(closedPages func(int64, int) bool, workID int64, from, to int) bool {
+	if to < from {
+		to = from
+	}
+	for p := max(from, 1); p <= to; p++ {
+		if closedPages(workID, p) {
+			return true
+		}
+	}
+	return false
+}
+
 func appendUniqueInt64(xs []int64, x int64) []int64 {
 	for _, y := range xs {
 		if y == x {
@@ -138,7 +210,11 @@ func (v closedView) filter(ctx context.Context, idx volumeMapper, c *models.Inde
 		return c, true, nil
 	}
 	vols := map[int64][]models.VolumeLocation{}
+	var chapterWorkIDs []int64
 	for _, a := range c.Articles {
+		if a.WorkID != nil {
+			chapterWorkIDs = append(chapterWorkIDs, *a.WorkID)
+		}
 		if v.editions[a.EditionID] || len(a.References) == 0 {
 			continue
 		}
@@ -150,8 +226,15 @@ func (v closedView) filter(ctx context.Context, idx volumeMapper, c *models.Inde
 			return nil, false, err
 		}
 		vols[a.EditionID] = locs
+		for _, l := range locs {
+			chapterWorkIDs = append(chapterWorkIDs, l.WorkID)
+		}
 	}
-	out, ok := visibleConcept(c, v.editions, v.works, vols)
+	closedPages, err := v.closedPagesFunc(ctx, chapterWorkIDs)
+	if err != nil {
+		return nil, false, err
+	}
+	out, ok := visibleConcept(c, v.editions, v.works, vols, closedPages)
 	return out, ok, nil
 }
 

@@ -82,21 +82,31 @@ func NewServer(d ServerDeps) *mux.Router {
 	authHandler := NewAuthHandler(userRepo, authService, authAttemptRepo,
 		cfg.JWT.Secret, cfg.Server.TrustProxyHeaders)
 	categoryHandler := NewCategoryHandler(categoryRepo)
-	pageHandler := NewPageHandler(pageRepo, pageVersionRepo, fragmentRepo, documentCutRepo, markdownRenderer, scans, cfg.S3.PresignTTL)
-	chapterHandler := NewChapterHandler(chapterRepo, pageRepo, markdownRenderer, rangeCache).
-		WithRecordings(audioRecordingRepo).
-		WithCredits(personRepo)
 	closedRepo := repository.NewClosedRepository(pool)
+	// Полосы и главы для чтения — по зрителю: не-сотруднику закрытых глав и
+	// их полос нет. Зритель берётся из контекста запроса, поэтому каналы без
+	// токена (краулер, .md, MCP, OPDS) фильтруются этими же обёртками. Голые
+	// pageRepo/chapterRepo остаются только у выгрузки администратора, сброса
+	// кэша, записи признака «закрыт» и у обработчика глав, который строит
+	// обёртку чтения себе сам: его охрана записи (409) обязана видеть
+	// закрытые главы.
+	viewPages := NewViewPages(pageRepo, closedRepo)
+	viewChapters := NewViewChapters(chapterRepo, closedRepo)
+	pageHandler := NewPageHandler(viewPages, pageVersionRepo, fragmentRepo, documentCutRepo, markdownRenderer, scans, cfg.S3.PresignTTL)
+	chapterHandler := NewChapterHandler(chapterRepo, viewPages, markdownRenderer, rangeCache).
+		WithRecordings(audioRecordingRepo).
+		WithCredits(personRepo).
+		WithClosedChapters(closedRepo)
 	eventRepo := repository.NewEventRepository(pool)
-	readingHandler := NewReadingHandler(pageRepo, markdownRenderer)
+	readingHandler := NewReadingHandler(viewPages, markdownRenderer).WithClosedMarkers(viewChapters)
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же
 	// набор источников, что у чтения разбора, плюс свой рендер без подрезки.
-	documentCutHandler := NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, pageRepo, markdownRenderer).WithClosed(closedRepo)
+	documentCutHandler := NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, viewPages, markdownRenderer).WithClosed(closedRepo).WithClosedSpans(closedRepo)
 	userHandler := NewUserHandler(userRepo, authService)
 	exportHandler := NewExportHandler(workRepo, chapterRepo, pageRepo)
 	editionHandler := NewEditionHandler(editionRepo)
-	shelfHandler := NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo).WithEvents(eventRepo)
-	highlightHandler := NewHighlightHandler(editionRepo).WithClosed(closedRepo)
+	shelfHandler := NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo).WithClosedChapters(closedRepo).WithEvents(eventRepo)
+	highlightHandler := NewHighlightHandler(editionRepo).WithClosed(closedRepo).WithClosedChapters(closedRepo)
 	searchRepo := repository.NewSearchRepository(pool)
 	searchHandler := NewSearchHandler(searchRepo)
 
@@ -109,10 +119,10 @@ func NewServer(d ServerDeps) *mux.Router {
 	// Каналы без токена (.md и MCP, краулер, карточки) видят указатель без
 	// закрытого всегда — сотрудника на них нет.
 	tokenlessIndex := NewTokenlessIndex(indexRepo, closedRepo)
-	indexHandler := NewIndexHandler(indexRepo, workRepo, editionRepo, pageRepo, chapterRepo, fragmentRepo, markdownRenderer).WithClosed(closedRepo)
-	collectionHandler := NewCollectionHandler(collectionRepo, pageRepo, markdownRenderer, rangeCache, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders).WithClosed(closedRepo)
+	indexHandler := NewIndexHandler(indexRepo, workRepo, editionRepo, viewPages, viewChapters, fragmentRepo, markdownRenderer).WithClosed(closedRepo)
+	collectionHandler := NewCollectionHandler(collectionRepo, viewPages, markdownRenderer, rangeCache, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders).WithClosed(closedRepo)
 	downloadSource := NewDownloadSource(
-		workRepo, chapterRepo, pageRepo, editionRepo, collectionRepo,
+		workRepo, viewChapters, viewPages, editionRepo, collectionRepo,
 		markdownRenderer, cfg.Server.PublicBaseURL,
 	)
 	// Открытый вид работ и изданий и выгрузка над ним — для каналов без
@@ -121,24 +131,24 @@ func NewServer(d ServerDeps) *mux.Router {
 	openWorks := NewOpenWorks(workRepo, closedRepo)
 	openEditions := NewOpenEditions(editionRepo, closedRepo)
 	openDownload := NewDownloadSource(
-		openWorks, chapterRepo, pageRepo, openEditions, collectionRepo,
+		openWorks, viewChapters, viewPages, openEditions, collectionRepo,
 		markdownRenderer, cfg.Server.PublicBaseURL,
 	)
 	downloadHandler := NewDownloadHandler(downloadSource).WithOpen(openDownload).WithClosed(closedRepo).
-		WithAudio(NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, chapterRepo, cfg.Server.PublicBaseURL))
-	audioHandler := NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, chapterRepo, audioStore, closedRepo)
+		WithAudio(NewAudioPlaylist(audioRepo, audioRecordingRepo, workRepo, viewChapters, cfg.Server.PublicBaseURL).WithClosedSpans(closedRepo))
+	audioHandler := NewAudioHandler(audioRepo, audioRepo, audioRecordingRepo, viewChapters, audioStore, closedRepo).WithClosedSpans(closedRepo)
 	seoRepo := repository.NewSEORepository(pool)
 	seoHandler := seo.NewHandler(&seo.Source{
 		Works:       openWorks,
-		Chapters:    chapterRepo,
-		Pages:       pageRepo,
+		Chapters:    viewChapters,
+		Pages:       viewPages,
 		Editions:    openEditions,
 		Concepts:    tokenlessIndex,
 		Collections: NewSEOCollectionSource(collectionRepo).WithClosed(closedRepo),
 		Documents: NewSEODocumentSource(
-			documentRepo, documentCutRepo, openWorks, markdownRenderer).WithClosed(closedRepo),
+			documentRepo, documentCutRepo, openWorks, markdownRenderer).WithClosed(closedRepo).WithClosedSpans(closedRepo),
 		Books:        NewSEOBookSource(openDownload),
-		ConceptBooks: NewConceptBookSource(tokenlessIndex, pageRepo, chapterRepo, cfg.Server.PublicBaseURL),
+		ConceptBooks: NewConceptBookSource(tokenlessIndex, viewPages, viewChapters, cfg.Server.PublicBaseURL),
 		Catalog:      seoRepo,
 		Renderer:     markdownRenderer,
 		// Тот же адрес, что печатает титульный лист выгрузок: два источника
@@ -148,6 +158,9 @@ func NewServer(d ServerDeps) *mux.Router {
 		// Та же отметка, что у файлового кэша глав: новая сборка меняет ETag
 		// страниц краулера, иначе 304 отдавал бы вёрстку прежнего рендерера.
 		Build: build,
+		// Поколение закрытий — в ETag: закрытие подглавы иначе не меняло бы
+		// ETag родительской главы, и краулер получал бы 304 на копию с ней.
+		Closures: closedRepo.ClosuresGeneration,
 	})
 	// Кэши отдачи одним узлом. Собирается после seoHandler, потому что держит
 	// и его половину тоже: снос тома обязан уносить и готовые главы с диска, и
@@ -155,14 +168,14 @@ func NewServer(d ServerDeps) *mux.Router {
 	servingCache := NewServingCache(pageCache, seoHandler)
 	apparatusRepo := repository.NewApparatusRepository(pool)
 	workHandler := NewWorkHandler(
-		workRepo, pageRepo, markdownRenderer, scans, cfg.S3.PresignTTL,
+		workRepo, viewPages, markdownRenderer, scans, cfg.S3.PresignTTL,
 		servingCache, apparatusRepo,
-	).WithAudioStore(audioStore).WithJournalIssues(journalRepo)
+	).WithAudioStore(audioStore).WithJournalIssues(journalRepo).WithClosedChapterWorks(closedRepo)
 	// documentHandler/documentReviewHandler собираются здесь же, а не рядом с
 	// остальными обработчиками разбора выше: снятие с публикации и удаление
 	// обязаны сбросить краулерскую половину servingCache (см. DropCrawler), а
 	// она собирается только после seoHandler.
-	documentHandler := NewDocumentHandler(documentRepo, markdownRenderer, documentCutRepo, workRepo, servingCache).WithClosed(closedRepo)
+	documentHandler := NewDocumentHandler(documentRepo, markdownRenderer, documentCutRepo, workRepo, servingCache).WithClosed(closedRepo).WithClosedSpans(closedRepo)
 	// Модерация разбора: отправка автором, очередь редактору, приём и отказ.
 	// jwtSecret и trustProxy — рельс предела частоты, тот же, что у подборок.
 	documentReviewHandler := NewDocumentReviewHandler(
@@ -181,7 +194,7 @@ func NewServer(d ServerDeps) *mux.Router {
 	)
 	pageSuggestionRepo := repository.NewPageSuggestionRepository(pool)
 	pageSuggestionHandler := NewPageSuggestionHandler(
-		pageSuggestionRepo, pageRepo, pageVersionRepo, fragmentRepo, documentCutRepo,
+		pageSuggestionRepo, viewPages, pageVersionRepo, fragmentRepo, documentCutRepo,
 		cfg.JWT.Secret, cfg.Server.TrustProxyHeaders,
 	).WithClosed(closedRepo)
 	// Настоящее хранилище (pageCache), а не общий rangeCache: сбросу нужно
@@ -199,14 +212,14 @@ func NewServer(d ServerDeps) *mux.Router {
 		SearchSlots: searchHandler.Slots(),
 		Text:        seoHandler,
 		Works:       openWorks,
-		Chapters:    chapterRepo,
+		Chapters:    viewChapters,
 		Library:     NewMCPSource(openDownload),
 		Stats:       statsRecorder,
 	})
 	// Каталог OPDS: поиск тот же (те же слоты и таймаут), файлы — тот же
 	// /api/.../download.
 	opdsHandler := opds.NewHandler(NewOPDSSource(
-		openEditions, openWorks, chapterRepo, repository.NewOPDSRepository(pool), searchHandler,
+		openEditions, openWorks, viewChapters, repository.NewOPDSRepository(pool), searchHandler,
 	), cfg.Server.PublicBaseURL)
 	appMetrics.RegisterSlots("heavy", seoHandler.HeavySlots())
 	for name, s := range mcpGates {
@@ -242,12 +255,12 @@ func NewServer(d ServerDeps) *mux.Router {
 	).WithMCP(mcpHandler).
 		WithOPDS(opdsHandler).
 		WithClosed(closedRepo).
-		WithClosedWriter(NewClosedHandler(closedRepo, servingCache)).
+		WithClosedWriter(NewClosedHandler(closedRepo, servingCache).WithChapters(chapterRepo).WithLog(closedRepo)).
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
-		WithEvents(NewEventHandler(eventRepo, closedRepo)).
+		WithEvents(NewEventHandler(eventRepo, closedRepo).WithClosedChapters(closedRepo)).
 		WithSite(NewSiteHandler(cfg.Site)).
-		WithJournals(NewJournalHandler(journalRepo), NewPersonHandler(personRepo, personRepo, chapterRepo)).
+		WithJournals(NewJournalHandler(journalRepo), NewPersonHandler(personRepo, personRepo, viewChapters)).
 		WithStaticArchive(NewStaticArchiveHandler(cfg.Server.StaticArchiveURL, &http.Client{Timeout: 5 * time.Second})).
 		WithStats(NewStatsHandler(statsRecorder, statsRepo, appMetrics, cfg.Server.TrustProxyHeaders)).
 		WithMetrics(appMetrics)

@@ -42,6 +42,50 @@ type WorkHandler struct {
 	audioStore storage.Storage
 	// issues — журнальные координаты номера; nil — журналов нет.
 	issues JournalIssueLookup
+	// closedChapters — работы с закрытыми главами: их оригинал не-сотруднику
+	// не выдаётся. nil — закрытых глав нет.
+	closedChapters ClosedChapterWorks
+}
+
+// ClosedChapterWorks — работы, у которых есть хоть одна закрытая глава.
+// *repository.ClosedRepository удовлетворяет ему как есть.
+type ClosedChapterWorks interface {
+	WorksWithClosedChapters(ctx context.Context) (map[int64]bool, error)
+}
+
+// WithClosedChapterWorks подключает сокрытие оригинала у работ с закрытыми
+// главами.
+func (h *WorkHandler) WithClosedChapterWorks(s ClosedChapterWorks) *WorkHandler {
+	h.closedChapters = s
+	return h
+}
+
+// originalHidden — чей оригинал (PDF/DJVU) зрителю не выдаётся: в исходном
+// файле лежит и закрытая глава. Сотруднику и без хранилища — ничей. Ошибка
+// чтения прячет все оригиналы, а не отдаёт их: карточка без файла хуже не
+// станет, а утечку не вернуть.
+func (h *WorkHandler) originalHidden(r *http.Request) func(workID int64) bool {
+	if h.closedChapters == nil || isStaffRequest(r) {
+		return func(int64) bool { return false }
+	}
+	ids, err := h.closedChapters.WorksWithClosedChapters(r.Context())
+	if err != nil {
+		log.Printf("работы с закрытыми главами: %v", err)
+		return func(int64) bool { return true }
+	}
+	return func(workID int64) bool { return ids[workID] }
+}
+
+// workResponseFor — ответ работы с оригиналом, если зрителю его можно. Без
+// оригинала снят и ключ хранилища (file_path): файл не выдаётся ни ссылкой,
+// ни адресом в бакете.
+func (h *WorkHandler) workResponseFor(r *http.Request, wk *models.Work, hidden func(int64) bool) workResponse {
+	if hidden(wk.ID) {
+		cp := *wk
+		cp.FilePath = ""
+		return workResponse{Work: &cp}
+	}
+	return newWorkResponse(r.Context(), wk, h.store, h.presignTTL)
 }
 
 // WithJournalIssues подключает поиск журнальных координат номера.
@@ -94,6 +138,8 @@ type CreateWorkRequest struct {
 	// Closed — завести работу сразу закрытой (публикатор, закрытое издание).
 	// Update поле не читает: признак меняет только ClosedHandler.
 	Closed bool `json:"closed,omitempty"`
+	// ClosedReason — причина строки журнала при Closed; пусто — «закрыто при создании».
+	ClosedReason string `json:"closed_reason,omitempty"`
 }
 
 // UpdateWorkRequest represents a request to update a work.
@@ -149,12 +195,13 @@ func (h *WorkHandler) List(w http.ResponseWriter, r *http.Request) {
 	// показывается. Страница от этого может выйти короче limit: сдвиг offset
 	// остаётся по строкам базы, поэтому постраничный обход ничего не теряет.
 	staff := isStaffRequest(r)
+	hidden := h.originalHidden(r)
 	resp := make([]workResponse, 0, len(works))
 	for _, wk := range works {
 		if !staff && wk.ClosedBy != "" {
 			continue
 		}
-		resp = append(resp, newWorkResponse(r.Context(), wk, h.store, h.presignTTL))
+		resp = append(resp, h.workResponseFor(r, wk, hidden))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -181,6 +228,11 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	closeReason, ok := requireAdminToClose(w, r, req.Closed, req.ClosedReason)
+	if !ok {
+		return
+	}
+
 	// Create work
 	work := &models.Work{
 		ID:       req.ID,
@@ -195,7 +247,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	if err := h.workRepo.Create(ctx, work); err != nil {
+	if err := h.workRepo.Create(ctx, work, closureActor(r), closeReason); err != nil {
 		if errors.Is(err, repository.ErrIDTaken) {
 			http.Error(w, fmt.Sprintf("work id %d is already taken", req.ID), http.StatusConflict)
 			return
@@ -225,7 +277,8 @@ func (h *WorkHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := newWorkResponse(r.Context(), work, h.store, h.presignTTL)
+	hidden := h.originalHidden(r)
+	resp := h.workResponseFor(r, work, hidden)
 	// Служебные работы (передние листы) не показываются в каталоге, поэтому
 	// единственный путь к ним для человека — карточка их тома. Ошибка выборки
 	// не роняет карточку тома, но и молчать о ней нельзя: без записи в лог
@@ -241,7 +294,7 @@ func (h *WorkHandler) Get(w http.ResponseWriter, r *http.Request) {
 		if kid.ClosedBy != "" && !staff {
 			continue
 		}
-		resp.Children = append(resp.Children, newWorkResponse(r.Context(), kid, h.store, h.presignTTL))
+		resp.Children = append(resp.Children, h.workResponseFor(r, kid, hidden))
 	}
 
 	if h.issues != nil && work.Role == models.WorkRoleJournalIssue {
@@ -426,7 +479,7 @@ func (h *WorkHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pages, err := h.pageRepo.ListByWork(context.Background(), id)
+	pages, err := h.pageRepo.ListByWork(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Failed to retrieve pages", http.StatusInternalServerError)
 		return

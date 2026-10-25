@@ -80,6 +80,9 @@ type EventSummary struct {
 	Dates          string  `json:"dates"`
 	MaterialsTotal int     `json:"materials_total"`
 	TargetWorkIDs  []int64 `json:"-"`
+	// TargetChapterIDs — chapter_id целей, по порядку TargetWorkIDs; 0 — цель
+	// целая работа. Наружу не идёт.
+	TargetChapterIDs []int64 `json:"-"`
 }
 
 // EventKindEvents — вид со своими событиями.

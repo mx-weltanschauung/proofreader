@@ -24,7 +24,7 @@ const closedMigrationVersion = 40
 // Столбца closed может не быть (база ниже 40) — такая таблица пропускается.
 func openAllClosed(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	for _, table := range []string{"works", "editions", "journals"} {
+	for _, table := range []string{"works", "editions", "journals", "chapters"} {
 		var has bool
 		if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns
 			WHERE table_schema = 'public' AND table_name = $1 AND column_name = 'closed')`, table).Scan(&has); err != nil {

@@ -60,7 +60,10 @@ const indexableWorkRoles = `('volume', 'edition_front_matter')`
 type scanFunc func(pgx.Rows) (CatalogRow, error)
 
 func (r *SEORepository) query(ctx context.Context, what, sql string, scan scanFunc) ([]CatalogRow, error) {
-	rows, err := r.pool.Query(ctx, sql)
+	// Все каталоги идут под jit = off (queryJITOff): запросы с условием
+	// закрытого стоят выше jit_above_cost, а компиляция съедает больше, чем
+	// экономит; прочим он ничего не меняет.
+	rows, err := queryJITOff(ctx, r.pool, sql)
 	if err != nil {
 		return nil, fmt.Errorf("каталог %s: %w", what, err)
 	}
@@ -141,6 +144,7 @@ func (r *SEORepository) Chapters(ctx context.Context) ([]CatalogRow, error) {
 		       ws.slug_edition, ws.slug_volume, ws.slug_part
 		FROM chapters c
 		JOIN work_slugs ws ON ws.id = c.work_id
+		WHERE c.id NOT IN (SELECT id FROM closed_chapters)
 		ORDER BY c.work_id, c.id`, func(rows pgx.Rows) (CatalogRow, error) {
 		var row CatalogRow
 		var chapterTitle, role, workTitle, slugEdition string
@@ -179,6 +183,7 @@ func (r *SEORepository) Editions(ctx context.Context) ([]CatalogRow, error) {
 // должны.
 func (r *SEORepository) Concepts(ctx context.Context) ([]CatalogRow, error) {
 	return r.query(ctx, "понятия", `
+		WITH `+closedSpansCTE+`
 		SELECT c.slug, c.updated_at FROM index_concepts c
 		WHERE EXISTS (
 		    SELECT 1 FROM index_concept_articles a
@@ -206,7 +211,8 @@ type ConceptShelfRow struct {
 // запросом: витрина печатает все ~2400 строк, и счёт по понятию стоил бы
 // столько же запросов.
 func (r *SEORepository) ConceptShelf(ctx context.Context) ([]ConceptShelfRow, error) {
-	rows, err := r.pool.Query(ctx, `
+	rows, err := queryJITOff(ctx, r.pool, `
+		WITH `+closedSpansCTE+`
 		SELECT c.slug, c.title, c.sort_key, count(ref.id)
 		FROM index_concepts c
 		JOIN index_concept_articles a ON a.concept_id = c.id AND `+visibleArticleSQL("a")+`
