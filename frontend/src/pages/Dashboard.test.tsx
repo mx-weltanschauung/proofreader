@@ -654,4 +654,23 @@ describe('Dashboard: оглавление и разделы', () => {
       expect(caption.startsWith(`${count},`)).toBe(true);
     }
   });
+
+  // Пересланная ссылка «/#ed-…»: браузер разбирает якорь один раз, при
+  // загрузке, а полки приезжают ответом сервера позже — прокручивает страница.
+  it('пересланная ссылка на полку прокручивает к ней после загрузки', async () => {
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (
+      this: Element,
+    ) {
+      void this;
+    });
+    render(
+      <MemoryRouter initialEntries={['/#ed-otchety']}>
+        <Dashboard />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { level: 3, name: 'Отчёты' });
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.contexts.at(-1)).toBe(document.getElementById('ed-otchety'));
+    spy.mockRestore();
+  });
 });

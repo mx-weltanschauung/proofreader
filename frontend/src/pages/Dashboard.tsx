@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { shelfApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
+import { useHashAnchor } from '../hooks/useHashAnchor';
 import { forgetRead, readRecent, type LastRead } from '../hooks/useReadingProgress';
 import { EditionSummary } from '../components/EditionSummary';
 import { VolumeShelf } from '../components/VolumeShelf';
@@ -86,6 +87,10 @@ export const Dashboard: React.FC = () => {
     [shelves, organizations, journals, looseWorks],
   );
   const allShelves = useMemo(() => layout.sections.flatMap((s) => s.shelves), [layout]);
+  // Пересланная ссылка «/#ed-…»: браузер разбирает якорь при загрузке, когда
+  // полок ещё нет — они приезжают ответом сервера. Прокручиваем, когда
+  // раскладка готова.
+  useHashAnchor(layout);
 
   if (isLoading) {
     return <div className="loading-state">Загружаем собрание…</div>;
