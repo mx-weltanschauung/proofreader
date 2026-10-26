@@ -47,8 +47,8 @@ func isFKViolation(err error, constraint string) bool {
 
 func (r *EventRepository) CreateOrganization(ctx context.Context, o *models.EventOrganization) error {
 	var created, updated any
-	cols := []string{"slug", "title", "description", "position"}
-	args := []any{o.Slug, o.Title, o.Description, o.Position}
+	cols := []string{"slug", "title", "description", "position", "shelf_group"}
+	args := []any{o.Slug, o.Title, o.Description, o.Position, o.ShelfGroup}
 	err := insertRow(ctx, r.pool, "event_organizations", o.ID, cols, args, &o.ID, &created, &updated)
 	if isUnique(err, "event_organizations_slug_key") {
 		return fmt.Errorf("%w: %s", ErrEventSlugTaken, o.Slug)
@@ -56,11 +56,14 @@ func (r *EventRepository) CreateOrganization(ctx context.Context, o *models.Even
 	return eventIDErr(err)
 }
 
-// UpdateOrganization слаг не пишет: адрес наружу не протухает.
-func (r *EventRepository) UpdateOrganization(ctx context.Context, o *models.EventOrganization) error {
+// UpdateOrganization слаг не пишет: адрес наружу не протухает. shelfGroup
+// nil — раздел главной прежний: экран или скрипт, не знающие поля, его не
+// стирают.
+func (r *EventRepository) UpdateOrganization(ctx context.Context, o *models.EventOrganization, shelfGroup *string) error {
 	tag, err := r.pool.Exec(ctx, `UPDATE event_organizations
-		SET title = $2, description = $3, position = $4, updated_at = NOW() WHERE id = $1`,
-		o.ID, o.Title, o.Description, o.Position)
+		SET title = $2, description = $3, position = $4, shelf_group = COALESCE($5, shelf_group),
+		    updated_at = NOW() WHERE id = $1`,
+		o.ID, o.Title, o.Description, o.Position, shelfGroup)
 	if err != nil {
 		return err
 	}
@@ -213,7 +216,7 @@ func (r *EventRepository) OrganizationDetail(ctx context.Context, slug string) (
 }
 
 func (r *EventRepository) organizations(ctx context.Context, slug string) ([]models.EventOrganizationDetail, error) {
-	orows, err := r.pool.Query(ctx, `SELECT id, slug, title, description, position FROM event_organizations
+	orows, err := r.pool.Query(ctx, `SELECT id, slug, title, description, position, shelf_group FROM event_organizations
 		WHERE $1 = '' OR slug = $1 ORDER BY position, title, id`, slug)
 	if err != nil {
 		return nil, err
@@ -222,7 +225,7 @@ func (r *EventRepository) organizations(ctx context.Context, slug string) ([]mod
 	orgIdx := map[int64]int{}
 	for orows.Next() {
 		var o models.EventOrganizationDetail
-		if err := orows.Scan(&o.ID, &o.Slug, &o.Title, &o.Description, &o.Position); err != nil {
+		if err := orows.Scan(&o.ID, &o.Slug, &o.Title, &o.Description, &o.Position, &o.ShelfGroup); err != nil {
 			orows.Close()
 			return nil, err
 		}
@@ -298,14 +301,14 @@ func (r *EventRepository) EventDetail(ctx context.Context, slug string) (*models
 	var d models.EventDetail
 	err := r.pool.QueryRow(ctx, `
 		SELECT e.id, e.kind_id, e.slug, e.title, e.dates, e.place, e.description, e.position,
-		       k.title, o.id, o.slug, o.title, o.description, o.position
+		       k.title, o.id, o.slug, o.title, o.description, o.position, o.shelf_group
 		FROM events e
 		JOIN event_kinds k ON k.id = e.kind_id
 		JOIN event_organizations o ON o.id = k.organization_id
 		WHERE e.slug = $1`, slug).
 		Scan(&d.ID, &d.KindID, &d.Slug, &d.Title, &d.Dates, &d.Place, &d.Description, &d.Position,
 			&d.KindTitle, &d.Organization.ID, &d.Organization.Slug, &d.Organization.Title,
-			&d.Organization.Description, &d.Organization.Position)
+			&d.Organization.Description, &d.Organization.Position, &d.Organization.ShelfGroup)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrEventNotFound
 	}

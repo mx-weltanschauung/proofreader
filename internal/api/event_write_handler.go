@@ -78,6 +78,12 @@ func (h *EventHandler) CreateOrganization(w http.ResponseWriter, r *http.Request
 		return
 	}
 	o.Title = strings.TrimSpace(o.Title)
+	group, err := models.NormalizeShelfGroup(o.ShelfGroup)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	o.ShelfGroup = group
 	if o.ID < 0 {
 		writeError(w, http.StatusBadRequest, "id должен быть положительным")
 		return
@@ -104,16 +110,30 @@ func (h *EventHandler) UpdateOrganization(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "Неверный номер организации")
 		return
 	}
-	var o models.EventOrganization
-	if !decodeEventBody(w, r, &o, "организация") {
+	// Внешнее поле затеняет вложенное: раздел читается указателем, чтобы
+	// тело без него (экран или скрипт, не знающие поля) раздел не стирало.
+	var body struct {
+		models.EventOrganization
+		ShelfGroup *string `json:"shelf_group"`
+	}
+	if !decodeEventBody(w, r, &body, "организация") {
 		return
 	}
+	o := body.EventOrganization
 	o.ID, o.Slug, o.Title = id, "", strings.TrimSpace(o.Title)
 	if msg := checkTitle(o.Title, "заглавие организации"); msg != "" {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
-	if err := h.store.UpdateOrganization(r.Context(), &o); err != nil {
+	if body.ShelfGroup != nil {
+		group, err := models.NormalizeShelfGroup(*body.ShelfGroup)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		body.ShelfGroup, o.ShelfGroup = &group, group
+	}
+	if err := h.store.UpdateOrganization(r.Context(), &o, body.ShelfGroup); err != nil {
 		h.writeFail(w, err)
 		return
 	}

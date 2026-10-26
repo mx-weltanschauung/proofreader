@@ -164,7 +164,7 @@ func (h *ShelfHandler) Get(w http.ResponseWriter, r *http.Request) {
 				n += len(k.Events)
 			}
 			shelf.Organizations = append(shelf.Organizations, models.EventOrganizationSummary{
-				ID: vis.ID, Slug: vis.Slug, Title: vis.Title, EventsTotal: n})
+				ID: vis.ID, Slug: vis.Slug, Title: vis.Title, EventsTotal: n, ShelfGroup: vis.ShelfGroup})
 		}
 	}
 

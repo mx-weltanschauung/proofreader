@@ -373,7 +373,7 @@ func TestEventUpdatesKeepSlug(t *testing.T) {
 	}
 	f.org.Title = "Новое"
 	f.org.Slug = "changed"
-	if err := f.repo.UpdateOrganization(ctx, f.org); err != nil {
+	if err := f.repo.UpdateOrganization(ctx, f.org, nil); err != nil {
 		t.Fatal(err)
 	}
 	od, _ := f.repo.OrganizationDetail(ctx, "org-a")
@@ -390,7 +390,37 @@ func TestEventUpdatesKeepSlug(t *testing.T) {
 	if err := f.repo.UpdateEvent(ctx, &models.Event{ID: 99999, Title: "x"}); !errors.Is(err, ErrEventNotFound) {
 		t.Fatalf("%v", err)
 	}
-	if err := f.repo.UpdateOrganization(ctx, &models.EventOrganization{ID: 99999, Title: "x"}); !errors.Is(err, ErrEventOrgNotFound) {
+	if err := f.repo.UpdateOrganization(ctx, &models.EventOrganization{ID: 99999, Title: "x"}, nil); !errors.Is(err, ErrEventOrgNotFound) {
 		t.Fatalf("%v", err)
+	}
+}
+
+// Правка организации без раздела (nil) раздел не стирает; список
+// организаций его отдаёт.
+func TestUpdateOrganizationKeepsShelfGroup(t *testing.T) {
+	ctx := context.Background()
+	f := newEventFixture(t, "org-a")
+	group := "Раздел Б"
+	if err := f.repo.UpdateOrganization(ctx, f.org, &group); err != nil {
+		t.Fatal(err)
+	}
+	f.org.Title = "Новое"
+	if err := f.repo.UpdateOrganization(ctx, f.org, nil); err != nil {
+		t.Fatal(err)
+	}
+	orgs, err := f.repo.Organizations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orgs) != 1 || orgs[0].Title != "Новое" || orgs[0].ShelfGroup != "Раздел Б" {
+		t.Fatalf("организации: %+v", orgs)
+	}
+	empty := ""
+	if err := f.repo.UpdateOrganization(ctx, f.org, &empty); err != nil {
+		t.Fatal(err)
+	}
+	od, err := f.repo.OrganizationDetail(ctx, "org-a")
+	if err != nil || od.ShelfGroup != "" {
+		t.Fatalf("после пустого: %+v %v", od, err)
 	}
 }

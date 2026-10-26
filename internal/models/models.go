@@ -204,6 +204,7 @@ type EventOrganizationSummary struct {
 	Slug        string `json:"slug"`
 	Title       string `json:"title"`
 	EventsTotal int    `json:"events_total"`
+	ShelfGroup  string `json:"shelf_group"`
 }
 
 // Category represents a work category

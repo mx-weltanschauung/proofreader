@@ -164,3 +164,30 @@ func TestChapterEventsListsLinks(t *testing.T) {
 		t.Errorf("пусто должно быть []: %s", rec.Body)
 	}
 }
+
+// Раздел главной едет в ответе полки и у собрания, и у организации: из него
+// клиент раскладывает главную.
+func TestShelfCarriesShelfGroup(t *testing.T) {
+	orgs := closedOnlyOrgs()
+	orgs[0].ShelfGroup = "Раздел Б"
+	h := NewShelfHandler(&fakeShelfEditions{editions: []*models.Edition{{ID: 3, Title: "Отчёты", Slug: "o", ShelfGroup: "Раздел Б"}}},
+		&fakeShelfWorks{}).
+		WithClosed(&fakeClosedStore{works: map[int64]string{9: models.ClosedByWork}}).
+		WithEvents(&fakeEventStore{orgs: orgs})
+	req := httptest.NewRequest(http.MethodGet, "/api/shelf", nil)
+	rec := httptest.NewRecorder()
+	withClaims(editorClaims(), h.Get)(rec, req)
+	var s models.Shelf
+	if err := json.Unmarshal(rec.Body.Bytes(), &s); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Editions) != 1 || s.Editions[0].Edition.ShelfGroup != "Раздел Б" {
+		t.Errorf("собрание: %s", rec.Body)
+	}
+	if len(s.Organizations) != 1 || s.Organizations[0].ShelfGroup != "Раздел Б" {
+		t.Errorf("организация: %s", rec.Body)
+	}
+	if !contains(rec.Body.String(), `"shelf_group":"Раздел Б"`) {
+		t.Errorf("нет поля в JSON: %s", rec.Body)
+	}
+}

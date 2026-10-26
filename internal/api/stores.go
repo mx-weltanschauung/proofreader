@@ -310,7 +310,7 @@ type ClosedStore interface {
 // (repository.EventRepository).
 type EventStore interface {
 	CreateOrganization(ctx context.Context, o *models.EventOrganization) error
-	UpdateOrganization(ctx context.Context, o *models.EventOrganization) error
+	UpdateOrganization(ctx context.Context, o *models.EventOrganization, shelfGroup *string) error
 	CreateKind(ctx context.Context, k *models.EventKind) error
 	UpdateKind(ctx context.Context, k *models.EventKind) error
 	DeleteKind(ctx context.Context, id int64) error
