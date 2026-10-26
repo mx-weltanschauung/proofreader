@@ -25,16 +25,24 @@ type fakeEventWriteStore struct {
 	agendaIn    *models.AgendaInput
 	deleteKErr  error
 	nextID      int64
+	createdOrg  *models.EventOrganization
+	updatedOrg  *models.EventOrganization
+	shelfGroup  *string
+	updateCalls int
 }
 
 func (f *fakeEventWriteStore) CreateOrganization(_ context.Context, o *models.EventOrganization) error {
+	f.createdOrg = o
 	if o.ID == 0 {
 		f.nextID++
 		o.ID = f.nextID
 	}
 	return nil
 }
-func (f *fakeEventWriteStore) UpdateOrganization(context.Context, *models.EventOrganization) error {
+func (f *fakeEventWriteStore) UpdateOrganization(_ context.Context, o *models.EventOrganization, shelfGroup *string) error {
+	cp := *o
+	f.updatedOrg, f.shelfGroup = &cp, shelfGroup
+	f.updateCalls++
 	return nil
 }
 func (f *fakeEventWriteStore) CreateKind(_ context.Context, k *models.EventKind) error {
@@ -323,5 +331,56 @@ func TestEventWriteRoutesNotShadowedByPublicRead(t *testing.T) {
 	var d models.EventDetail
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &d) != nil || d.Slug != "i-sezd" {
 		t.Errorf("GET события: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// Раздел главной у организации обрезается сервером, как у собрания.
+func TestCreateOrganizationTrimsShelfGroup(t *testing.T) {
+	f := newWriteFake()
+	rec := doPostVars(t, writeHandler(f).CreateOrganization, "/x",
+		`{"slug":"org-a","title":"Организация А","shelf_group":" Раздел Б "}`, nil, editorClaims())
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if f.createdOrg == nil || f.createdOrg.ShelfGroup != "Раздел Б" {
+		t.Fatalf("в хранилище: %+v", f.createdOrg)
+	}
+}
+
+// Тело без поля — раздел не трогается: хранилище получает nil, а не пустоту.
+func TestUpdateOrganizationKeepsShelfGroupWhenAbsent(t *testing.T) {
+	f := newWriteFake()
+	rec := doPutVars(t, writeHandler(f).UpdateOrganization, "/x",
+		`{"title":"Организация А","description":"","position":0}`, map[string]string{"id": "10"}, editorClaims())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body)
+	}
+	if f.updateCalls != 1 || f.shelfGroup != nil {
+		t.Fatalf("вызовов %d, shelfGroup %v — ожидался nil", f.updateCalls, f.shelfGroup)
+	}
+
+	f = newWriteFake()
+	rec = doPutVars(t, writeHandler(f).UpdateOrganization, "/x",
+		`{"title":"Организация А","shelf_group":" Раздел Б "}`, map[string]string{"id": "10"}, editorClaims())
+	if rec.Code != http.StatusOK || f.shelfGroup == nil || *f.shelfGroup != "Раздел Б" {
+		t.Fatalf("%d %s, shelfGroup %v", rec.Code, rec.Body, f.shelfGroup)
+	}
+}
+
+func TestUpdateOrganizationRejectsLongShelfGroup(t *testing.T) {
+	long := strings.Repeat("я", models.ShelfGroupMaxRunes+1)
+	f := newWriteFake()
+	rec := doPutVars(t, writeHandler(f).UpdateOrganization, "/x",
+		`{"title":"Организация А","shelf_group":"`+long+`"}`, map[string]string{"id": "10"}, editorClaims())
+	if rec.Code != http.StatusBadRequest || f.updateCalls != 0 {
+		t.Fatalf("%d %s, вызовов %d", rec.Code, rec.Body, f.updateCalls)
+	}
+	var body struct{ Message string }
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Message == "" {
+		t.Fatalf("ошибка не JSON writeError: %s", rec.Body)
+	}
+	if rec := doPostVars(t, writeHandler(newWriteFake()).CreateOrganization, "/x",
+		`{"slug":"org-a","title":"Организация А","shelf_group":"`+long+`"}`, nil, editorClaims()); rec.Code != http.StatusBadRequest {
+		t.Fatalf("create: %d", rec.Code)
 	}
 }

@@ -234,6 +234,11 @@ export interface Edition {
    * поля не присылает — это `printed`.
    */
   volume_numbering?: VolumeNumbering;
+  /**
+   * Раздел главной, под которым стоит полка собрания; пусто — «Собрания
+   * сочинений». Старый сервер поля не присылает.
+   */
+  shelf_group?: string;
   created_at: string;
   updated_at: string;
 }
@@ -1195,6 +1200,8 @@ export interface EventOrganizationSummary {
   slug: string;
   title: string;
   events_total: number;
+  /** Раздел главной; пусто — отдельный блок «Съезды и конгрессы». */
+  shelf_group?: string;
 }
 
 export interface EventOrganization {
@@ -1203,6 +1210,7 @@ export interface EventOrganization {
   title: string;
   description: string;
   position: number;
+  shelf_group?: string;
 }
 
 export interface EventSummary {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { VolumeSummary } from '../types';
-import { editionCaption } from './editionCaption';
+import { editionCaption, volumeCountLabel } from './editionCaption';
 
 function volume(over: Partial<VolumeSummary> = {}): VolumeSummary {
   return {
@@ -63,5 +63,23 @@ describe('editionCaption', () => {
       volume({ id: 2, volume_number: undefined }),
     ];
     expect(editionCaption(volumes, undefined)).toBe('2 книги, 1 200 страниц.');
+  });
+});
+
+describe('volumeCountLabel', () => {
+  const numbered = (n: number) => Array.from({ length: n }, (_, i) => volume({ id: i + 1, volume_number: i + 1 }));
+  it('тома с номерами', () => {
+    expect(volumeCountLabel(numbered(50))).toBe('50 томов');
+    expect(volumeCountLabel(numbered(21))).toBe('21 том');
+  });
+  it('книги без номеров', () => {
+    const books = [1, 2, 3].map((id) => volume({ id, volume_number: undefined }));
+    expect(volumeCountLabel(books)).toBe('3 книги');
+  });
+  it('пусто', () => {
+    expect(volumeCountLabel([])).toBe('ни одного тома');
+  });
+  it('подпись полки без плана начинается тем же числом', () => {
+    expect(editionCaption(numbered(21), undefined).startsWith(`${volumeCountLabel(numbered(21))},`)).toBe(true);
   });
 });

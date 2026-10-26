@@ -7,6 +7,9 @@ type EventOrganization struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Position    int    `json:"position"`
+	// ShelfGroup — раздел главной; пусто — организация стоит отдельным
+	// блоком «Съезды и конгрессы» после разделов (миграция 000043).
+	ShelfGroup string `json:"shelf_group"`
 }
 
 // EventKind — вид событий внутри организации («Съезды», «Пленумы»).

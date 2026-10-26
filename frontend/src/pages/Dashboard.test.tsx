@@ -8,7 +8,14 @@ import { shelfApi } from '../services/api';
 // есть setState: роль в тестах подменяется прямо на нём, без vi.mock.
 import { useAuth } from '../hooks/useAuth';
 import { LEGACY_LAST_READ_KEY, RECENT_KEY, readRecent } from '../hooks/useReadingProgress';
-import type { Edition, JournalSummary, ShelfEdition, ShelfWork, VolumeSummary } from '../types';
+import type {
+  Edition,
+  EventOrganizationSummary,
+  JournalSummary,
+  ShelfEdition,
+  ShelfWork,
+  VolumeSummary,
+} from '../types';
 
 vi.mock('../services/api', () => ({
   shelfApi: { get: vi.fn() },
@@ -77,9 +84,10 @@ function mockShelf(
   editions: ShelfEdition[],
   loose: ShelfWork[] = [],
   journals: JournalSummary[] = [],
+  organizations: EventOrganizationSummary[] = [],
 ) {
   vi.mocked(shelfApi.get).mockResolvedValue({
-    data: { editions, loose_works: loose, journals },
+    data: { editions, loose_works: loose, journals, organizations },
   } as never);
 }
 
@@ -122,8 +130,9 @@ describe('Dashboard', () => {
       ],
     );
     renderDashboard();
-    const link = await screen.findByRole('link', { name: /Под знаменем марксизма/ });
-    expect(link).toHaveAttribute('href', '/journals/pzm');
+    // Вторая ссылка с тем же именем — строка оглавления, она ведёт на якорь.
+    const links = await screen.findAllByRole('link', { name: /Под знаменем марксизма/ });
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#zhurnaly', '/journals/pzm']);
     expect(screen.getByText(/1922—1935 · 104 номера/)).toBeInTheDocument();
     expect(screen.queryByText(/Пока ни одного собрания/)).toBeNull();
   });
@@ -330,7 +339,7 @@ describe('Dashboard: собраний несколько', () => {
   // четырёх плехановских не почему-либо, а потому что «В» раньше «Г».
   it('ставит собрание с бо́льшим числом томов первым', async () => {
     renderDashboard();
-    const headings = await screen.findAllByRole('heading', { level: 2 });
+    const headings = await screen.findAllByRole('heading', { level: 3 });
     expect(headings.map((h) => h.textContent)).toEqual([EDITION.title, PLEKHANOV.title]);
   });
 
@@ -370,8 +379,9 @@ describe('Dashboard: работы вне собраний', () => {
   it('выводит работу, не приписанную ни к одному собранию', async () => {
     mockShelf([shelfOf(EDITION, [volume(1, 1)])], [{ id: 77, title: 'Одинокая брошюра' }]);
     renderDashboard();
-    const link = await screen.findByRole('link', { name: 'Одинокая брошюра' });
-    expect(link).toHaveAttribute('href', '/works/77');
+    // Вторая ссылка с тем же именем — строка оглавления, она ведёт на якорь.
+    const links = await screen.findAllByRole('link', { name: 'Одинокая брошюра' });
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['#vne-sobraniy', '/works/77']);
     expect(screen.getByRole('heading', { name: 'Вне собраний' })).toBeInTheDocument();
   });
 
@@ -542,5 +552,127 @@ describe('Dashboard: предваряющая работа не путается
     // На полке — только два корешка тома, подписи предисловия там нет.
     await waitFor(() => expect(screen.getAllByRole('link', { name: /^Том / })).toHaveLength(2));
     expect(screen.queryByRole('link', { name: /Предисловие/ })).not.toBeInTheDocument();
+  });
+});
+
+// --- Оглавление и разделы -------------------------------------------------
+// Оглавление и полки рисуются из одной раскладки (utils/homeLayout): собрание
+// есть в оглавлении ровно тогда, когда есть его полка, и число томов у них
+// общее.
+
+const SECTIONED: Edition = {
+  id: 3,
+  title: 'Раздел Б. Отчёты',
+  slug: 'otchety',
+  url_slug: 'otchety',
+  description: '',
+  shelf_group: 'Раздел Б',
+  created_at: '',
+  updated_at: '',
+};
+
+const ORG: EventOrganizationSummary = {
+  id: 1,
+  slug: 'org-a',
+  title: 'Организация А',
+  events_total: 21,
+  shelf_group: 'Раздел Б',
+};
+
+describe('Dashboard: оглавление и разделы', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockShelf(
+      [
+        shelfOf(PLEKHANOV, [volume(41, 1)]),
+        shelfOf(EDITION, [volume(1, 1), volume(3, 3)]),
+        shelfOf(SECTIONED, [volume(51, 1), volume(52, 2), volume(53, 3)]),
+      ],
+      [],
+      [],
+      [ORG],
+    );
+  });
+
+  const toc = () => screen.getByRole('navigation', { name: 'Оглавление читальни' });
+
+  it('оглавление называет каждое собрание, у которого есть полка, и только их', async () => {
+    const { container } = renderDashboard();
+    await screen.findByRole('heading', { name: EDITION.title });
+    const targets = within(toc())
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('href'))
+      .filter((href) => href?.startsWith('#ed-'))
+      .map((href) => href!.slice(1))
+      .sort();
+    const shelves = Array.from(container.querySelectorAll('[id^="ed-"]'))
+      .map((el) => el.id)
+      .sort();
+    expect(targets).toEqual(shelves);
+    expect(shelves).toHaveLength(3);
+  });
+
+  it('собрание с разделом стоит под своим заголовком, с коротким заглавием', async () => {
+    renderDashboard();
+    const section = (await screen.findByRole('heading', { level: 2, name: 'Раздел Б' })).closest(
+      'section',
+    )!;
+    expect(within(section).getByRole('heading', { level: 3, name: 'Отчёты' })).toBeInTheDocument();
+    expect(within(section).queryByRole('heading', { name: EDITION.title })).toBeNull();
+    const first = screen
+      .getByRole('heading', { level: 2, name: 'Собрания сочинений' })
+      .closest('section')!;
+    expect(
+      within(first).getByRole('heading', { level: 3, name: EDITION.title }),
+    ).toBeInTheDocument();
+  });
+
+  it('организация с разделом стоит в своём разделе, а не в конце страницы', async () => {
+    renderDashboard();
+    const section = (await screen.findByRole('heading', { level: 2, name: 'Раздел Б' })).closest(
+      'section',
+    )!;
+    const sub = within(section).getByRole('heading', { level: 3, name: 'Съезды и конгрессы' });
+    expect(sub).toBeInTheDocument();
+    expect(within(section).getByRole('link', { name: /Организация А/ })).toHaveAttribute(
+      'href',
+      '/organizations/org-a',
+    );
+    expect(screen.queryByRole('heading', { level: 2, name: 'Съезды и конгрессы' })).toBeNull();
+  });
+
+  it('число томов в оглавлении совпадает с подписью полки', async () => {
+    const { container } = renderDashboard();
+    await screen.findByRole('heading', { name: EDITION.title });
+    for (const link of within(toc()).getAllByRole('link')) {
+      const href = link.getAttribute('href')!;
+      if (!href.startsWith('#ed-')) continue;
+      const count = link.closest('li')!.querySelector('.home-toc-count')!.textContent!;
+      const caption = container.querySelector(
+        `#${href.slice(1)} .edition-summary-counts`,
+      )!.textContent!;
+      expect(caption.startsWith(`${count},`)).toBe(true);
+    }
+  });
+
+  // Пересланная ссылка «/#ed-…»: браузер разбирает якорь один раз, при
+  // загрузке, а полки приезжают ответом сервера позже — прокручивает страница.
+  it('пересланная ссылка на полку прокручивает к ней после загрузки', async () => {
+    const spy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (
+      this: Element,
+    ) {
+      void this;
+    });
+    render(
+      <MemoryRouter initialEntries={['/#ed-otchety']}>
+        <Dashboard />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { level: 3, name: 'Отчёты' });
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    expect(spy.mock.contexts[spy.mock.contexts.length - 1]).toBe(
+      document.getElementById('ed-otchety'),
+    );
+    spy.mockRestore();
   });
 });

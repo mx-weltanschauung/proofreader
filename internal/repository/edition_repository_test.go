@@ -511,3 +511,53 @@ func TestEditionUpdateSavesVolumesPlanned(t *testing.T) {
 		t.Fatalf("VolumesPlanned = %v, ожидалось 24", got.VolumesPlanned)
 	}
 }
+
+// Раздел главной пишется и читается всеми путями, которыми собрание
+// доезжает до полки и до формы.
+func TestEditionShelfGroupRoundTrip(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	editions := NewEditionRepository(pool)
+
+	edition := &models.Edition{Title: "проба", Slug: "proba-shelf-group", ShelfGroup: "Раздел Б"}
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
+		t.Fatalf("create edition: %v", err)
+	}
+	t.Cleanup(func() { _ = editions.Delete(ctx, edition.ID) })
+
+	got, err := editions.GetByID(ctx, edition.ID)
+	if err != nil {
+		t.Fatalf("get edition: %v", err)
+	}
+	if got.ShelfGroup != "Раздел Б" {
+		t.Fatalf("GetByID: ShelfGroup = %q, ожидалось «Раздел Б»", got.ShelfGroup)
+	}
+	list, err := editions.List(ctx)
+	if err != nil {
+		t.Fatalf("list editions: %v", err)
+	}
+	found := false
+	for _, e := range list {
+		if e.ID == edition.ID {
+			found = true
+			if e.ShelfGroup != "Раздел Б" {
+				t.Fatalf("List: ShelfGroup = %q, ожидалось «Раздел Б»", e.ShelfGroup)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("List: собрания %d нет в списке", edition.ID)
+	}
+
+	got.ShelfGroup = ""
+	if err := editions.Update(ctx, got); err != nil {
+		t.Fatalf("update edition: %v", err)
+	}
+	again, err := editions.GetByID(ctx, edition.ID)
+	if err != nil {
+		t.Fatalf("get edition: %v", err)
+	}
+	if again.ShelfGroup != "" {
+		t.Fatalf("после Update с пустым: ShelfGroup = %q", again.ShelfGroup)
+	}
+}

@@ -49,6 +49,23 @@ type EditionRequest struct {
 	// возвращали бы условной нумерации печатную — и выдуманный номер тома
 	// снова уезжал бы в цитату.
 	VolumeNumbering *string `json:"volume_numbering"`
+	// ShelfGroup — раздел главной (models.NormalizeShelfGroup). Указатель по
+	// тому же доводу, что у VolumeNumbering: поле не пришло — при создании
+	// раздел по умолчанию, при правке прежний.
+	ShelfGroup *string `json:"shelf_group"`
+}
+
+// shelfGroupOf — нормализованный раздел из тела запроса; nil — поле не
+// пришло.
+func shelfGroupOf(req EditionRequest) (*string, error) {
+	if req.ShelfGroup == nil {
+		return nil, nil
+	}
+	v, err := models.NormalizeShelfGroup(*req.ShelfGroup)
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
 
 // volumeNumberingOf — значение поля из тела запроса; пусто — не пришло.
@@ -139,6 +156,11 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if numbering == "" {
 		numbering = models.VolumeNumberingPrinted
 	}
+	shelfGroup, err := shelfGroupOf(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	closeReason, ok := requireAdminToClose(w, r, req.Closed, req.ClosedReason)
 	if !ok {
@@ -154,6 +176,9 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		VolumesPlanned:  req.VolumesPlanned,
 		VolumeNumbering: numbering,
 		Closed:          req.Closed,
+	}
+	if shelfGroup != nil {
+		edition.ShelfGroup = *shelfGroup
 	}
 
 	ctx := context.Background()
@@ -195,6 +220,11 @@ func (h *EditionHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	shelfGroup, err := shelfGroupOf(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	ctx := context.Background()
 	// Same "any error or nil means not found" rule as Get — kept in one place
@@ -213,6 +243,9 @@ func (h *EditionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	edition.VolumesPlanned = req.VolumesPlanned
 	if numbering != "" {
 		edition.VolumeNumbering = numbering
+	}
+	if shelfGroup != nil {
+		edition.ShelfGroup = *shelfGroup
 	}
 
 	if err := h.editionStore.Update(ctx, edition); err != nil {
