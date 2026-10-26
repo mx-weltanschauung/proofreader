@@ -11,19 +11,30 @@ interface Props {
   titleHref?: string;
   /**
    * Уровень заголовка. На странице собрания оно одно и заглавие — h1; на
-   * главной собраний пять, и пять h1 на одной странице сломали бы обход по
-   * заголовкам.
+   * главной полка стоит под заголовком раздела (h2), и её заглавие — h3.
    */
-  level?: 'h1' | 'h2';
+  level?: 'h1' | 'h2' | 'h3';
+  /** Заглавие для показа вместо полного — короткое, под своим разделом главной. */
+  title?: string;
 }
 
-export const EditionSummary: React.FC<Props> = ({ edition, volumes, titleHref, level = 'h1' }) => {
+export const EditionSummary: React.FC<Props> = ({
+  edition,
+  volumes,
+  titleHref,
+  level = 'h1',
+  title,
+}) => {
   const Heading = level;
 
   return (
     <header className="edition-summary">
       <Heading className="edition-summary-title">
-        {titleHref ? <Link to={titleHref}>{edition.title}</Link> : edition.title}
+        {titleHref ? (
+          <Link to={titleHref}>{title ?? edition.title}</Link>
+        ) : (
+          (title ?? edition.title)
+        )}
       </Heading>
 
       {edition.description && <p className="edition-summary-description">{edition.description}</p>}

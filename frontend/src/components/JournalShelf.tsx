@@ -11,10 +11,14 @@ function years(j: JournalSummary): string {
   return j.year_to && j.year_to !== j.year_from ? `${j.year_from}—${j.year_to}` : `${j.year_from}`;
 }
 
-export function JournalShelf({ journals }: { journals: JournalSummary[] }) {
+export function JournalShelf({ journals, id }: { journals: JournalSummary[]; id?: string }) {
   if (journals.length === 0) return null;
   return (
-    <section className="shelf-section journal-shelf" aria-labelledby="journal-shelf-heading">
+    <section
+      className="shelf-section journal-shelf"
+      id={id}
+      aria-labelledby="journal-shelf-heading"
+    >
       <h2 id="journal-shelf-heading" className="journal-shelf-heading">
         Журналы
       </h2>

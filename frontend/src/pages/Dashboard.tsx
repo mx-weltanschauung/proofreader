@@ -8,38 +8,17 @@ import { EditionSummary } from '../components/EditionSummary';
 import { VolumeShelf } from '../components/VolumeShelf';
 import { JournalShelf } from '../components/JournalShelf';
 import { OrganizationShelf } from '../components/OrganizationShelf';
-import type {
-  EventOrganizationSummary,
-  JournalSummary,
-  ShelfEdition,
-  ShelfWork,
-  VolumeSummary,
-} from '../types';
+import { HomeToc } from '../components/HomeToc';
+import type { EventOrganizationSummary, JournalSummary, ShelfEdition, ShelfWork } from '../types';
 import { apiErrorMessage } from '../utils/apiError';
 import { splitEditionVolumes } from '../utils/editionStats';
 import { corpusSentence } from '../utils/corpusSentence';
+import { buildHomeLayout } from '../utils/homeLayout';
+import { plural } from '../utils/volumeLabel';
 import { chapterPath, editionPath, workPath } from '../utils/paths';
 
 import { useSite } from '../services/site';
 import './Dashboard.css';
-
-/** Собрание с уже отсеянными предисловиями — в том виде, в каком его рисуют. */
-interface Shelf {
-  edition: ShelfEdition['edition'];
-  volumes: VolumeSummary[];
-}
-
-/**
- * Порядок полок: сперва те, которых в читальне больше. Прежде собрания шли по
- * алфавиту заголовка — то есть по фамилии автора, — и порядок читался
- * случайным: сорок пять ленинских томов стояли выше четырёх плехановских не
- * почему-либо, а потому что «В» раньше «Г».
- */
-function byHoldings(a: Shelf, b: Shelf): number {
-  if (a.volumes.length !== b.volumes.length) return b.volumes.length - a.volumes.length;
-  const pages = (s: Shelf) => s.volumes.reduce((sum, v) => sum + v.pages_total, 0);
-  return pages(b) - pages(a);
-}
 
 export const Dashboard: React.FC = () => {
   const [shelves, setShelves] = useState<ShelfEdition[]>([]);
@@ -90,16 +69,23 @@ export const Dashboard: React.FC = () => {
   // несут номера тома и не должны попасть ни в счётчик, ни в штабель —
   // иначе у собрания Маркса и Энгельса счётчик показал бы 52 тома вместо 50, а
   // в штабеле два предисловия легли бы книгами без номера.
-  const ordered = useMemo(
+  //
+  // Оглавление и полки рисуются из одной раскладки: собрание есть в
+  // оглавлении ровно тогда, когда есть его полка, и число томов у них общее.
+  const layout = useMemo(
     () =>
-      shelves
-        .map(({ edition, volumes }) => ({
+      buildHomeLayout(
+        shelves.map(({ edition, volumes }) => ({
           edition,
           volumes: splitEditionVolumes(volumes).shelf,
-        }))
-        .sort(byHoldings),
-    [shelves],
+        })),
+        organizations,
+        journals,
+        looseWorks,
+      ),
+    [shelves, organizations, journals, looseWorks],
   );
+  const allShelves = useMemo(() => layout.sections.flatMap((s) => s.shelves), [layout]);
 
   if (isLoading) {
     return <div className="loading-state">Загружаем собрание…</div>;
@@ -169,7 +155,7 @@ export const Dashboard: React.FC = () => {
         </section>
       ) : (
         // У пустой читальни размера нет, и фраза про него была бы про ноль.
-        ordered.length > 0 && <p className="shelf-intro">{corpusSentence(ordered)}</p>
+        allShelves.length > 0 && <p className="shelf-intro">{corpusSentence(allShelves)}</p>
       )}
 
       {/* Ссылка на витрину разборов — читательское эссе поверх корпуса.
@@ -179,51 +165,81 @@ export const Dashboard: React.FC = () => {
         <Link to="/documents">Разборы</Link>
       </nav>
 
-      {ordered.map(({ edition, volumes }) => (
-        <section className="shelf-section" key={edition.id}>
-          <EditionSummary
-            edition={edition}
-            volumes={volumes}
-            titleHref={editionPath(edition)}
-            level="h2"
-          />
+      <HomeToc layout={layout} />
 
-          {volumes.length === 0 ? (
-            // Собрание без томов не пропускается молча: администратор должен
-            // видеть, что оно заведено.
-            <div className="empty-state">
-              <p>Пока ни одного тома.</p>
-              {canEdit && (
-                <Link to="/works/new" className="btn btn-primary">
-                  Загрузить первый
-                </Link>
+      {layout.sections.map((section) => (
+        <section
+          className="home-section"
+          key={section.name}
+          id={section.anchor}
+          aria-labelledby={`${section.anchor}-heading`}
+        >
+          <div className="home-section-head">
+            <h2 id={`${section.anchor}-heading`} className="home-section-title">
+              {section.name}
+            </h2>
+            {/* Счёт — только полки: организация событий собранием не
+                является, хоть и стоит в том же разделе. */}
+            {section.shelves.length > 0 && (
+              <span className="home-section-note">
+                {plural(section.shelves.length, ['собрание', 'собрания', 'собраний'])}
+              </span>
+            )}
+          </div>
+
+          {section.shelves.map(({ edition, volumes, anchor, shortTitle }) => (
+            <section className="shelf-section" key={edition.id} id={anchor}>
+              <EditionSummary
+                edition={edition}
+                volumes={volumes}
+                titleHref={editionPath(edition)}
+                level="h3"
+                title={shortTitle}
+              />
+              {volumes.length === 0 ? (
+                // Собрание без томов не пропускается молча: администратор должен
+                // видеть, что оно заведено.
+                <div className="empty-state">
+                  <p>Пока ни одного тома.</p>
+                  {canEdit && (
+                    <Link to="/works/new" className="btn btn-primary">
+                      Загрузить первый
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <VolumeShelf
+                  volumes={volumes}
+                  currentWorkId={recent[0]?.workId}
+                  volumesPlanned={edition.volumes_planned}
+                  // Собраний на странице пять, и два из них — сорок пять и
+                  // пятьдесят томов: целиком они дают по полторы тысячи пикселей
+                  // каждое, и нижние собрания оказываются за краем терпения.
+                  // Страница собрания (EditionDetail) об этом не просит: за
+                  // списком томов туда и приходят.
+                  collapse
+                />
               )}
-            </div>
-          ) : (
-            <VolumeShelf
-              volumes={volumes}
-              currentWorkId={recent[0]?.workId}
-              volumesPlanned={edition.volumes_planned}
-              // Собраний на странице пять, и два из них — сорок пять и
-              // пятьдесят томов: целиком они дают по полторы тысячи пикселей
-              // каждое, и нижние собрания оказываются за краем терпения.
-              // Страница собрания (EditionDetail) об этом не просит: за
-              // списком томов туда и приходят.
-              collapse
-            />
-          )}
+            </section>
+          ))}
+
+          <OrganizationShelf
+            organizations={section.organizations}
+            id={`${section.anchor}-sezdy`}
+            headingLevel="h3"
+          />
         </section>
       ))}
 
-      <JournalShelf journals={journals} />
+      <JournalShelf journals={journals} id="zhurnaly" />
 
-      <OrganizationShelf organizations={organizations} />
+      <OrganizationShelf organizations={layout.looseOrganizations} />
 
       {/* Корешок требует агрегатов, которых /works не отдаёт: подписи,
           состава и объёма тома. Нарисовать их нулями значило бы соврать про
           содержимое работы. Поэтому просто список. */}
       {looseWorks.length > 0 && (
-        <section className="shelf-section" key="loose">
+        <section className="shelf-section" key="loose" id="vne-sobraniy">
           <h2 className="shelf-loose-heading">Вне собраний</h2>
           <ul className="loose-works">
             {looseWorks.map((work) => (

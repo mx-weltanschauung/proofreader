@@ -174,3 +174,44 @@
   text-align: center;
   color: var(--color-text-secondary);
 }
+
+/* Раздел главной — именованная группа полок («Собрания сочинений» и те, что
+   завели в форме собрания). Отбит чертой во всю ширину, толще волосяной
+   черты оглавления: это граница групп, а не строк. Имя — прописными, рядом
+   мелко число собраний (вариант A прототипа, спека 2026-10-25-home-toc-groups). */
+.home-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  margin: 3.5rem 0 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 2px solid var(--color-text-primary);
+}
+
+.home-section-title {
+  margin: 0;
+  font-family: var(--reading-font-fira);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+
+.home-section-note {
+  font-family: var(--reading-font-fira);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+/* Блоки после разделов (журналы, съезды без раздела, «Вне собраний») — тем
+   же воздухом, что полки между собой. */
+.home-section + .shelf-section {
+  margin-top: 4.5rem;
+}
+
+/* Переход по ссылке оглавления: заголовок не уезжает под липкую шапку. */
+.shelf-page [id] {
+  scroll-margin-top: calc(var(--site-header-height, 0px) + 0.75rem);
+}
