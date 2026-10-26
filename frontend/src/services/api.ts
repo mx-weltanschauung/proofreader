@@ -463,6 +463,8 @@ export interface EditionPayload {
   // PUT пишет поле как пришло, отсутствие — тоже: пустота стирает план
   // собрания («45 из 55»). Поэтому форма шлёт его всегда.
   volumes_planned: number | null;
+  /** Раздел главной; пусто — «Собрания сочинений». Форма шлёт всегда. */
+  shelf_group?: string;
 }
 
 export const editionsApi = {
@@ -513,7 +515,7 @@ export const eventsApi = {
 
   updateOrganization: (
     id: number,
-    data: { title: string; description: string; position: number },
+    data: { title: string; description: string; position: number; shelf_group?: string },
   ) => api.put<EventOrganization>(`/organizations/${id}`, data),
   createKind: (orgId: number, data: { title: string; position: number }) =>
     api.post<EventKind>(`/organizations/${orgId}/kinds`, data),

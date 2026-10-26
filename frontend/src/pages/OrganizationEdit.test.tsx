@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { eventsApi } from '../services/api';
+import { eventsApi, shelfApi } from '../services/api';
 import { OrganizationEdit } from './OrganizationEdit';
 import { EventEdit } from './EventEdit';
 
@@ -32,6 +32,11 @@ const ORG = {
 };
 
 function setup(path = '/organizations/org-a/edit') {
+  if (!vi.isMockFunction(shelfApi.get)) {
+    vi.spyOn(shelfApi, 'get').mockReturnValue(
+      ok({ editions: [], loose_works: [], journals: [], organizations: [] }),
+    );
+  }
   if (!vi.isMockFunction(eventsApi.organization)) {
     vi.spyOn(eventsApi, 'organization').mockReturnValue(ok(ORG));
   }
@@ -214,5 +219,23 @@ describe('OrganizationEdit', () => {
     await u.click(screen.getByRole('button', { name: 'Вид Съезды вниз' }));
     await waitFor(() => expect(upd).toHaveBeenCalled());
     expect(upd.mock.calls.map((c) => [c[0], c[1].position])).toEqual([[1, 1]]);
+  });
+
+  it('раздел на главной уходит в правку организации вместе с заглавием', async () => {
+    vi.spyOn(eventsApi, 'organization').mockReturnValue(ok({ ...ORG, shelf_group: 'Раздел Б' }));
+    const update = vi.spyOn(eventsApi, 'updateOrganization').mockReturnValue(ok(ORG));
+    setup();
+    const u = userEvent.setup();
+    const field = await screen.findByLabelText('Раздел на главной');
+    expect(field).toHaveValue('Раздел Б');
+    await u.clear(field);
+    await u.type(field, 'Раздел В');
+    await u.click(screen.getByRole('button', { name: 'Сохранить организацию' }));
+    expect(update).toHaveBeenCalledWith(1, {
+      title: 'Организация А',
+      description: 'Описание',
+      position: 0,
+      shelf_group: 'Раздел В',
+    });
   });
 });

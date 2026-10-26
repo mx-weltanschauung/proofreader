@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useParams } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
-import { editionsApi } from '../services/api';
-import type { Edition } from '../types';
+import { editionsApi, shelfApi } from '../services/api';
+import type { Edition, Shelf } from '../types';
 import { EditionForm } from './EditionForm';
 import { numericId } from '../utils/paths';
 
@@ -50,7 +50,14 @@ function renderAt(path: string) {
   );
 }
 
+const EMPTY_SHELF: Shelf = { editions: [], loose_works: [], journals: [], organizations: [] };
+
 describe('EditionForm', () => {
+  beforeEach(() => {
+    // Подсказка разделов читает полку; без подделки форма ходила бы в сеть.
+    vi.spyOn(shelfApi, 'get').mockImplementation(() => ok(EMPTY_SHELF));
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -72,6 +79,7 @@ describe('EditionForm', () => {
       description: '',
       volume_numbering: 'printed',
       volumes_planned: null,
+      shelf_group: '',
     });
     // Именно созданное собрание (id из ответа сервера), а не /editions
     // вообще — этого экрана в приложении больше нет.
@@ -119,6 +127,7 @@ describe('EditionForm', () => {
       description: 'Второе издание',
       volume_numbering: 'printed',
       volumes_planned: null,
+      shelf_group: '',
     });
     // Правка возвращает на страницу собрания, а не на /editions — этого
     // экрана в приложении больше нет.
@@ -195,6 +204,7 @@ describe('EditionForm', () => {
       description: '',
       volume_numbering: 'printed',
       volumes_planned: null,
+      shelf_group: '',
     });
   });
 
@@ -219,6 +229,7 @@ describe('EditionForm', () => {
       description: 'Маркс и Энгельс',
       volume_numbering: 'printed',
       volumes_planned: null,
+      shelf_group: '',
     });
   });
 
@@ -294,5 +305,60 @@ describe('EditionForm', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Нумерация томов условная' }));
     await userEvent.click(screen.getByRole('button', { name: 'Создать' }));
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ volume_numbering: 'order' }));
+  });
+
+  // Раздел главной форма читает с сервера и шлёт обратно всегда: иначе
+  // сохранение формы, не знающей поля, переставляло бы собрание в раздел по
+  // умолчанию.
+  it('загруженный раздел стоит в поле и уходит в PUT', async () => {
+    vi.spyOn(editionsApi, 'get').mockImplementation(() =>
+      ok({ ...EDITION, shelf_group: 'Раздел Б' }),
+    );
+    const update = vi.spyOn(editionsApi, 'update').mockImplementation(() => ok(EDITION));
+
+    renderAt('/editions/1/edit');
+
+    const field = await screen.findByLabelText('Раздел на главной');
+    await waitFor(() => expect(field).toHaveValue('Раздел Б'));
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    expect(update).toHaveBeenCalledWith(1, expect.objectContaining({ shelf_group: 'Раздел Б' }));
+  });
+
+  it('набранный раздел уезжает без пробелов по краям', async () => {
+    const create = vi.spyOn(editionsApi, 'create').mockImplementation(() => ok(EDITION));
+
+    renderAt('/editions/new');
+
+    await userEvent.type(screen.getByLabelText(/Название/), 'Отчёты');
+    await userEvent.type(screen.getByLabelText('Раздел на главной'), ' Раздел В ');
+    await userEvent.click(screen.getByRole('button', { name: 'Создать' }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ shelf_group: 'Раздел В' }));
+  });
+
+  it('предлагает уже заведённые разделы собраний и организаций', async () => {
+    vi.mocked(shelfApi.get).mockImplementation(() =>
+      ok({
+        ...EMPTY_SHELF,
+        editions: [
+          { edition: { ...EDITION, shelf_group: 'Раздел Б' }, volumes: [] },
+          { edition: { ...EDITION, id: 2, shelf_group: '' }, volumes: [] },
+          { edition: { ...EDITION, id: 3, shelf_group: 'Раздел Б' }, volumes: [] },
+        ],
+        organizations: [{ id: 1, slug: 'o', title: 'О', events_total: 1, shelf_group: 'Архив' }],
+      }),
+    );
+
+    const { container } = renderAt('/editions/new');
+
+    const field = screen.getByLabelText('Раздел на главной');
+    expect(field).toHaveAttribute('list', 'shelf-group-options');
+    expect(field).toHaveAttribute('maxLength', '80');
+    await waitFor(() =>
+      expect(
+        Array.from(container.querySelectorAll('#shelf-group-options option')).map((o) =>
+          o.getAttribute('value'),
+        ),
+      ).toEqual(['Архив', 'Раздел Б']),
+    );
   });
 });

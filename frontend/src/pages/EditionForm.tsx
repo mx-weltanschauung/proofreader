@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { editionsApi } from '../services/api';
+import { useShelfGroupOptions } from '../hooks/useShelfGroupOptions';
+import { ShelfGroupField } from '../components/ShelfGroupField';
 import { apiErrorMessage } from '../utils/apiError';
 import { slugify } from '../utils/slugify';
 import { numericId, editionPath } from '../utils/paths';
@@ -37,6 +39,8 @@ export const EditionForm: React.FC = () => {
   // загрузить его и отослать обратно: PUT /editions пишет поле как пришло, и
   // форма, не знавшая о нём, стирала план при любом сохранении.
   const [volumesPlanned, setVolumesPlanned] = useState('');
+  const [shelfGroup, setShelfGroup] = useState('');
+  const shelfGroupOptions = useShelfGroupOptions();
   // Подсказка слага живёт только до первой ручной правки: иначе набор
   // названия затирал бы осознанно выбранный слаг.
   const [slugTouched, setSlugTouched] = useState(false);
@@ -56,6 +60,7 @@ export const EditionForm: React.FC = () => {
         setDescription(response.data.description);
         setOrderOnly(response.data.volume_numbering === 'order');
         setVolumesPlanned(response.data.volumes_planned?.toString() ?? '');
+        setShelfGroup(response.data.shelf_group ?? '');
         // Существующий слаг менять подсказкой нельзя ни при каких правках.
         setSlugTouched(true);
       } catch (err: unknown) {
@@ -97,6 +102,7 @@ export const EditionForm: React.FC = () => {
       description,
       volume_numbering: orderOnly ? ('order' as const) : ('printed' as const),
       volumes_planned: planned,
+      shelf_group: shelfGroup.trim(),
     };
 
     try {
@@ -223,6 +229,13 @@ export const EditionForm: React.FC = () => {
               — плана нет.
             </p>
           </div>
+
+          <ShelfGroupField
+            id="edition-shelf-group"
+            value={shelfGroup}
+            onChange={setShelfGroup}
+            options={shelfGroupOptions}
+          />
 
           <div className="form-group">
             <label className="edition-form-checkbox" htmlFor="edition-order-only">

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useShelfGroupOptions } from '../hooks/useShelfGroupOptions';
+import { ShelfGroupField } from '../components/ShelfGroupField';
 import { Link, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { eventsApi } from '../services/api';
@@ -14,7 +16,8 @@ const EMPTY_EVENT = { slug: '', title: '', dates: '', place: '' };
 export const OrganizationEdit: React.FC = () => {
   const { slug = '' } = useParams<{ slug: string }>();
   const [org, setOrg] = useState<EventOrganizationDetail | null>(null);
-  const [head, setHead] = useState({ title: '', description: '' });
+  const [head, setHead] = useState({ title: '', description: '', shelf_group: '' });
+  const shelfGroupOptions = useShelfGroupOptions();
   const [newKind, setNewKind] = useState('');
   const [newEvent, setNewEvent] = useState<Record<number, typeof EMPTY_EVENT>>({});
   const [loadError, setLoadError] = useState('');
@@ -27,7 +30,11 @@ export const OrganizationEdit: React.FC = () => {
   const reload = async () => {
     const { data } = await eventsApi.organization(slug);
     setOrg(data);
-    setHead({ title: data.title, description: data.description });
+    setHead({
+      title: data.title,
+      description: data.description,
+      shelf_group: data.shelf_group ?? '',
+    });
   };
 
   useEffect(() => {
@@ -141,12 +148,23 @@ export const OrganizationEdit: React.FC = () => {
             onChange={(e) => setHead({ ...head, description: e.target.value })}
           />
         </label>
+        <ShelfGroupField
+          id="org-shelf-group"
+          value={head.shelf_group}
+          onChange={(v) => setHead({ ...head, shelf_group: v })}
+          options={shelfGroupOptions}
+        />
         <button
           type="button"
           onClick={() =>
             void run(
               'Не удалось сохранить организацию',
-              () => eventsApi.updateOrganization(org.id, { ...head, position: org.position }),
+              () =>
+                eventsApi.updateOrganization(org.id, {
+                  ...head,
+                  shelf_group: head.shelf_group.trim(),
+                  position: org.position,
+                }),
               'Организация сохранена',
             )
           }
