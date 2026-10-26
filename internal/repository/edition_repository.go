@@ -27,9 +27,9 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition,
 	if edition.VolumeNumbering == "" {
 		edition.VolumeNumbering = models.VolumeNumberingPrinted
 	}
-	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering", "closed"}
+	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering", "shelf_group", "closed"}
 	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned,
-		edition.VolumeNumbering, edition.Closed}
+		edition.VolumeNumbering, edition.ShelfGroup, edition.Closed}
 	if err := insertRowClosure(ctx, r.pool, "editions", ClosureEdition, edition.Title, edition.Closed, actor, reason,
 		edition.ID, cols, args, &edition.ID, &edition.CreatedAt, &edition.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create edition: %w", err)
@@ -40,7 +40,7 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition,
 // GetByID retrieves an edition by ID
 func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, closed, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, created_at, updated_at
 		FROM editions
 		WHERE id = $1
 	`
@@ -48,7 +48,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 	var edition models.Edition
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
+		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
 	)
 
 	if err != nil {
@@ -64,7 +64,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 // List retrieves all editions
 func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, closed, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, created_at, updated_at
 		FROM editions
 		ORDER BY title
 	`
@@ -80,7 +80,7 @@ func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error)
 		var edition models.Edition
 		err := rows.Scan(
 			&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
+			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan edition: %w", err)
@@ -96,7 +96,7 @@ func (r *EditionRepository) Update(ctx context.Context, edition *models.Edition)
 	query := `
 		UPDATE editions
 		SET title = $2, slug = $3, url_slug = $4, description = $5, volumes_planned = $6,
-		    volume_numbering = $7
+		    volume_numbering = $7, shelf_group = $8
 		WHERE id = $1
 		RETURNING updated_at
 	`
@@ -106,7 +106,7 @@ func (r *EditionRepository) Update(ctx context.Context, edition *models.Edition)
 	}
 	err := r.pool.QueryRow(
 		ctx, query, edition.ID, edition.Title, edition.Slug, edition.URLSlug, edition.Description,
-		edition.VolumesPlanned, edition.VolumeNumbering,
+		edition.VolumesPlanned, edition.VolumeNumbering, edition.ShelfGroup,
 	).Scan(&edition.UpdatedAt)
 
 	if err != nil {

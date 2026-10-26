@@ -468,3 +468,89 @@ func TestEditionHandlerCreateNegativeIDIsBadRequest(t *testing.T) {
 		t.Fatalf("код %d, в стор ушло %+v; ждали 400", rec.Code, store.created)
 	}
 }
+
+// Раздел главной приходит из формы как есть и обрезается сервером: имя с
+// пробелом по краю иначе завело бы второй раздел с тем же видимым именем.
+func TestEditionCreateStoresShelfGroup(t *testing.T) {
+	store := &fakeEditionStore{}
+	h := NewEditionHandler(store)
+
+	body := bytes.NewBufferString(`{"title":"Отчёты","slug":"otchety","shelf_group":" Раздел Б "}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/editions", body)
+	rec := httptest.NewRecorder()
+	h.Create(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("код %d, ожидался 201; тело: %s", rec.Code, rec.Body.String())
+	}
+	if store.created == nil || store.created.ShelfGroup != "Раздел Б" {
+		t.Fatalf("ShelfGroup в хранилище: %+v, ожидалось «Раздел Б»", store.created)
+	}
+}
+
+// Форма или скрипт, не знающие о поле, не стирают раздел правкой.
+func TestEditionUpdateKeepsShelfGroupWhenAbsent(t *testing.T) {
+	store := &fakeEditionStore{editions: []*models.Edition{{ID: 7, Title: "Отчёты", Slug: "s", ShelfGroup: "Раздел Б"}}}
+	h := NewEditionHandler(store)
+
+	body := bytes.NewBufferString(`{"title":"Отчёты","slug":"s"}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/editions/7", body)
+	req = mux.SetURLVars(req, map[string]string{"id": "7"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("код %d, ожидался 200; тело: %s", rec.Code, rec.Body.String())
+	}
+	if got := store.editions[0].ShelfGroup; got != "Раздел Б" {
+		t.Fatalf("ShelfGroup = %q, ожидалось прежнее «Раздел Б»", got)
+	}
+}
+
+// Пустая строка — явная просьба вернуть собрание в раздел по умолчанию.
+func TestEditionUpdateClearsShelfGroupWithEmptyString(t *testing.T) {
+	store := &fakeEditionStore{editions: []*models.Edition{{ID: 7, Title: "Отчёты", Slug: "s", ShelfGroup: "Раздел Б"}}}
+	h := NewEditionHandler(store)
+
+	body := bytes.NewBufferString(`{"title":"Отчёты","slug":"s","shelf_group":""}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/editions/7", body)
+	req = mux.SetURLVars(req, map[string]string{"id": "7"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("код %d, ожидался 200; тело: %s", rec.Code, rec.Body.String())
+	}
+	if got := store.editions[0].ShelfGroup; got != "" {
+		t.Fatalf("ShelfGroup = %q, ожидалась пустота", got)
+	}
+}
+
+func TestEditionRejectsLongShelfGroup(t *testing.T) {
+	long := strings.Repeat("я", models.ShelfGroupMaxRunes+1)
+
+	store := &fakeEditionStore{}
+	h := NewEditionHandler(store)
+	body := bytes.NewBufferString(`{"title":"Отчёты","slug":"s","shelf_group":"` + long + `"}`)
+	rec := httptest.NewRecorder()
+	h.Create(rec, httptest.NewRequest(http.MethodPost, "/api/editions", body))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Create: код %d, ожидался 400", rec.Code)
+	}
+	if store.created != nil {
+		t.Fatalf("Create: собрание дошло до хранилища: %+v", store.created)
+	}
+
+	store = &fakeEditionStore{editions: []*models.Edition{{ID: 7, Title: "Отчёты", Slug: "s", ShelfGroup: "Раздел Б"}}}
+	h = NewEditionHandler(store)
+	body = bytes.NewBufferString(`{"title":"Отчёты","slug":"s","shelf_group":"` + long + `"}`)
+	req := mux.SetURLVars(httptest.NewRequest(http.MethodPut, "/api/editions/7", body), map[string]string{"id": "7"})
+	rec = httptest.NewRecorder()
+	h.Update(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("Update: код %d, ожидался 400", rec.Code)
+	}
+	if got := store.editions[0].ShelfGroup; got != "Раздел Б" {
+		t.Fatalf("Update: ShelfGroup = %q после отказа, ожидалось прежнее", got)
+	}
+}

@@ -412,6 +412,9 @@ type Edition struct {
 	// томов. При условной номер тома только ставит книги по порядку на полке,
 	// а читателю не печатается нигде (миграция 000039).
 	VolumeNumbering string `json:"volume_numbering" db:"volume_numbering"`
+	// ShelfGroup — раздел главной, под которым стоит полка собрания; пусто —
+	// раздел по умолчанию (миграция 000043, models.NormalizeShelfGroup).
+	ShelfGroup string `json:"shelf_group" db:"shelf_group"`
 	// Closed — издание закрыто: его тома видят только сотрудники. Общий
 	// Update колонку не пишет, меняет её ClosedRepository.SetEditionClosed.
 	Closed    bool      `json:"closed" db:"closed"`
