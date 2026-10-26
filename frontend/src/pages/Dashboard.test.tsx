@@ -670,7 +670,9 @@ describe('Dashboard: оглавление и разделы', () => {
     );
     await screen.findByRole('heading', { level: 3, name: 'Отчёты' });
     await waitFor(() => expect(spy).toHaveBeenCalled());
-    expect(spy.mock.contexts.at(-1)).toBe(document.getElementById('ed-otchety'));
+    expect(spy.mock.contexts[spy.mock.contexts.length - 1]).toBe(
+      document.getElementById('ed-otchety'),
+    );
     spy.mockRestore();
   });
 });
