@@ -26,13 +26,11 @@ func isVolumeTakenError(err error) bool {
 	return pgErr.Code == "23505" && pgErr.ConstraintName == volumeUniqueIndex
 }
 
-// multipartVolumes lists volumes published as several physical books, with the
-// highest part number. Полутома есть у 25 (I—II), 26 (I—III) и 46 (I—II:
-// «Экономические рукописи 1857—1859 годов», 1968 и 1969).
-var multipartVolumes = map[int]int{25: 2, 26: 3, 46: 2}
-
-// romanParts maps the accepted volume_part values to their ordinal.
-var romanParts = map[string]int{"I": 1, "II": 2, "III": 3}
+// romanParts — допустимые полутома. Полутом бывает у любого тома с номером:
+// раньше список томов был зашит один на все собрания (25, 26, 46 — тома МиЭ),
+// и том из двух книг другого собрания (Дарвин у Лепковского, тт. III, IV, VI,
+// VIII) завести было нельзя вовсе.
+var romanParts = map[string]bool{"I": true, "II": true, "III": true}
 
 // volumeUpdate carries the volume coordinates of a PUT /works/{id} body
 // together with the knowledge of which keys the client actually sent.
@@ -125,19 +123,11 @@ func applyVolumeFields(w *models.Work, u volumeUpdate) error {
 		return fmt.Errorf("volume_number must be positive, got %d", *number)
 	}
 	if part != nil {
-		ord, ok := romanParts[*part]
-		if !ok {
+		if !romanParts[*part] {
 			return fmt.Errorf("volume_part must be I, II or III, got %q", *part)
 		}
 		if number == nil {
 			return fmt.Errorf("volume_part %q without volume_number", *part)
-		}
-		maxPart, ok := multipartVolumes[*number]
-		if !ok {
-			return fmt.Errorf("volume %d has no parts", *number)
-		}
-		if ord > maxPart {
-			return fmt.Errorf("volume %d has no part %q", *number, *part)
 		}
 	}
 

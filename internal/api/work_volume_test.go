@@ -48,9 +48,11 @@ func TestApplyVolumeFields(t *testing.T) {
 			wantPart:    ptrStr("I"),
 		},
 		{
-			name:    "полутом у тома без полутомов",
-			body:    `{"volume_number":24,"volume_part":"I"}`,
-			wantErr: true,
+			// том из двух книг бывает у любого собрания, не только у МиЭ
+			name:       "полутом II у тома 3",
+			body:       `{"volume_number":3,"volume_part":"II"}`,
+			wantNumber: ptrInt(3),
+			wantPart:   ptrStr("II"),
 		},
 		{
 			name:        "полутом II у тома 46",
@@ -58,11 +60,6 @@ func TestApplyVolumeFields(t *testing.T) {
 			wantEdition: ptrInt64(1),
 			wantNumber:  ptrInt(46),
 			wantPart:    ptrStr("II"),
-		},
-		{
-			name:    "полутома III у тома 46 нет",
-			body:    `{"volume_number":46,"volume_part":"III"}`,
-			wantErr: true,
 		},
 		{
 			name:    "полутом IV не существует",
@@ -127,12 +124,12 @@ func TestApplyVolumeFields(t *testing.T) {
 		},
 		{
 			// сохранённый полутом проверяется против нового номера тома —
-			// молча его не роняем.
-			name: "смена тома под сохранённым полутомом отвергается",
+			// молча его не роняем: без номера полутому не на чем стоять.
+			name: "снятие номера под сохранённым полутомом отвергается",
 			before: models.Work{
 				EditionID: ptrInt64(3), VolumeNumber: ptrInt(26), VolumePart: ptrStr("III"),
 			},
-			body:    `{"volume_number":24}`,
+			body:    `{"volume_number":null}`,
 			wantErr: true,
 		},
 		{

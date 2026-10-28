@@ -61,12 +61,10 @@ function renderFields(overrides: Partial<HarnessState> = {}) {
 }
 
 describe('partsForVolume', () => {
-  it('знает, что полутома есть только у 25 и 26', () => {
-    // Правило зеркалит multipartVolumes из internal/api/work_volume.go:
-    // сервер отвергает полутом у любого другого тома четырёхсотым.
-    expect(partsForVolume(25)).toEqual(['I', 'II']);
+  it('полутома I—III есть у любого тома с номером, у тома без номера — нет', () => {
+    // Правило зеркалит romanParts из internal/api/work_volume.go.
     expect(partsForVolume(26)).toEqual(['I', 'II', 'III']);
-    expect(partsForVolume(4)).toEqual([]);
+    expect(partsForVolume(4)).toEqual(['I', 'II', 'III']);
     expect(partsForVolume(null)).toEqual([]);
   });
 });
@@ -82,14 +80,14 @@ describe('WorkVolumeFields', () => {
     expect(onChange).toHaveBeenCalledWith({ volumeNumber: null });
   });
 
-  it('выключает полутом у тома без полутомов', () => {
-    renderFields({ volumeNumber: 4 });
+  it('выключает полутом у тома без номера', () => {
+    renderFields({ volumeNumber: null });
 
     expect(screen.getByLabelText(/Полутом/)).toBeDisabled();
   });
 
-  it('предлагает I—III только у тома 26', () => {
-    renderFields({ volumeNumber: 26 });
+  it('предлагает I—III у тома с номером', () => {
+    renderFields({ volumeNumber: 4 });
 
     const select = screen.getByLabelText(/Полутом/);
     expect(select).toBeEnabled();
@@ -101,18 +99,14 @@ describe('WorkVolumeFields', () => {
     ]);
   });
 
-  it('сбрасывает полутом, когда номер тома перестаёт его допускать', async () => {
-    // Иначе на экране остаётся «т. 4, II» — комбинация, которую сервер
+  it('сбрасывает полутом, когда у тома стирают номер', async () => {
+    // Иначе на экране остаётся полутом без тома — комбинация, которую сервер
     // отвергнет, а человек увидит только после сохранения.
-    renderFields({ volumeNumber: 26, volumePart: 'III' });
+    const onChange = renderFields({ volumeNumber: 26, volumePart: 'III' });
 
     await userEvent.clear(screen.getByLabelText(/Номер тома/));
-    await userEvent.type(screen.getByLabelText(/Номер тома/), '4');
 
-    // Патч на шаге «стереть» несёт volumePart: null явно; патч на шаге
-    // «напечатать 4» его не повторяет — к этому моменту в состоянии
-    // родителя volumePart уже null, повторно сбрасывать нечего. Инвариант
-    // проверяем не по форме отдельного патча, а по итоговому виду поля.
+    expect(onChange).toHaveBeenCalledWith({ volumeNumber: null, volumePart: null });
     const volumePartSelect = screen.getByLabelText(/Полутом/);
     expect(volumePartSelect).toBeDisabled();
     expect(volumePartSelect).toHaveValue('');
