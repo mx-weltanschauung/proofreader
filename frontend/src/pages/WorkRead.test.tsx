@@ -806,8 +806,22 @@ describe('WorkRead: заметки на полях', () => {
     updated_at: '2026-10-29T00:00:00Z',
   };
 
-  afterEach(() => {
+  // Слой полей ставит состояние микрозадачей сразу после подсветки — вне
+  // любого act, и ждать её нечем, кроме опроса DOM. Тесты этого блока ждут
+  // именно так, поэтому среда act на них выключена (как делает сам RTL
+  // внутри waitFor).
+  const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  let prevEnv: boolean | undefined;
+  beforeEach(() => {
+    prevEnv = env.IS_REACT_ACT_ENVIRONMENT;
+    env.IS_REACT_ACT_ENVIRONMENT = false;
+  });
+  afterEach(async () => {
+    // Сброс входа перерисовывает смонтированный экран и ставит новую
+    // микрозадачу слоя — её дожидаемся, прежде чем вернуть среду act.
     useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+    await new Promise((r) => setTimeout(r, 0));
+    env.IS_REACT_ACT_ENVIRONMENT = prevEnv;
   });
 
   it('заметка полосы догруженного окна подсвечивается после догрузки', async () => {

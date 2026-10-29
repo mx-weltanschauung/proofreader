@@ -233,7 +233,8 @@ export const WorkRead: React.FC = () => {
 
   // Свои заметки тома; слой полей стоит перед потоком и красит цитаты в
   // загруженных окнах.
-  const notes = useMarginNotes(valid ? numericWorkId : null);
+  const notesWorkId = valid ? numericWorkId : null;
+  const notes = useMarginNotes(notesWorkId);
   // Нарисованные сейчас полосы: окна только дописываются, поэтому и список, и
   // признак новой вёрстки (deps) меняются ровно с приездом окна.
   const loadedPages = useMemo(
@@ -351,7 +352,7 @@ export const WorkRead: React.FC = () => {
         citation={citation}
         contentRef={contentRef}
         visiblePage={visiblePage}
-        note={{ workId: numericWorkId, onCreated: notes.add }}
+        note={notesWorkId !== null ? { workId: notesWorkId, onCreated: notes.add } : undefined}
         pageJump={{
           currentLabel:
             visiblePage !== null ? (printedFolio(visiblePage, work) ?? String(visiblePage)) : null,

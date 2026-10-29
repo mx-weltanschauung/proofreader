@@ -436,8 +436,23 @@ describe('PageView', () => {
       updated_at: '2026-10-29T00:00:00Z',
     });
 
-    afterEach(() => {
+    // Слой полей ставит состояние микрозадачей сразу после подсветки — вне
+    // любого act, и ждать её нечем, кроме опроса DOM. Тесты этого блока ждут
+    // именно так, поэтому среда act на них выключена (как делает сам RTL
+    // внутри waitFor).
+    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    let prevEnv: boolean | undefined;
+    beforeEach(() => {
+      prevEnv = env.IS_REACT_ACT_ENVIRONMENT;
+      env.IS_REACT_ACT_ENVIRONMENT = false;
+    });
+    afterEach(async () => {
+      // Сброс входа ещё при выключенной среде act: экран смонтирован (очистку
+      // RTL делает хук позже), а перерисовка ставит новую микрозадачу слоя —
+      // её дожидаемся, прежде чем вернуть среду.
       useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+      await new Promise((r) => setTimeout(r, 0));
+      env.IS_REACT_ACT_ENVIRONMENT = prevEnv;
     });
 
     function signIn() {
