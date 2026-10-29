@@ -49,6 +49,14 @@ mark.margin-hit:hover {
   flex-direction: column;
   gap: 0.5rem;
   margin: 0 0 var(--reading-para-gap);
+  /* Хост стоит внутри текста полосы: выделение мышью поперёк абзацев иначе
+     захватило бы слова заметки, и «Копировать» унесло бы их вместе с
+     цитатой. Поле правки остаётся выделяемым. */
+  user-select: none;
+}
+
+.margin-note-host .margin-note-field {
+  user-select: text;
 }
 
 /* Последним ребёнком хост встаёт в конце пункта списка или рамки маргиналий

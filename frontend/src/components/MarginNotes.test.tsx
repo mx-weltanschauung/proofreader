@@ -124,6 +124,54 @@ describe('MarginNotes', () => {
     expect(within(section).getByText(/старый снимок/)).toBeInTheDocument();
   });
 
+  it('полоса пропала, а под тем же номером цитата есть — подсвечена без пометки о потере', async () => {
+    const root = surface();
+    renderNotes(root, [
+      note({
+        id: 7,
+        start_page: null,
+        end_page: null,
+        page_missing: true,
+        snapshot_start_page: 5,
+      }),
+    ]);
+
+    await waitFor(() => expect(root.querySelector('mark.margin-hit')).not.toBeNull());
+    expect((root.querySelector('mark.margin-hit') as HTMLElement).dataset.noteIds).toBe('7');
+    expect(await screen.findByText('мысль')).toBeInTheDocument();
+    expect(screen.queryByText('Место в тексте не найдено')).toBeNull();
+  });
+
+  it('цитата в блоке сносок полосы — карточка в начале полосы, а не пропадает', async () => {
+    const root = document.createElement('div');
+    root.innerHTML =
+      '<div class="chapter-page-section" data-page="5">' +
+      '<div class="page-html-content"><p>Текст пятой полосы.</p></div>' +
+      '<div class="reading-chunk-notes"><ol><li>Сноска о редком издании.</li></ol></div>' +
+      '</div>';
+    document.body.append(root);
+    renderNotes(root, [
+      note({ id: 8, quote_key: 'редком', quote_tail: 'издании.', body: 'о сноске' }),
+    ]);
+
+    const body = await screen.findByText('о сноске');
+    expect(root.querySelector('mark.margin-hit')?.textContent).toBe('редком издании.');
+    const content = root.querySelector('.page-html-content') as HTMLElement;
+    expect(content.firstElementChild?.classList.contains('margin-note-host')).toBe(true);
+    expect(content.firstElementChild?.contains(body)).toBe(true);
+  });
+
+  it('доступное имя карточки обрезано, а не весь текст заметки', async () => {
+    const root = surface();
+    const long = 'слово '.repeat(400).trim();
+    renderNotes(root, [note({ id: 3, body: long })]);
+    const button = await screen.findByTitle('Изменить заметку');
+    const label = button.getAttribute('aria-label') ?? '';
+    expect(Array.from(label)).toHaveLength(120);
+    expect(label.endsWith('…')).toBe(true);
+    expect(long.startsWith(label.slice(0, -1))).toBe(true);
+  });
+
   it('заметка чужой полосы не рисуется', async () => {
     const root = surface();
     renderNotes(root, [note({ id: 6, start_page: 40, quote_key: 'пятой', body: 'далёкая' })]);

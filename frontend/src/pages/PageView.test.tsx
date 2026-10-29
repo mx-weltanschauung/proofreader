@@ -468,6 +468,33 @@ describe('PageView', () => {
       );
     });
 
+    it('место не нашлось — карточка в начале полосы со снимком цитаты', async () => {
+      signIn();
+      vi.spyOn(pagesApi, 'render').mockImplementation(() => ok({ html: `<p>${HTML_245}</p>` }));
+      vi.spyOn(marginNotesApi, 'ofWork').mockResolvedValue({
+        data: [
+          { ...note(3, 245), quote_key: 'исчезнувший ключ', quote_text: 'снимок цитаты' },
+          {
+            ...note(4, 245),
+            start_page: null,
+            end_page: null,
+            page_missing: true,
+            quote_key: 'другой исчезнувший',
+            quote_text: 'снимок снесённой',
+          },
+        ],
+      } as unknown as AxiosResponse<MarginNote[]>);
+
+      renderAt('/works/3/pages/245');
+
+      const labels = await screen.findAllByText('Место в тексте не найдено');
+      expect(labels).toHaveLength(2);
+      const content = document.querySelector('.page-html-content') as HTMLElement;
+      expect(within(content).getByText(/снимок цитаты/)).toBeInTheDocument();
+      expect(within(content).getByText(/снимок снесённой/)).toBeInTheDocument();
+      expect(content.firstElementChild?.classList.contains('margin-note-host')).toBe(true);
+    });
+
     it('заметка чужой полосы не подсвечивается', async () => {
       signIn();
       vi.spyOn(pagesApi, 'render').mockImplementation(() => ok({ html: `<p>${HTML_245}</p>` }));

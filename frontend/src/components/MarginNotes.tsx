@@ -49,6 +49,14 @@ function pageOfNote(n: MarginNote): number | null {
   return n.start_page ?? n.snapshot_start_page;
 }
 
+/** Предел доступного имени карточки, знаков: текст заметки бывает в 10 000. */
+const LABEL_MAX = 120;
+
+function shortLabel(body: string): string {
+  const chars = Array.from(body.replace(/\s+/g, ' ').trim());
+  return chars.length > LABEL_MAX ? `${chars.slice(0, LABEL_MAX - 1).join('')}…` : chars.join('');
+}
+
 /**
  * Снимает свою подсветку прежнего прохода. markQuotes старых меток не
  * видит и обернул бы текст второй раз — метка в метке, а плоский текст
@@ -88,12 +96,20 @@ function slotUnder(anchor: Element): Slot | null {
   return { el: block, where: INNER_BLOCKS.has(block.tagName) ? 'end' : 'after' };
 }
 
-/** Начало полосы: её секция или, у полосы, начатой швом, сам шов. */
+/**
+ * Начало полосы: её секция или, у полосы, начатой швом, сам шов. На карточке
+ * полосы (PageView) data-page несёт сам контейнер — querySelector корня не
+ * видит, поэтому корень проверяется первым.
+ */
 function pageStart(root: HTMLElement, page: number): Element | null {
-  return root.querySelector(`[data-page="${page}"]`);
+  const selector = `[data-page="${page}"]`;
+  if (root.matches(selector)) return root;
+  return root.querySelector(selector);
 }
 
 function slotAtStart(anchor: Element): Slot | null {
+  // Контейнер полосы и есть текст полосы (PageView): карточка — первой в нём.
+  if (anchor.matches('.page-html-content')) return { el: anchor, where: 'start' };
   const own = anchor.querySelector(':scope > .page-html-content');
   if (own) return { el: own, where: 'start' };
   // Шов — строчный узел внутри абзаца предыдущей полосы: карточка встаёт
@@ -183,12 +199,15 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
         const page = pageOfNote(n);
         return n.target === 'quote' && page !== null && visible.has(page);
       });
+      // Цитату с пропавшей полосой тоже ищем — по снимку номера: перезаливка
+      // кладёт под тем же номером ту же полосу, и место обычно находится.
+      // «Место не найдено» — только если не нашлось и так.
       const reqs: MarkRequest[] = own
-        .filter((n) => !n.page_missing && n.start_page !== null && n.quote_key !== '')
+        .filter((n) => n.quote_key !== '')
         .map((n) => ({
           id: n.id,
           span: { start: n.quote_key, end: n.quote_tail || undefined },
-          pageNumber: n.start_page!,
+          pageNumber: pageOfNote(n)!,
         }));
       // Подсветка — украшение чтения, а не его условие: если вёрстка полосы
       // окажется такой, что обернуть кусок нельзя, заметки встают в начало
@@ -212,12 +231,16 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
       const next: Placed[] = [];
       for (const n of own) {
         const mark = found.has(n.id) ? firstMark.get(n.id) : undefined;
+        const start = pageStart(root, pageOfNote(n)!);
+        const startSlot = start ? slotAtStart(start) : null;
         if (mark) {
-          next.push({ note: n, found: true, anchor: mark, slot: slotUnder(mark) });
+          // Метка вне текста полосы (в блоке сносок полосы потока, вне
+          // .page-html-content) места под абзацем не даёт — карточка тогда
+          // встаёт в начало своей полосы, а не пропадает.
+          next.push({ note: n, found: true, anchor: mark, slot: slotUnder(mark) ?? startSlot });
           continue;
         }
-        const start = pageStart(root, pageOfNote(n)!);
-        if (start) next.push({ note: n, found: false, anchor: start, slot: slotAtStart(start) });
+        if (start) next.push({ note: n, found: false, anchor: start, slot: startSlot });
       }
       next.sort(byDocument);
 
@@ -387,6 +410,7 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
             type="button"
             className="margin-note-open"
             title="Изменить заметку"
+            aria-label={shortLabel(note.body)}
             onClick={() => setEditing(note.id)}
           >
             {note.body}
