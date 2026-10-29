@@ -2,6 +2,8 @@ import axios from 'axios';
 import { loginPathFor, joinPathFor } from '../utils/returnUrl';
 import { EMPTY_SCOPE, type SearchScope } from '../utils/searchScope';
 import type {
+  MarginNote,
+  CreateMarginNote,
   ArticleCredit,
   CreditInput,
   JournalDetail,
@@ -777,6 +779,16 @@ export const suggestionsApi = {
 
 // Журнал закрытий: последняя запись по записи (сотрудник) и весь журнал
 // (администратор).
+export const marginNotesApi = {
+  ofWork: (workId: number) => api.get<MarginNote[]>(`/works/${workId}/margin-notes`),
+  create: (workId: number, data: CreateMarginNote) =>
+    api.post<MarginNote>(`/works/${workId}/margin-notes`, data),
+  mine: (params: { work_id?: number; limit?: number; offset?: number }) =>
+    api.get<{ items: MarginNote[]; total: number }>('/margin-notes', { params }),
+  update: (id: number, body: string) => api.put<MarginNote>(`/margin-notes/${id}`, { body }),
+  remove: (id: number) => api.delete(`/margin-notes/${id}`),
+};
+
 export const closuresApi = {
   latest: (kind: ClosureKind, id: number) =>
     api.get<ClosureLatest>('/closures/latest', { params: { kind, id } }),

@@ -204,10 +204,41 @@ function contiguousOccurrences(text: string, indices: number[], q: string): numb
  * их все ради параметра, который они сознательно не используют.
  */
 export function markQuote(root: HTMLElement, span: QuoteSpan, pageNumber?: number): QuoteMatch {
-  const q = normalizeQuote(span.start);
-  if (q === '') return 'miss';
-
   const flat = flattenText(root);
+  const found = findSpan(flat, span, pageNumber);
+  if (!found) return 'miss';
+
+  wrapRange(flat, found.from, found.to, 'quote-hit');
+
+  if (found.endMissing) return 'partial';
+  return found.more ? 'multiple' : 'hit';
+}
+
+/** Пролёт цитаты в плоских координатах: [from, to). */
+interface FoundSpan {
+  from: number;
+  to: number;
+  /** Начало нашлось больше одного раза. */
+  more: boolean;
+  /** Конец назван, но не найден. */
+  endMissing: boolean;
+}
+
+/**
+ * Ищет пролёт цитаты в уже построенном плоском тексте, DOM не трогает.
+ * Правило поиска (сужение по полосе, непрерывность, конец — вперёд от
+ * начала) одно на markQuote и markQuotes. `pageIndex` — необязательная
+ * заготовка «полоса → индексы её знаков», чтобы пакет не обходил весь
+ * текст заново на каждую заметку.
+ */
+function findSpan(
+  flat: FlatText,
+  span: QuoteSpan,
+  pageNumber?: number,
+  pageIndex?: Map<number, number[]>,
+): FoundSpan | null {
+  const q = normalizeQuote(span.start);
+  if (q === '') return null;
 
   // Без номера полосы ищем по всему плоскому тексту; с номером — строим
   // текст-подмножество только из знаков нужной полосы и карту indices для
@@ -221,28 +252,23 @@ export function markQuote(root: HTMLElement, span: QuoteSpan, pageNumber?: numbe
     text = flat.text;
     indices = flat.text.split('').map((_, i) => i);
   } else {
-    indices = [];
-    let restricted = '';
-    for (let i = 0; i < flat.text.length; i++) {
-      if (flat.pages[i] === pageNumber) {
-        indices.push(i);
-        restricted += flat.text[i];
-      }
+    indices = pageIndex?.get(pageNumber) ?? [];
+    if (!pageIndex) {
+      for (let i = 0; i < flat.text.length; i++) if (flat.pages[i] === pageNumber) indices.push(i);
     }
-    text = restricted;
+    text = indices.map((i) => flat.text[i]).join('');
   }
 
   // Совпадение годится, только если его знаки идут подряд и в исходном
   // тексте, а не только в склейке text — иначе оно перепрыгивает чужой
   // материал между кусками одной полосы (см. contiguousOccurrences).
   const hits = contiguousOccurrences(text, indices, q);
-  if (hits.length === 0) return 'miss';
-  const first = hits[0];
+  if (hits.length === 0) return null;
   const more = hits.length > 1;
 
   // Дальше — плоские координаты: вхождение начала непрерывно (проверено
   // выше), поэтому его знаки в плоском тексте лежат подряд от indices[first].
-  const from = indices[first];
+  const from = indices[hits[0]];
   let to = from + q.length;
 
   const end = normalizeQuote(span.end ?? '');
@@ -255,7 +281,20 @@ export function markQuote(root: HTMLElement, span: QuoteSpan, pageNumber?: numbe
     if (at < 0) endMissing = true;
     else to = Math.max(to, at + end.length);
   }
+  return { from, to, more, endMissing };
+}
 
+/**
+ * Оборачивает плоский пролёт [from, to) по куску на каждый задетый текстовый
+ * узел. `noteIds` — необязательная метка заметок для data-note-ids.
+ */
+function wrapRange(
+  flat: FlatText,
+  from: number,
+  to: number,
+  className: string,
+  noteIds?: number[],
+): void {
   const pieces: { node: Text; lo: number; hi: number }[] = [];
   for (let i = from; i < to; i++) {
     const last = pieces[pieces.length - 1];
@@ -269,10 +308,68 @@ export function markQuote(root: HTMLElement, span: QuoteSpan, pageNumber?: numbe
     range.setStart(node, lo);
     range.setEnd(node, hi);
     const mark = document.createElement('mark');
-    mark.className = 'quote-hit';
+    mark.className = className;
+    if (noteIds) mark.dataset.noteIds = noteIds.join(' ');
     range.surroundContents(mark);
   }
+}
 
-  if (endMissing) return 'partial';
-  return more ? 'multiple' : 'hit';
+export interface MarkRequest {
+  id: number;
+  span: QuoteSpan;
+  pageNumber: number;
+}
+
+/**
+ * Пакетная подсветка заметок на полях: ОДИН flattenText на все заметки.
+ * Пролёты ищутся тем же правилом, что в markQuote; перекрывающиеся и
+ * соседние сливаются в один <mark data-note-ids="3 7">. Оборачивание идёт
+ * с конца документа к началу, поэтому плоские координаты и смещения в узлах
+ * более ранних пролётов остаются верными (разрезается только хвост узла).
+ * Возвращает id найденных заметок; ненайденных в ответе нет, DOM для них не
+ * тронут.
+ */
+export function markQuotes(root: HTMLElement, reqs: MarkRequest[], className: string): Set<number> {
+  const found = new Set<number>();
+  if (reqs.length === 0) return found;
+
+  const flat = flattenText(root);
+  const pageIndex = new Map<number, number[]>();
+  for (let i = 0; i < flat.pages.length; i++) {
+    const p = flat.pages[i];
+    if (p === null) continue;
+    const list = pageIndex.get(p);
+    if (list) list.push(i);
+    else pageIndex.set(p, [i]);
+  }
+
+  const spans: { from: number; to: number; ids: number[] }[] = [];
+  for (const r of reqs) {
+    const sp = findSpan(flat, r.span, r.pageNumber, pageIndex);
+    if (!sp) continue;
+    found.add(r.id);
+    spans.push({ from: sp.from, to: sp.to, ids: [r.id] });
+  }
+
+  spans.sort((a, b) => a.from - b.from || a.to - b.to);
+  const merged: typeof spans = [];
+  for (const s of spans) {
+    const last = merged[merged.length - 1];
+    if (last && s.from <= last.to) {
+      last.to = Math.max(last.to, s.to);
+      last.ids.push(...s.ids);
+    } else merged.push({ ...s, ids: [...s.ids] });
+  }
+
+  for (let i = merged.length - 1; i >= 0; i--) {
+    const m = merged[i];
+    wrapRange(
+      flat,
+      m.from,
+      m.to,
+      className,
+      m.ids.sort((a, b) => a - b),
+    );
+  }
+  return found;
 }

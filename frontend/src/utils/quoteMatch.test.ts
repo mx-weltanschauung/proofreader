@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { flattenText, markQuote, normalizeQuote } from './quoteMatch';
+import { flattenText, markQuote, markQuotes, normalizeQuote } from './quoteMatch';
 
 function root(html: string): HTMLElement {
   const el = document.createElement('div');
@@ -212,5 +212,82 @@ describe('markQuote', () => {
   it('неоднозначное начало при ненайденном конце сообщается как «конец не нашёлся»', () => {
     const el = root('<p data-page="5">общая фраза тут, общая фраза там</p>');
     expect(markQuote(el, { start: 'общая фраза', end: 'этого нет' }, 5)).toBe('partial');
+  });
+});
+
+describe('markQuotes', () => {
+  const cls = 'margin-note-hit';
+
+  it('две заметки на разных полосах дают два mark со своими id', () => {
+    const el = root('<p data-page="5">первая цитата тут</p><p data-page="6">вторая цитата там</p>');
+    const found = markQuotes(
+      el,
+      [
+        { id: 3, span: { start: 'первая цитата' }, pageNumber: 5 },
+        { id: 7, span: { start: 'вторая цитата' }, pageNumber: 6 },
+      ],
+      cls,
+    );
+    expect([...found].sort()).toEqual([3, 7]);
+    const marks = [...el.querySelectorAll(`mark.${cls}`)] as HTMLElement[];
+    expect(marks.map((m) => [m.textContent, m.dataset.noteIds])).toEqual([
+      ['первая цитата', '3'],
+      ['вторая цитата', '7'],
+    ]);
+  });
+
+  it('перекрывающиеся пролёты сливаются в один mark с обоими id', () => {
+    const el = root('<p data-page="5">раз два три четыре пять</p>');
+    const before = el.textContent;
+    markQuotes(
+      el,
+      [
+        { id: 1, span: { start: 'раз', end: 'три' }, pageNumber: 5 },
+        { id: 2, span: { start: 'два', end: 'четыре' }, pageNumber: 5 },
+      ],
+      cls,
+    );
+    const marks = [...el.querySelectorAll(`mark.${cls}`)] as HTMLElement[];
+    expect(marks).toHaveLength(1);
+    expect(marks[0].textContent).toBe('раз два три четыре');
+    expect(marks[0].dataset.noteIds).toBe('1 2');
+    expect(el.textContent).toBe(before);
+  });
+
+  it('цитата через шов полос подсвечивается целиком', () => {
+    const el = root('<p data-page="5">конец пятой</p> <p data-page="6">начало шестой</p>');
+    const found = markQuotes(
+      el,
+      [{ id: 4, span: { start: 'конец', end: 'начало шестой' }, pageNumber: 5 }],
+      cls,
+    );
+    expect(found.has(4)).toBe(true);
+    const marks = [...el.querySelectorAll(`mark.${cls}`)];
+    expect(marks.map((m) => m.textContent).join('')).toBe('конец пятой начало шестой');
+  });
+
+  it('ненайденный ключ: id нет в ответе, DOM не тронут', () => {
+    const el = root('<p data-page="5">текст полосы</p>');
+    const html = el.innerHTML;
+    const found = markQuotes(el, [{ id: 9, span: { start: 'нет такого' }, pageNumber: 5 }], cls);
+    expect(found.size).toBe(0);
+    expect(el.innerHTML).toBe(html);
+  });
+
+  it('200 заметок на главе в 300 полос укладываются в секунду', () => {
+    const pages = Array.from(
+      { length: 300 },
+      (_, i) => `<p data-page="${i + 1}">слово${i + 1} текст полосы номер${i + 1}</p>`,
+    ).join('');
+    const el = root(pages);
+    const reqs = Array.from({ length: 200 }, (_, i) => ({
+      id: i + 1,
+      span: { start: `слово${i + 1} текст` },
+      pageNumber: i + 1,
+    }));
+    const t0 = performance.now();
+    const found = markQuotes(el, reqs, cls);
+    expect(performance.now() - t0).toBeLessThan(1000);
+    expect(found.size).toBe(200);
   });
 });
