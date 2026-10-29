@@ -35,7 +35,7 @@ func deleteAllEvents(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 }
 
 // clearDownRefusals снимает всё, что держит отказ шагов вниз выше
-// проверяемой миграции: закрытое (000040), события (000041) и заметки читателей (000045). Зовётся в
+// проверяемой миграции: закрытое (000040), события (000041) и заметки читателей (000044). Зовётся в
 // каждом круговом тесте сразу после up(), до любого шага вниз. База
 // одноразовая по уговору PROOFREADER_TEST_DB_URL.
 func clearDownRefusals(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {

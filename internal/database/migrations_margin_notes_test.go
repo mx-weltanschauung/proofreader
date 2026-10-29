@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// deleteAllMarginNotes удаляет все заметки читателей: шаг вниз 000045 при
-// хоть одной отказывает. Таблицы может не быть (база ниже 45) — тогда
+// deleteAllMarginNotes удаляет все заметки читателей: шаг вниз 000044 при
+// хоть одной отказывает. Таблицы может не быть (база ниже 44) — тогда
 // делать нечего.
 func deleteAllMarginNotes(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
@@ -29,7 +29,7 @@ func deleteAllMarginNotes(ctx context.Context, t *testing.T, pool *pgxpool.Pool)
 	}
 }
 
-// TestMarginNotesMigrationDownRefuses: шаг вниз 000045 при хоть одной заметке
+// TestMarginNotesMigrationDownRefuses: шаг вниз 000044 при хоть одной заметке
 // ОТКАЗЫВАЕТ и ничего не меняет; без заметок проходит, повторный up — тоже.
 //
 //	PROOFREADER_MIGRATE_TEST=1 go test ./internal/database/ -run TestMarginNotesMigrationDownRefuses -v
@@ -65,8 +65,8 @@ func TestMarginNotesMigrationDownRefuses(t *testing.T) {
 
 	up()
 	top, _, _ := m.Version()
-	if top < 45 {
-		t.Fatalf("после up версия %d, ждали не ниже 45", top)
+	if top < 44 {
+		t.Fatalf("после up версия %d, ждали не ниже 44", top)
 	}
 	clearDownRefusals(ctx, t, pool)
 	if !hasTable() {
@@ -103,7 +103,7 @@ func TestMarginNotesMigrationDownRefuses(t *testing.T) {
 	if err == nil {
 		t.Fatal("шаг вниз при залитой заметке прошёл, ждали отказ")
 	}
-	if !strings.Contains(err.Error(), "шаг вниз 000045") {
+	if !strings.Contains(err.Error(), "шаг вниз 000044") {
 		t.Fatalf("отказ не из DO-блока down.sql: %v", err)
 	}
 	if !hasTable() {
