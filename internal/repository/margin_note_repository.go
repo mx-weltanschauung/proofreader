@@ -127,7 +127,7 @@ func (r *MarginNoteRepository) Create(ctx context.Context, in models.MarginNoteI
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx) // откат после успешного Commit безвреден
+	defer func() { _ = tx.Rollback(ctx) }() // откат после успешного Commit безвреден
 
 	// Ключ блокировки считаем в Go (hashtext() — недокументированная
 	// функция); префикс таблицы разводит эту очередь с прочими рельсами.
