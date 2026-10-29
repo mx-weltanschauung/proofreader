@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
@@ -436,23 +436,13 @@ describe('PageView', () => {
       updated_at: '2026-10-29T00:00:00Z',
     });
 
-    // Слой полей ставит состояние микрозадачей сразу после подсветки — вне
-    // любого act, и ждать её нечем, кроме опроса DOM. Тесты этого блока ждут
-    // именно так, поэтому среда act на них выключена (как делает сам RTL
-    // внутри waitFor).
-    const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
-    let prevEnv: boolean | undefined;
-    beforeEach(() => {
-      prevEnv = env.IS_REACT_ACT_ENVIRONMENT;
-      env.IS_REACT_ACT_ENVIRONMENT = false;
-    });
-    afterEach(async () => {
-      // Сброс входа ещё при выключенной среде act: экран смонтирован (очистку
-      // RTL делает хук позже), а перерисовка ставит новую микрозадачу слоя —
-      // её дожидаемся, прежде чем вернуть среду.
-      useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
-      await new Promise((r) => setTimeout(r, 0));
-      env.IS_REACT_ACT_ENVIRONMENT = prevEnv;
+    afterEach(() => {
+      // Сначала экран уходит (очистка RTL), и лишь потом сбрасывается вход: у
+      // размонтированного экрана сброс не ставит микрозадачу слоя.
+      cleanup();
+      act(() => {
+        useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+      });
     });
 
     function signIn() {
