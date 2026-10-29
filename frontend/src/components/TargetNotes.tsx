@@ -39,8 +39,14 @@ const TargetNotesInner: React.FC<TargetNotesProps> = ({
   if (!user) return null;
 
   const ofChapter = chapterId !== undefined;
+  // Заметка к главе, которую снесли (перестройка глав тома), к главе больше
+  // не привязана — её показывает карточка тома с пометкой, иначе она
+  // пропала бы отовсюду, кроме списка «Мои заметки».
+  const lostChapter = (n: MarginNote) => n.target === 'chapter' && n.chapter_id === null;
   const mine = notes.filter((n) =>
-    ofChapter ? n.target === 'chapter' && n.chapter_id === chapterId : n.target === 'work',
+    ofChapter
+      ? n.target === 'chapter' && n.chapter_id === chapterId
+      : n.target === 'work' || lostChapter(n),
   );
   const noun = ofChapter ? 'главе' : 'тому';
   const addLabel = ofChapter ? 'Заметка к главе' : 'Заметка к тому';
@@ -113,6 +119,9 @@ const TargetNotesInner: React.FC<TargetNotesProps> = ({
                   />
                 ) : (
                   <>
+                    {!ofChapter && lostChapter(n) && (
+                      <div className="target-notes-lost">глава не найдена: {n.chapter_title}</div>
+                    )}
                     <p className="target-notes-text">{n.body}</p>
                     <button
                       type="button"

@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { joinPathFor } from '../utils/returnUrl';
 import { chapterPath, pagePath, workPath } from '../utils/paths';
 import { apiErrorMessage } from '../utils/apiError';
+import { printedFolio } from '../utils/folio';
 import './MyNotes.css';
 
 const PAGE_SIZE = 50;
@@ -150,6 +151,15 @@ export const MyNotes: React.FC = () => {
             const { to, missing, deletedChapter } = noteHref(n);
             const where = n.context_chapter || n.chapter_title;
             const page = n.start_page ?? n.snapshot_start_page;
+            // Печатный номер, как на карточке полосы; у полосы вне счёта
+            // (обложка, форзац) колонцифры нет — тогда номер из адреса.
+            const folio =
+              page === null
+                ? null
+                : (printedFolio(page, {
+                    page_offset: n.page_offset ?? 0,
+                    numbering_style: n.numbering_style,
+                  }) ?? String(page));
             return (
               <li key={n.id} className="my-notes-row">
                 <div className="my-notes-place">
@@ -157,7 +167,7 @@ export const MyNotes: React.FC = () => {
                     {[
                       n.work_title,
                       deletedChapter ? '' : where,
-                      n.target === 'quote' && page !== null ? `с. ${page}` : '',
+                      n.target === 'quote' && folio !== null ? `с. ${folio}` : '',
                     ]
                       .filter(Boolean)
                       .join(' · ')}

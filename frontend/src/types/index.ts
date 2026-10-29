@@ -1335,6 +1335,9 @@ export interface MarginNote {
   work_title?: string;
   work_slug?: string;
   context_chapter?: string;
+  /** Колонцифра работы: «Мои заметки» печатают печатный номер полосы. */
+  page_offset?: number;
+  numbering_style?: string;
 }
 
 /** Тело `POST /works/{id}/margin-notes`. */

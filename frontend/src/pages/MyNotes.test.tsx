@@ -117,6 +117,49 @@ describe('MyNotes', () => {
     expect(hrefs).toContain('/works/7-tom-7');
   });
 
+  // Номер в адресе — внутренний page_number; читателю печатается колонцифра.
+  it('страница цитаты — печатной колонцифрой, с учётом сдвига и римского счёта', async () => {
+    login();
+    vi.spyOn(marginNotesApi, 'mine').mockReturnValue(
+      ok({
+        total: 2,
+        items: [
+          note({
+            id: 1,
+            target: 'quote',
+            start_page: 12,
+            end_page: 12,
+            snapshot_start_page: 12,
+            quote_key: 'ключ',
+            body: 'со сдвигом',
+            page_offset: 4,
+            numbering_style: 'arabic',
+          }),
+          note({
+            id: 2,
+            work_id: 8,
+            work_title: 'Передние листы',
+            target: 'quote',
+            start_page: 3,
+            end_page: 3,
+            snapshot_start_page: 3,
+            quote_key: 'ключ',
+            body: 'римская',
+            page_offset: 1,
+            numbering_style: 'roman',
+          }),
+        ],
+      }) as never,
+    );
+    renderPage();
+    await screen.findByText('со сдвигом');
+    expect(screen.getByText('Том седьмой · с. 16')).toBeInTheDocument();
+    expect(screen.getByText('Передние листы · с. IV')).toBeInTheDocument();
+    // Адрес по-прежнему по внутреннему номеру.
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href') ?? '');
+    expect(hrefs.some((h) => h.includes('/pages/12?'))).toBe(true);
+  });
+
   it('удалённая глава: пометка и ссылка на том', async () => {
     login();
     vi.spyOn(marginNotesApi, 'mine').mockReturnValue(

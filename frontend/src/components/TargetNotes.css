@@ -40,6 +40,14 @@
   color: var(--color-warning-ink);
 }
 
+/* Пометка заметки к снесённой главе — тем же тоном, что «место не найдено»
+   у карточки на полях. */
+.target-notes-lost {
+  margin: 0 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
 .target-notes-text {
   margin: 0 0 0.25rem;
   white-space: pre-wrap;

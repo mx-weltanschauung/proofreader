@@ -77,6 +77,22 @@ describe('TargetNotes', () => {
     expect(screen.queryByText('к цитате')).toBeNull();
   });
 
+  // Спека: заметка к снесённой главе видна «в списке и на карточке тома с
+  // пометкой «глава не найдена: {снимок}»».
+  it('у тома показывает и заметки к снесённой главе — с пометкой', async () => {
+    setup({
+      notes: [
+        ...NOTES,
+        note({ id: 5, chapter_id: null, chapter_title: 'Снесённая глава', body: 'осиротевшая' }),
+      ],
+    });
+    await userEvent.click(screen.getByRole('button', { name: /Мои заметки к тому \(2\)/ }));
+    expect(screen.getByText('осиротевшая')).toBeInTheDocument();
+    expect(screen.getByText('глава не найдена: Снесённая глава')).toBeInTheDocument();
+    // Заметка к тому пометки не несёт.
+    expect(screen.getAllByText(/глава не найдена/)).toHaveLength(1);
+  });
+
   it('без заметок — одна кнопка, без заголовка', () => {
     setup({ chapterId: 99 });
     expect(screen.getByRole('button', { name: 'Заметка к главе' })).toBeInTheDocument();
