@@ -1,10 +1,19 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import type { Chapter, Work, Page } from '../types';
-import { chaptersApi, conceptsApi, pagesApi, searchApi, worksApi } from '../services/api';
+import {
+  chaptersApi,
+  conceptsApi,
+  marginNotesApi,
+  pagesApi,
+  searchApi,
+  worksApi,
+} from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import type { MarginNote } from '../types';
 
 // KaTeX autorender ходит по реальному DOM и к делу здесь не относится.
 vi.mock('katex/dist/contrib/auto-render', () => ({ default: vi.fn() }));
@@ -406,5 +415,75 @@ describe('PageView', () => {
       /^А\. Деборин\. Рецензия первая \/\/ Под знаменем марксизма\. 1928\. № 12\. С\. 245\.\n/,
     );
     vi.unstubAllGlobals();
+  });
+
+  describe('заметки на полях', () => {
+    const note = (id: number, page: number): MarginNote => ({
+      id,
+      work_id: 3,
+      target: 'quote',
+      chapter_id: null,
+      chapter_title: '',
+      start_page: page,
+      end_page: page,
+      page_missing: false,
+      snapshot_start_page: page,
+      quote_key: 'сорок восьмом',
+      quote_tail: '',
+      quote_text: 'сорок восьмом',
+      body: `заметка ${id}`,
+      created_at: '2026-10-29T00:00:00Z',
+      updated_at: '2026-10-29T00:00:00Z',
+    });
+
+    afterEach(() => {
+      useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+    });
+
+    function signIn() {
+      useAuth.setState({
+        user: { id: 3, role: 'reader' } as never,
+        token: 't',
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    }
+
+    it('подсвечивает цитату заметки своей полосы', async () => {
+      signIn();
+      vi.spyOn(pagesApi, 'render').mockImplementation(() => ok({ html: `<p>${HTML_245}</p>` }));
+      vi.spyOn(marginNotesApi, 'ofWork').mockResolvedValue({
+        data: [note(1, 245)],
+      } as unknown as AxiosResponse<MarginNote[]>);
+
+      renderAt('/works/3/pages/245');
+
+      await waitFor(() =>
+        expect(document.querySelector('mark.margin-hit')?.textContent).toBe('сорок восьмом'),
+      );
+    });
+
+    it('заметка чужой полосы не подсвечивается', async () => {
+      signIn();
+      vi.spyOn(pagesApi, 'render').mockImplementation(() => ok({ html: `<p>${HTML_245}</p>` }));
+      const ofWork = vi.spyOn(marginNotesApi, 'ofWork').mockResolvedValue({
+        data: [note(2, 246)],
+      } as unknown as AxiosResponse<MarginNote[]>);
+
+      renderAt('/works/3/pages/245');
+
+      await waitFor(() => expect(ofWork).toHaveBeenCalled());
+      await screen.findByText(/Так писал он/);
+      expect(document.querySelector('mark.margin-hit')).toBeNull();
+    });
+
+    it('аноним: ни кнопки, ни запроса', async () => {
+      vi.spyOn(pagesApi, 'render').mockImplementation(() => ok({ html: `<p>${HTML_245}</p>` }));
+      const ofWork = vi.spyOn(marginNotesApi, 'ofWork');
+      renderAt('/works/3/pages/245');
+      await screen.findByText(/Так писал он/);
+      expect(screen.queryByRole('button', { name: 'Заметка' })).toBeNull();
+      expect(ofWork).not.toHaveBeenCalled();
+    });
   });
 });

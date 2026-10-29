@@ -1,10 +1,12 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 
 import { WorkRead } from './WorkRead';
-import { readingApi, worksApi, chaptersApi } from '../services/api';
+import { readingApi, worksApi, chaptersApi, marginNotesApi } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import type { MarginNote } from '../types';
 import type { ReadingWindow } from '../types';
 import { ReadingPreferencesProvider } from '../contexts/ReadingPreferencesContext';
 import { DEFAULT_PREFS, PREFS_KEY } from '../contexts/readingPrefs';
@@ -14,6 +16,7 @@ vi.mock('../services/api', () => ({
   readingApi: { window: vi.fn() },
   worksApi: { get: vi.fn() },
   chaptersApi: { list: vi.fn() },
+  marginNotesApi: { ofWork: vi.fn() },
   // useSearchTerms зовёт его при непустом ?q= в адресе (Task 11): без мока
   // тест с q в адресе падает на «No "searchApi" export is defined».
   searchApi: { terms: vi.fn().mockResolvedValue({ data: { terms: [] } }) },
@@ -781,5 +784,58 @@ describe('WorkRead: переход к странице', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('В томе нет страницы 785');
     expect(readingApi.window).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WorkRead: заметки на полях', () => {
+  const note: MarginNote = {
+    id: 5,
+    work_id: 47,
+    target: 'quote',
+    chapter_id: null,
+    chapter_title: '',
+    start_page: 48,
+    end_page: 48,
+    page_missing: false,
+    snapshot_start_page: 48,
+    quote_key: 'страницы',
+    quote_tail: '',
+    quote_text: 'страницы',
+    body: 'на полях',
+    created_at: '2026-10-29T00:00:00Z',
+    updated_at: '2026-10-29T00:00:00Z',
+  };
+
+  afterEach(() => {
+    useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+  });
+
+  it('заметка полосы догруженного окна подсвечивается после догрузки', async () => {
+    useAuth.setState({
+      user: { id: 3, role: 'reader' } as never,
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    vi.mocked(marginNotesApi.ofWork).mockResolvedValue({ data: [note] } as never);
+    vi.mocked(readingApi.window).mockResolvedValueOnce({ data: windowOf(43, 5, 48) } as never);
+    renderAt('/works/47/read/43');
+    await waitFor(() => expect(screen.getByText('Текст страницы 43')).toBeInTheDocument());
+    expect(document.querySelector('mark.margin-hit')).toBeNull();
+
+    vi.mocked(readingApi.window).mockResolvedValueOnce({ data: windowOf(48, 5, null) } as never);
+    FakeObserver.instances.forEach((o) => o.enter());
+
+    await waitFor(() =>
+      expect(document.querySelector('mark.margin-hit')?.textContent).toBe('страницы'),
+    );
+  });
+
+  it('аноним: заметки не запрашиваются', async () => {
+    vi.mocked(marginNotesApi.ofWork).mockClear();
+    vi.mocked(readingApi.window).mockResolvedValueOnce({ data: windowOf(43, 5, null) } as never);
+    renderAt('/works/47/read/43');
+    await waitFor(() => expect(screen.getByText('Текст страницы 43')).toBeInTheDocument());
+    expect(marginNotesApi.ofWork).not.toHaveBeenCalled();
   });
 });

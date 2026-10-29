@@ -4,6 +4,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { worksApi, chaptersApi } from '../services/api';
 import type { Work, Chapter } from '../types';
 import { ReadingChunk } from '../components/ReadingChunk';
+import { MarginNotes } from '../components/MarginNotes';
+import { useMarginNotes } from '../hooks/useMarginNotes';
 import { ReadingStreamBar } from '../components/ReadingStreamBar';
 import { useReadingStream } from '../hooks/useReadingStream';
 import { useVisiblePage } from '../hooks/useVisiblePage';
@@ -229,6 +231,16 @@ export const WorkRead: React.FC = () => {
   const contentRef = useRef<HTMLElement>(null);
   const { hasMore, loadMore } = stream;
 
+  // Свои заметки тома; слой полей стоит перед потоком и красит цитаты в
+  // загруженных окнах.
+  const notes = useMarginNotes(valid ? numericWorkId : null);
+  // Нарисованные сейчас полосы: окна только дописываются, поэтому и список, и
+  // признак новой вёрстки (deps) меняются ровно с приездом окна.
+  const loadedPages = useMemo(
+    () => stream.windows.flatMap((w) => w.pages.map((p) => p.page_number)),
+    [stream.windows],
+  );
+
   useInfiniteSentinel(sentinelRef, hasMore, loadMore, `0px 0px ${PREFETCH_MARGIN_PX}px 0px`);
 
   // Якорь полосы в потоке — сам адрес потока: хэш для пересылки не годится,
@@ -339,12 +351,21 @@ export const WorkRead: React.FC = () => {
         citation={citation}
         contentRef={contentRef}
         visiblePage={visiblePage}
+        note={{ workId: numericWorkId, onCreated: notes.add }}
         pageJump={{
           currentLabel:
             visiblePage !== null ? (printedFolio(visiblePage, work) ?? String(visiblePage)) : null,
           onJump: jumpToPage,
           roman: work.numbering_style === 'roman',
         }}
+      />
+      <MarginNotes
+        contentRef={contentRef}
+        notes={notes.notes}
+        pageNumbers={loadedPages}
+        deps={[stream.windows]}
+        onChange={notes.replace}
+        onDelete={notes.drop}
       />
       <article className="work-read-content" ref={contentRef}>
         {stream.windows.map((loaded) => (
