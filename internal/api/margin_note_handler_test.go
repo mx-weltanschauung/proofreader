@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -271,5 +272,18 @@ func TestMarginNoteDeleteForeignIs404(t *testing.T) {
 	_, h = marginRig(testReaderClaims)
 	if rec := marginDo(h, "DELETE", "/api/margin-notes/9", ""); rec.Code != 204 {
 		t.Errorf("свою: код %d", rec.Code)
+	}
+}
+
+// Заметки тома едут голым массивом (контракт фронта), пустой — «[]», не null.
+func TestMarginNoteListByWorkIsBareArray(t *testing.T) {
+	_, h := marginRig(testReaderClaims)
+	rec := marginDo(h, "GET", "/api/works/7/margin-notes", "")
+	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("код %d, тело %q", rec.Code, rec.Body)
+	}
+	var got []models.MarginNote
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
 	}
 }

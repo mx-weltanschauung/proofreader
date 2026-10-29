@@ -211,7 +211,10 @@ func (h *MarginNoteHandler) ListByWork(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать заметки")
 		return
 	}
-	writeJSONStatus(w, http.StatusOK, map[string]any{"items": items, "total": len(items)})
+	if items == nil {
+		items = []*models.MarginNote{}
+	}
+	writeJSONStatus(w, http.StatusOK, items)
 }
 
 // List — GET /margin-notes?work_id=&limit=&offset=: «Мои заметки».
