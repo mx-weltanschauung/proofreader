@@ -55,6 +55,7 @@ type Router struct {
 	versionHandler        *VersionHandler
 	feedbackHandler       *FeedbackHandler
 	pageSuggestionHandler *PageSuggestionHandler
+	marginNoteHandler     *MarginNoteHandler
 	searchHandler         *SearchHandler
 	seoHandler            *seo.Handler
 	cacheHandler          *CacheHandler
@@ -154,6 +155,13 @@ func NewRouter(
 		readerAdminHandler:    readerAdminHandler,
 		authService:           authService,
 	}
+}
+
+// WithMarginNotes подключает заметки читателя на полях. nil допустим, как у
+// WithAudio: маршруты регистрируются всегда, чтобы их видел сторож ролей.
+func (rt *Router) WithMarginNotes(h *MarginNoteHandler) *Router {
+	rt.marginNoteHandler = h
+	return rt
 }
 
 // WithAudio подключает озвучку. nil допустим: маршруты регистрируются всегда
@@ -483,6 +491,15 @@ func (rt *Router) Setup() *mux.Router {
 	// разные подроутеры на одном префиксе, и два GET /api/suggestions
 	// разошлись бы по порядку строк в файле, а не по правам.
 	reader.HandleFunc("/suggestions/mine", rt.pageSuggestionHandler.Mine).Methods("GET")
+
+	// Заметки читателя на полях: личные, только владельцу. Маршруты тома стоят
+	// под closedGate подроутера reader (404 не-сотруднику на закрытую работу);
+	// закрытые полосу и главу отсекает сам обработчик через обёртки чтения.
+	reader.HandleFunc("/works/{workId}/margin-notes", rt.marginNoteHandler.Create).Methods("POST")
+	reader.HandleFunc("/works/{workId}/margin-notes", rt.marginNoteHandler.ListByWork).Methods("GET")
+	reader.HandleFunc("/margin-notes", rt.marginNoteHandler.List).Methods("GET")
+	reader.HandleFunc("/margin-notes/{id}", rt.marginNoteHandler.Update).Methods("PUT")
+	reader.HandleFunc("/margin-notes/{id}", rt.marginNoteHandler.Delete).Methods("DELETE")
 
 	// Очередь предложений разбирает редактор — это работа с текстом полосы,
 	// та же, что он делает через PUT /pages/{id}. Поэтому staff, а не admin.

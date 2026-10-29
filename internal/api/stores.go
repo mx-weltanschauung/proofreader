@@ -334,3 +334,14 @@ type ClosedSpansStore interface {
 	ClosedSpans(ctx context.Context, workID int64) ([]models.PageSpan, error)
 	ClosedChapterIDs(ctx context.Context, workID int64) (map[int64]bool, error)
 }
+
+// MarginNoteStore — заметки читателя на полях (репозиторий — Task 2).
+// Закрытость выводится при чтении по includeClosed; запись закрытого
+// отсекает обработчик ДО Create.
+type MarginNoteStore interface {
+	Create(ctx context.Context, in models.MarginNoteInput) (*models.MarginNote, error)
+	UpdateBody(ctx context.Context, ownerID, id int64, body string, includeClosed bool) (*models.MarginNote, error)
+	Delete(ctx context.Context, ownerID, id int64, includeClosed bool) error
+	ListByWork(ctx context.Context, ownerID, workID int64, includeClosed bool) ([]*models.MarginNote, error)
+	ListByOwner(ctx context.Context, ownerID int64, workID *int64, limit, offset int, includeClosed bool) ([]*models.MarginNote, int, error)
+}

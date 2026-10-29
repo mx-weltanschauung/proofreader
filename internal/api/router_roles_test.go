@@ -138,6 +138,11 @@ var routeAccess = map[string]access{
 	"GET /api/works/{workId}/page-map":                     accessPublic,
 	"POST /api/works/{workId}/pages/{pageId}/suggestions":  accessReader,
 	"GET /api/suggestions/mine":                            accessReader,
+	"POST /api/works/{workId}/margin-notes":                accessReader,
+	"GET /api/works/{workId}/margin-notes":                 accessReader,
+	"GET /api/margin-notes":                                accessReader,
+	"PUT /api/margin-notes/{id}":                           accessReader,
+	"DELETE /api/margin-notes/{id}":                        accessReader,
 	// Подборка: владение читателем, черновик и публикация. Правку и снятие с
 	// публикации может позвать только владелец (или сотрудник — легаси-строки
 	// без владельца), см. mayEdit в collection_handler.go.
