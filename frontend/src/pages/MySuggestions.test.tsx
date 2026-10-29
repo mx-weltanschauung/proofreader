@@ -3,7 +3,13 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
-import { suggestionsApi, collectionsApi, documentsApi, authApi } from '../services/api';
+import {
+  suggestionsApi,
+  collectionsApi,
+  documentsApi,
+  authApi,
+  marginNotesApi,
+} from '../services/api';
 import type { Collection, Document, SuggestionRow } from '../types';
 // useAuth — это и есть zustand-стор (create<AuthState>()), поэтому у него
 // есть setState: статус входа в тестах подменяется прямо на нём, без vi.mock.
@@ -70,6 +76,7 @@ beforeEach(() => {
   // пусты, тесты, которым это важно, переопределяют возврат сами.
   vi.spyOn(collectionsApi, 'mine').mockReturnValue(ok([]) as never);
   vi.spyOn(documentsApi, 'mine').mockReturnValue(ok([]) as never);
+  vi.spyOn(marginNotesApi, 'mine').mockReturnValue(ok({ items: [], total: 0 }) as never);
 });
 
 describe('MySuggestions', () => {
@@ -251,6 +258,7 @@ describe('MySuggestions', () => {
     });
     vi.spyOn(suggestionsApi, 'mine').mockReturnValue(ok([]) as never);
     vi.spyOn(documentsApi, 'mine').mockReturnValue(ok([]) as never);
+    vi.spyOn(marginNotesApi, 'mine').mockReturnValue(ok({ items: [], total: 0 }) as never);
 
     render(
       <MemoryRouter>

@@ -365,6 +365,7 @@ describe('Header', () => {
         '/suggestions/queue',
         '/documents/review',
         '/admin/audio',
+        '/mine/notes',
         '/admin/users',
         '/admin/readers',
         '/admin/feedback',
@@ -383,7 +384,7 @@ describe('Header', () => {
         within(staff)
           .getAllByRole('link')
           .map((a) => a.getAttribute('href')),
-      ).toEqual(['/suggestions/queue', '/documents/review', '/admin/audio']);
+      ).toEqual(['/suggestions/queue', '/documents/review', '/admin/audio', '/mine/notes']);
       expect(within(staff).queryByText('Управление')).toBeNull();
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
     });
