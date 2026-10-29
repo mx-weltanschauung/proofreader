@@ -1,0 +1,192 @@
+/* Заметки читателя на полях (MarginNotes.tsx, NoteButton.tsx,
+   MarginNoteEditor.tsx). Файл подключает каждый из трёх компонентов сам:
+   маршруты читальни ленивые, и стиль, объявленный у соседа, до чужого чанка
+   не доезжает (readingStyles.guard.test.ts).
+
+   Все классы — с приставкой margin-note-: CSS приложения глобальный, и
+   общее имя вроде .note-card столкнулось бы с чужим правилом. */
+
+/* Цитата, к которой есть заметка. Подчёркивание, а не заливка: заливку уже
+   занимают совпадения поиска (mark.search-hit, warning-tint) и цитата из
+   адреса (mark.quote-hit, info-tint), и все три встречаются на одной полосе.
+   Линия — чернилами warning (-ink выдерживает 3:1 к фону во всех темах),
+   тон тот же, что у карточки на полях: цитата и её заметка читаются парой. */
+mark.margin-hit {
+  background-color: transparent;
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-color: var(--color-warning-ink);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.2em;
+  text-decoration-skip-ink: none;
+  cursor: pointer;
+}
+
+/* Наведение — заливка той же парой, что вычитана contrast.test.ts. */
+mark.margin-hit:hover {
+  background-color: var(--color-warning-tint);
+  color: var(--color-warning-ink);
+}
+
+/* Слой полей: узел нулевой высоты перед колонкой текста. На широком окне
+   карточки стоят в нём абсолютно; координаты считает MarginNotes.tsx. */
+.margin-note-layer {
+  position: relative;
+  height: 0;
+}
+
+.margin-note-layer > .margin-note-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+/* Хост под абзацем (узкое окно): карточки идут столбиком и отбиваются от
+   следующего абзаца тем же зазором, что абзацы между собой. */
+.margin-note-host {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0 0 var(--reading-para-gap);
+}
+
+/* Карточка. Набросок «A»: мягкая жёлтая плашка с полосой слева. Шрифт —
+   интерфейсный, а не читальный: заметка — голос читателя, не текст книги.
+   Под абзацем карточка наследовала бы настройки колонки (выключку по
+   ширине, переносы, разрядку) — они сняты. */
+.margin-note-card {
+  background-color: var(--color-warning-tint);
+  color: var(--color-text-primary);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 0 4px 4px 0;
+  padding: 0.5rem 0.75rem;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  text-align: left;
+  text-indent: 0;
+  letter-spacing: normal;
+  word-spacing: normal;
+  -webkit-hyphens: manual;
+  hyphens: manual;
+  box-sizing: border-box;
+}
+
+.margin-note-card.is-open {
+  border-left-color: var(--color-warning-ink);
+}
+
+/* Текст заметки — кнопкой: нажатие раскрывает правку. Текст простой,
+   переводы строк читателя сохраняются. */
+.margin-note-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.margin-note-missing {
+  background-color: var(--color-warning-tint);
+  color: var(--color-warning-ink);
+  margin: 0 0 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.margin-note-snapshot {
+  background-color: var(--color-warning-tint);
+  color: var(--color-text-secondary);
+  margin: 0 0 0.375rem;
+  font-style: italic;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Поле правки и кнопки. */
+.margin-note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.margin-note-field {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-input-border);
+  border-radius: 4px;
+  background-color: var(--color-input-bg);
+  color: var(--color-text-primary);
+  font: inherit;
+  resize: vertical;
+}
+
+.margin-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.margin-note-remove {
+  margin-left: auto;
+}
+
+.margin-note-failure {
+  margin: 0;
+  font-size: 0.8125rem;
+  background-color: var(--color-error-tint);
+  color: var(--color-error-ink);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.margin-note-failure a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* Всплывающее поле новой заметки — у выделения. */
+.margin-note-popover {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 95; /* над панелью чтения (90), под шапкой сайта (100) */
+  width: min(22rem, calc(100vw - 16px));
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+  border-radius: 6px;
+  background-color: var(--color-card-bg);
+  color: var(--color-text-primary);
+  box-shadow: 0 2px 8px var(--color-shadow);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+/* Цитата над полем — три строки, дальше обрезается: снимок нужен, чтобы
+   узнать место, а не перечитать его. */
+.margin-note-popover-quote {
+  background-color: var(--color-card-bg);
+  color: var(--color-text-secondary);
+  margin: 0 0 0.5rem;
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

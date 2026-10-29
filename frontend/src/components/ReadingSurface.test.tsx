@@ -1,10 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import type { AxiosResponse } from 'axios';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import type { ChapterPage, Work } from '../types';
+import type { ChapterPage, MarginNote, Work } from '../types';
 import { ReadingSurface } from './ReadingSurface';
 import { ReadingPreferencesProvider } from '../contexts/ReadingPreferencesContext';
+import { marginNotesApi } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 vi.mock('katex/dist/contrib/auto-render', () => ({ default: () => {} }));
 
@@ -518,5 +521,78 @@ describe('ReadingSurface: приём ?quote=', () => {
     );
     expect(container.querySelector('mark.quote-hit')).toBeNull();
     expect(container.querySelector('.quote-notice')).toBeNull();
+  });
+});
+
+describe('ReadingSurface: заметки на полях', () => {
+  const quoteNote: MarginNote = {
+    id: 9,
+    work_id: 41,
+    target: 'quote',
+    chapter_id: null,
+    chapter_title: '',
+    start_page: 265,
+    end_page: 265,
+    page_missing: false,
+    snapshot_start_page: 265,
+    quote_key: 'второе',
+    quote_tail: '',
+    quote_text: 'второе',
+    body: 'на полях',
+    created_at: '2026-10-29T00:00:00Z',
+    updated_at: '2026-10-29T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    visiblePageMock.mockReturnValue(null);
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+  });
+
+  it('анониму — ни кнопки «Заметка», ни запроса заметок', () => {
+    useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+    const ofWork = vi.spyOn(marginNotesApi, 'ofWork');
+    renderSurface([page(265, '<p>первое второе</p>')]);
+    expect(screen.queryByRole('button', { name: 'Заметка' })).toBeNull();
+    expect(ofWork).not.toHaveBeenCalled();
+  });
+
+  it('вошедшему — грузит заметки тома и подсвечивает цитату', async () => {
+    useAuth.setState({
+      user: { id: 3, role: 'reader' } as never,
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    const ofWork = vi
+      .spyOn(marginNotesApi, 'ofWork')
+      .mockResolvedValue({ data: [quoteNote] } as unknown as AxiosResponse<MarginNote[]>);
+    const { container } = renderSurface([page(265, '<p>первое второе</p>')]);
+
+    expect(screen.getByRole('button', { name: 'Заметка' })).toBeInTheDocument();
+    expect(ofWork).toHaveBeenCalledWith(41);
+    await waitFor(() =>
+      expect(container.querySelector('mark.margin-hit')?.textContent).toBe('второе'),
+    );
+    expect(screen.getByText('на полях')).toBeInTheDocument();
+  });
+
+  it('заметки пропом — свой запрос не идёт', async () => {
+    useAuth.setState({
+      user: { id: 3, role: 'reader' } as never,
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    const ofWork = vi.spyOn(marginNotesApi, 'ofWork');
+    const { container } = renderSurface([page(265, '<p>первое второе</p>')], {
+      marginNotes: { notes: [quoteNote], add: vi.fn(), replace: vi.fn(), drop: vi.fn() },
+    });
+
+    await waitFor(() => expect(container.querySelector('mark.margin-hit')).not.toBeNull());
+    expect(ofWork).not.toHaveBeenCalled();
   });
 });

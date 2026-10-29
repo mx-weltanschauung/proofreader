@@ -105,7 +105,9 @@ export function fullyInsideExcluded(range: Range): boolean {
   const container = range.commonAncestorContainer;
   const el =
     container.nodeType === Node.ELEMENT_NODE ? (container as HTMLElement) : container.parentElement;
-  return !!el?.closest('.page-marker, .katex');
+  // .margin-note-host — карточка заметки под абзацем (MarginNotes.tsx):
+  // выделение внутри неё — слова читателя, а не цитата полосы.
+  return !!el?.closest('.page-marker, .katex, .margin-note-host');
 }
 
 /** Теги, отделяющие один абзац цитаты от другого (фикс-раунд 1, п. 5). */

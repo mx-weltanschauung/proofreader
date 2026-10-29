@@ -63,12 +63,15 @@ export function pageOfNode(node: Node): number | null {
  * читателю в Selection.toString() никогда не попадает — а наивный обход
  * дерева её увидит, если явно не отсеять, и цитата через шов получит
  * лишнюю цифру внутри текста.
+ * .margin-note-host — карточка заметки на полях, вставленная на узком экране
+ * под абзац (MarginNotes.tsx): слова читателя не текст полосы, и без отсева
+ * они попали бы и в ключ новой цитаты, и в поиск места старой.
  */
 export function flattenText(root: HTMLElement): FlatText {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
       const parent = node.parentElement;
-      if (!parent || parent.closest('script, style, .katex, .page-marker'))
+      if (!parent || parent.closest('script, style, .katex, .page-marker, .margin-note-host'))
         return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
