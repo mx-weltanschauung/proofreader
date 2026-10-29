@@ -23,7 +23,7 @@ export interface TargetNotesProps {
  * без заметок — одна кнопка, без заголовка. Текст заметки — простой текст
  * (pre-wrap), не разметка.
  */
-export const TargetNotes: React.FC<TargetNotesProps> = ({
+const TargetNotesInner: React.FC<TargetNotesProps> = ({
   workId,
   chapterId,
   notes,
@@ -133,3 +133,13 @@ export const TargetNotes: React.FC<TargetNotesProps> = ({
     </div>
   );
 };
+
+/**
+ * Состояние блока (раскрыт ли, открытый редактор, недописанный текст) живёт
+ * в TargetNotesInner и сбрасывается ключом «том, глава»: ChapterView и
+ * WorkDetail не размонтируются при переходе к соседней главе или тому, и
+ * черновик иначе уехал бы в чужую главу.
+ */
+export const TargetNotes: React.FC<TargetNotesProps> = (props) => (
+  <TargetNotesInner key={`${props.workId}:${props.chapterId ?? 'work'}`} {...props} />
+);

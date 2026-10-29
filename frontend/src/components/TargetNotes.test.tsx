@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { TargetNotes } from './TargetNotes';
@@ -54,8 +54,11 @@ describe('TargetNotes', () => {
     });
   });
   afterEach(() => {
+    // Сперва снять дерево: сброс читателя при смонтированном блоке — это
+    // обновление вне act.
+    cleanup();
     vi.restoreAllMocks();
-    useAuth.setState({ user: null });
+    act(() => useAuth.setState({ user: null }));
   });
 
   it('у главы показывает только её заметки', async () => {
@@ -125,6 +128,21 @@ describe('TargetNotes', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Удалить' }));
     await waitFor(() => expect(h.onDelete).toHaveBeenCalledWith(1));
     expect(spy).toHaveBeenCalledWith(1);
+  });
+
+  it('смена главы закрывает редактор и стирает черновик', async () => {
+    const h = handlers();
+    const ui = (chapterId: number) => (
+      <MemoryRouter>
+        <TargetNotes workId={7} chapterId={chapterId} notes={[]} {...h} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(ui(10));
+    await userEvent.click(screen.getByRole('button', { name: 'Заметка к главе' }));
+    await userEvent.type(screen.getByLabelText('Текст заметки'), 'черновик');
+    rerender(ui(11));
+    expect(screen.queryByLabelText('Текст заметки')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Заметка к главе' })).toBeInTheDocument();
   });
 
   it('аноним: ничего не рисуется', () => {
