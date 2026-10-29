@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AxiosError, type AxiosResponse } from 'axios';
 import { NoteButton } from './NoteButton';
@@ -84,6 +84,9 @@ describe('NoteButton', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    // Сначала кнопка уходит (очистка RTL), и лишь потом сбрасывается вход:
+    // иначе сброс перерисовывает смонтированную кнопку вне act.
+    cleanup();
     useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
   });
 
@@ -128,6 +131,51 @@ describe('NoteButton', () => {
     });
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith(NOTE));
     expect(screen.queryByRole('textbox', { name: 'Текст заметки' })).toBeNull();
+  });
+
+  // Экран потока уводит из чтения по Escape на window (WorkRead): Escape
+  // в поле заметки и вне его до window не доходит.
+  it('Escape закрывает пустое поле и не всплывает до window', async () => {
+    asReader();
+    const root = surface();
+    renderButton(root);
+    const onWindow = vi.fn();
+    window.addEventListener('keydown', onWindow);
+    try {
+      selectAcrossSeam(root);
+      fireEvent.click(screen.getByRole('button', { name: 'Заметка' }));
+      const field = await screen.findByRole('textbox', { name: 'Текст заметки' });
+
+      // Фокус ушёл в текст: Escape возвращает его в поле, поле открыто.
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(onWindow).not.toHaveBeenCalled();
+      expect(field).toHaveFocus();
+
+      fireEvent.keyDown(field, { key: 'Escape' });
+      expect(onWindow).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog', { name: 'Новая заметка' })).toBeNull();
+    } finally {
+      window.removeEventListener('keydown', onWindow);
+    }
+  });
+
+  it('Escape с начатым текстом спрашивает, прежде чем закрыть', async () => {
+    asReader();
+    const root = surface();
+    renderButton(root);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    selectAcrossSeam(root);
+    fireEvent.click(screen.getByRole('button', { name: 'Заметка' }));
+    const field = await screen.findByRole('textbox', { name: 'Текст заметки' });
+    fireEvent.change(field, { target: { value: 'недописанная мысль' } });
+
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(confirm).toHaveBeenCalledWith('Закрыть заметку без сохранения?');
+    expect(field).toHaveValue('недописанная мысль');
+
+    confirm.mockReturnValue(true);
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Новая заметка' })).toBeNull();
   });
 
   // Поле получает фокус раньше эффектов компонента. Окно, ещё не поставленное

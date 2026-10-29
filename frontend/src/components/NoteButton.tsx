@@ -118,6 +118,25 @@ export const NoteButton: React.FC<NoteButtonProps> = ({
     pop.style.left = `${Math.max(min, Math.min(opened.left, max))}px`;
   }, [opened]);
 
+  // Escape, нажатый вне открытого поля (фокус ушёл в текст), тоже не должен
+  // уводить с экрана потока: слушатель на document стоит раньше window, где
+  // Escape уводит из чтения (WorkRead), — он гасит всплытие и возвращает
+  // курсор в поле. Escape в самом поле закрывает его (MarginNoteEditor) и
+  // сюда не доходит.
+  useEffect(() => {
+    if (!opened) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const pop = popoverRef.current;
+      if (!pop || (e.target instanceof Node && pop.contains(e.target))) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pop.querySelector<HTMLTextAreaElement>('textarea')?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [opened]);
+
   if (!signedIn) return null;
 
   const onClick = () => {

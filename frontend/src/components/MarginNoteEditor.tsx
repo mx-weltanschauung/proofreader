@@ -82,8 +82,22 @@ export const MarginNoteEditor: React.FC<MarginNoteEditorProps> = ({
     }
   };
 
+  // Escape закрывает поле, как «Отмена», и дальше не всплывает: на экране
+  // потока Escape на window уводит из чтения (WorkRead), и написанное
+  // пропало бы вместе с экраном. Начатый текст без спроса не выбрасывается.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    if (text.trim() !== initial.trim() && !window.confirm('Закрыть заметку без сохранения?')) {
+      return;
+    }
+    onCancel();
+  };
+
   return (
-    <div className="margin-note-editor" onClick={(e) => e.stopPropagation()}>
+    <div className="margin-note-editor" onClick={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
       <textarea
         className="margin-note-field"
         aria-label="Текст заметки"

@@ -838,6 +838,35 @@ describe('WorkRead: заметки на полях', () => {
     );
   });
 
+  // Escape на window уводит из чтения; Escape в поле заметки — нет: иначе
+  // недописанный текст пропадал вместе с экраном.
+  it('Escape в поле заметки не уводит из чтения', async () => {
+    useAuth.setState({
+      user: { id: 3, role: 'reader' } as never,
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    vi.mocked(marginNotesApi.ofWork).mockResolvedValue({
+      data: [{ ...note, start_page: 44, end_page: 44, snapshot_start_page: 44 }],
+    } as never);
+    vi.mocked(readingApi.window).mockResolvedValueOnce({ data: windowOf(43, 5, null) } as never);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    renderAt('/works/47/read/43');
+
+    fireEvent.click(await screen.findByTitle('Изменить заметку'));
+    const field = await screen.findByRole('textbox', { name: 'Текст заметки' });
+    fireEvent.change(field, { target: { value: 'недописанная мысль' } });
+    await userEvent.keyboard('{Escape}');
+
+    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByTestId('location')).toHaveTextContent('/works/47/read/43');
+    expect(screen.getByRole('textbox', { name: 'Текст заметки' })).toHaveValue(
+      'недописанная мысль',
+    );
+    confirm.mockRestore();
+  });
+
   it('аноним: заметки не запрашиваются', async () => {
     vi.mocked(marginNotesApi.ofWork).mockClear();
     vi.mocked(readingApi.window).mockResolvedValueOnce({ data: windowOf(43, 5, null) } as never);
