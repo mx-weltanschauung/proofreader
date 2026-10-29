@@ -1,0 +1,47 @@
+/* Заметки к главе и к тому (TargetNotes.tsx). Классы с приставкой
+   target-notes-: CSS приложения глобальный. Цвета — токены темы. */
+.target-notes {
+  margin: 0.75rem 0;
+}
+
+.target-notes-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.target-notes-body {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.target-notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.target-notes-item {
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--color-warning-ink);
+  background: var(--color-warning-tint);
+  color: var(--color-warning-ink);
+}
+
+.target-notes-text {
+  margin: 0 0 0.25rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -59,6 +59,7 @@ vi.mock('../services/api', () => ({
   },
   editionsApi: { get: vi.fn(() => Promise.resolve({ data: { id: 1, title: 'Собрание' } })) },
   pagesApi: {},
+  marginNotesApi: { ofWork: vi.fn(() => Promise.resolve({ data: [] })) },
   // Панель поиска (за затравкой) рисует ScopePicker, а он тянет /shelf —
   // без заглушки открытие панели в тесте било бы реальным запросом.
   shelfApi: { get: vi.fn(() => Promise.resolve({ data: { editions: [], loose_works: [] } })) },
