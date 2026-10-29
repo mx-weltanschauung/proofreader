@@ -46,6 +46,29 @@ const (
 	marginListMaxLimit     = 200
 )
 
+// marginMaxBody — потолок тела POST и PUT. Считан от пределов полей, а не
+// взят круглым: самая длинная законная заметка — 10 000 знаков текста и три
+// поля цитаты по 4 000, по четыре байта на знак в худшем случае (88 КБ);
+// 64 КБ отрезали бы такую заметку раньше проверки длины. Запас — на имена
+// полей JSON и экранирование.
+const marginMaxBody = (models.MarginNoteBodyMaxRunes+3*models.MarginNoteQuoteMaxRunes)*4 + 16<<10
+
+// marginDecode читает тело запроса под потолком; ok=false — ответ записан.
+// Сверх потолка — 413, как у предложений правки и обратной связи.
+func marginDecode(w http.ResponseWriter, r *http.Request, req *marginNoteRequest) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, marginMaxBody)
+	if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "Заметка слишком велика")
+			return false
+		}
+		writeError(w, http.StatusBadRequest, "Некорректное тело запроса")
+		return false
+	}
+	return true
+}
+
 type marginNoteRequest struct {
 	Target    string `json:"target"`
 	ChapterID int64  `json:"chapter_id"`
@@ -96,8 +119,7 @@ func (h *MarginNoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req marginNoteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Некорректное тело запроса")
+	if !marginDecode(w, r, &req) {
 		return
 	}
 
@@ -155,7 +177,7 @@ func (h *MarginNoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.ChapterID = &chapter.ID
-		in.ChapterTitle = chapter.Title
+		in.ChapterTitle = marginChapterTitle(chapter.Title)
 	case models.MarginTargetQuote:
 		start, err := h.pages.GetByWorkAndPageNumber(ctx, workID, req.StartPage)
 		if err != nil {
@@ -185,6 +207,18 @@ func (h *MarginNoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSONStatus(w, http.StatusCreated, note)
+}
+
+// marginUntitledChapter — снимок заглавия главы, у которой его нет: таблица
+// требует непустой снимок (по нему заметка узнаётся, когда главу снесут), а
+// заглавие главы бывает пустым.
+const marginUntitledChapter = "Глава без заглавия"
+
+func marginChapterTitle(title string) string {
+	if strings.TrimSpace(title) == "" {
+		return marginUntitledChapter
+	}
+	return title
 }
 
 func (h *MarginNoteHandler) pageError(w http.ResponseWriter, err error) {
@@ -261,8 +295,7 @@ func (h *MarginNoteHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req marginNoteRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "Некорректное тело запроса")
+	if !marginDecode(w, r, &req) {
 		return
 	}
 	body, ok := marginBody(w, req.Body)

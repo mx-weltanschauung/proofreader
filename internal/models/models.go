@@ -982,9 +982,14 @@ type MarginNote struct {
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 
-	// Только в списке «Мои заметки».
+	// Сведения о работе и контексте приходят в каждом ответе (список тома,
+	// «Мои заметки», создание и правка), читает их список «Мои заметки».
 	WorkTitle string `json:"work_title,omitempty"`
 	WorkSlug  string `json:"work_slug,omitempty"`
+	// PageOffset/NumberingStyle — колонцифра работы: список печатает
+	// печатный номер полосы, а не внутренний page_number.
+	PageOffset     int    `json:"page_offset"`
+	NumberingStyle string `json:"numbering_style"`
 	// ContextChapter — самая узкая глава, накрывающая start_page (у цитаты).
 	ContextChapter string `json:"context_chapter,omitempty"`
 }

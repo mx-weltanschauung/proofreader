@@ -112,6 +112,7 @@ func marginRig(claims *auth.Claims) (*fakeMarginNotes, http.Handler) {
 		fakeMarginChapters{byID: map[int64]*models.Chapter{
 			10: {ID: 10, WorkID: 7, Title: "Глава"},
 			11: {ID: 11, WorkID: 8, Title: "Чужая"},
+			12: {ID: 12, WorkID: 7, Title: ""},
 		}})
 	r := mux.NewRouter()
 	r.HandleFunc("/api/works/{workId}/margin-notes", withClaims(claims, h.Create)).Methods("POST")
@@ -156,6 +157,45 @@ func TestMarginNoteCreateChapterTakesTitleFromServer(t *testing.T) {
 	rec := marginDo(h, "POST", "/api/works/7/margin-notes", `{"target":"chapter","chapter_id":10,"body":"x"}`)
 	if rec.Code != http.StatusCreated || notes.created[0].ChapterTitle != "Глава" || *notes.created[0].ChapterID != 10 {
 		t.Fatalf("код %d, вход %+v", rec.Code, notes.created)
+	}
+}
+
+// Заглавие главы бывает пустым, а снимок обязан быть непустым (CHECK
+// margin_notes_chapter_shape) — без подстановки вставка падала бы 500.
+func TestMarginNoteCreateChapterWithoutTitle(t *testing.T) {
+	notes, h := marginRig(testReaderClaims)
+	rec := marginDo(h, "POST", "/api/works/7/margin-notes", `{"target":"chapter","chapter_id":12,"body":"x"}`)
+	if rec.Code != http.StatusCreated || len(notes.created) != 1 {
+		t.Fatalf("код %d: %s", rec.Code, rec.Body)
+	}
+	if got := notes.created[0].ChapterTitle; got != "Глава без заглавия" {
+		t.Fatalf("снимок заглавия: %q", got)
+	}
+}
+
+// Тело сверх потолка отвергается до хранилища: лишнее поле JSON в сотни
+// килобайт иначе читалось бы целиком и проходило в запись.
+func TestMarginNoteOversizeBodyRejected(t *testing.T) {
+	junk := strings.Repeat("ж", 100<<10)
+	notes, h := marginRig(testReaderClaims)
+	rec := marginDo(h, "POST", "/api/works/7/margin-notes", `{"target":"work","body":"x","junk":"`+junk+`"}`)
+	if rec.Code != http.StatusRequestEntityTooLarge || len(notes.created) != 0 {
+		t.Fatalf("POST: код %d, записано %d", rec.Code, len(notes.created))
+	}
+	rec = marginDo(h, "PUT", "/api/margin-notes/9", `{"body":"новая","junk":"`+junk+`"}`)
+	if rec.Code != http.StatusRequestEntityTooLarge || notes.notes[9].Body != "моя" {
+		t.Fatalf("PUT: код %d, текст %q", rec.Code, notes.notes[9].Body)
+	}
+
+	// Самая длинная законная заметка в четырёхбайтовых знаках проходит.
+	full := func(n int) string { return strings.Repeat("😀", n) }
+	body, _ := json.Marshal(map[string]any{
+		"target": "quote", "start_page": 24, "end_page": 24,
+		"quote_key": full(models.MarginNoteQuoteMaxRunes), "quote_tail": full(models.MarginNoteQuoteMaxRunes),
+		"quote_text": full(models.MarginNoteQuoteMaxRunes), "body": full(models.MarginNoteBodyMaxRunes),
+	})
+	if rec := marginDo(h, "POST", "/api/works/7/margin-notes", string(body)); rec.Code != http.StatusCreated {
+		t.Fatalf("законная заметка в %d байт: код %d: %s", len(body), rec.Code, rec.Body)
 	}
 }
 

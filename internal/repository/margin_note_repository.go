@@ -45,6 +45,7 @@ const marginNoteSelect = `
 	       mn.created_at, mn.updated_at,
 	       works.title, works.role, works.precedes_volume,
 	       works.slug_edition, works.slug_volume, works.slug_part,
+	       works.page_offset, works.numbering_style,
 	       COALESCE(cc.title, '')
 	FROM margin_notes mn
 	JOIN ` + worksWithSlug + ` ON works.id = mn.work_id
@@ -58,11 +59,26 @@ const marginNoteSelect = `
 	) cc ON true`
 
 // marginNoteOpen отсекает закрытое: работу, главу и обе полосы заметки.
+// Только NOT EXISTS с равенством по id, не NOT IN (SELECT id FROM …): NOT IN
+// строит представление целиком — closed_pages тогда проходит всю таблицу
+// pages на каждый запрос списка (замер на 200 тыс. полос — 2 с против 2 мс),
+// а NOT EXISTS проталкивает id в представление и берёт полосу по ключу.
+// Пустой id (главу или полосу снесли) даёт NOT EXISTS истину — заметка
+// проходит, как и должна.
+//
+// Полоса снесена (id обнулён), а под тем же номером в том же томе лежит
+// новая (перезаливка) — тогда судит она: цитата, взятая с полосы, которая
+// теперь закрыта, наружу не идёт. Без этого условия заметка с потерянной
+// полосой проходила бы проверку полос вовсе не проверенной.
 const marginNoteOpen = `
-	AND mn.work_id NOT IN (SELECT id FROM closed_works)
-	AND (mn.chapter_id IS NULL OR mn.chapter_id NOT IN (SELECT id FROM closed_chapters))
-	AND (mn.start_page_id IS NULL OR mn.start_page_id NOT IN (SELECT id FROM closed_pages))
-	AND (mn.end_page_id IS NULL OR mn.end_page_id NOT IN (SELECT id FROM closed_pages))`
+	AND NOT EXISTS (SELECT 1 FROM closed_works c WHERE c.id = mn.work_id)
+	AND NOT EXISTS (SELECT 1 FROM closed_chapters c WHERE c.id = mn.chapter_id)
+	AND NOT EXISTS (SELECT 1 FROM closed_pages c WHERE c.id = mn.start_page_id)
+	AND NOT EXISTS (SELECT 1 FROM closed_pages c WHERE c.id = mn.end_page_id)
+	AND (mn.start_page_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM closed_pages c
+		WHERE c.work_id = mn.work_id AND c.page_number = mn.start_page_number))
+	AND (mn.end_page_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM closed_pages c
+		WHERE c.work_id = mn.work_id AND c.page_number = mn.end_page_number))`
 
 func scanMarginNote(row rowScanner) (*models.MarginNote, error) {
 	var n models.MarginNote
@@ -77,6 +93,7 @@ func scanMarginNote(row rowScanner) (*models.MarginNote, error) {
 		&n.SnapshotStart, &n.QuoteKey, &n.QuoteTail, &n.QuoteText, &n.Body,
 		&n.CreatedAt, &n.UpdatedAt,
 		&n.WorkTitle, &role, &precedes, &slugEdition, &slugVolume, &slugPart,
+		&n.PageOffset, &n.NumberingStyle,
 		&n.ContextChapter,
 	); err != nil {
 		return nil, err

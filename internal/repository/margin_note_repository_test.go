@@ -216,6 +216,51 @@ func TestMarginNoteHidesClosed(t *testing.T) {
 	}
 }
 
+// Полоса цитаты снесена перезаливкой, а под тем же номером легла новая — и
+// попала в закрытую главу. id полосы у заметки обнулён, поэтому проверка
+// полос по id молчит; судит номер полосы в томе.
+func TestMarginNoteHidesClosedByPageNumberAfterReingest(t *testing.T) {
+	ctx, f, reader := marginSetup(t)
+	vol := newVolume(t, f.works, "заметки — перезаливка в закрытое")
+	pg := f.addPages(t, vol.ID, 3)
+	n, err := f.repo.Create(ctx, quoteInput(reader.ID, vol.ID, pg[1], "на полосе 2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.pages.Delete(ctx, pg[1].ID); err != nil {
+		t.Fatal(err)
+	}
+	again := &models.Page{WorkID: vol.ID, PageNumber: 2, ContentMarkdown: "новый текст", Status: models.PageStatusNotProofread}
+	if err := f.pages.Create(ctx, again); err != nil {
+		t.Fatal(err)
+	}
+	shut := f.addChapter(t, vol.ID, nil, "Закрытая", 1, 2, 3)
+	if _, err := f.closed.SetChapterClosed(ctx, shut.ID, true, models.ClosureActor{Name: "тест"}, "проба"); err != nil {
+		t.Fatal(err)
+	}
+
+	if list, _ := f.repo.ListByWork(ctx, reader.ID, vol.ID, false); len(list) != 0 {
+		t.Fatalf("заметка на закрытом номере полосы видна: %+v", list[0])
+	}
+	if _, total, _ := f.repo.ListByOwner(ctx, reader.ID, nil, 10, 0, false); total != 0 {
+		t.Fatalf("ListByOwner: total=%d", total)
+	}
+	if _, err := f.repo.UpdateBody(ctx, reader.ID, n.ID, "x", false); err == nil {
+		t.Fatal("правка закрытой заметки прошла")
+	}
+	if list, _ := f.repo.ListByWork(ctx, reader.ID, vol.ID, true); len(list) != 1 || !list[0].PageMissing {
+		t.Fatalf("сотрудник: %+v", list)
+	}
+
+	// Открыли главу — заметка вернулась, полоса по-прежнему «потеряна».
+	if _, err := f.closed.SetChapterClosed(ctx, shut.ID, false, models.ClosureActor{Name: "тест"}, "проба"); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := f.repo.ListByWork(ctx, reader.ID, vol.ID, false); len(list) != 1 {
+		t.Fatalf("после открытия: %d", len(list))
+	}
+}
+
 func TestMarginNoteSurvivesPageAndChapterDelete(t *testing.T) {
 	ctx, f, reader := marginSetup(t)
 	vol := newVolume(t, f.works, "заметки — снос")
@@ -295,6 +340,10 @@ func TestMarginNoteLimit(t *testing.T) {
 func TestMarginNoteListByOwnerFields(t *testing.T) {
 	ctx, f, reader := marginSetup(t)
 	vol := newVolume(t, f.works, "Заметки поля")
+	vol.PageOffset = 4
+	if err := f.works.Update(ctx, vol); err != nil {
+		t.Fatal(err)
+	}
 	pg := f.addPages(t, vol.ID, 10)
 	wide := f.addChapter(t, vol.ID, nil, "Широкая", 1, 1, 10)
 	f.addChapter(t, vol.ID, &wide.ID, "Узкая", 1, 4, 6)
@@ -319,6 +368,9 @@ func TestMarginNoteListByOwnerFields(t *testing.T) {
 	}
 	if all[1].WorkTitle != "Заметки поля" || all[1].WorkSlug != "zametki-polya" || all[1].ContextChapter != "Узкая" {
 		t.Fatalf("вторая: %+v", all[1])
+	}
+	if all[1].PageOffset != 4 || all[1].NumberingStyle != models.NumberingArabic {
+		t.Fatalf("колонцифра работы: offset=%d style=%q", all[1].PageOffset, all[1].NumberingStyle)
 	}
 
 	one, total, err := f.repo.ListByOwner(ctx, reader.ID, &vol2.ID, 10, 0, false)
