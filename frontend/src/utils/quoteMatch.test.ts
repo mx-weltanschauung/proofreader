@@ -277,7 +277,8 @@ describe('markQuotes', () => {
   it('200 заметок на главе в 300 полос укладываются в секунду', () => {
     const pages = Array.from(
       { length: 300 },
-      (_, i) => `<p data-page="${i + 1}">слово${i + 1} текст полосы номер${i + 1}</p>`,
+      (_, i) =>
+        `<p data-page="${i + 1}">слово${i + 1} текст полосы номер${i + 1}${' обычный текст полосы'.repeat(40)}</p>`,
     ).join('');
     const el = root(pages);
     const reqs = Array.from({ length: 200 }, (_, i) => ({

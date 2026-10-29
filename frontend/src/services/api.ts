@@ -777,8 +777,7 @@ export const suggestionsApi = {
   purgeRejected: () => api.delete<{ deleted: number }>('/suggestions/rejected'),
 };
 
-// Журнал закрытий: последняя запись по записи (сотрудник) и весь журнал
-// (администратор).
+// Заметки читателя на полях: к тому, главе или цитате.
 export const marginNotesApi = {
   ofWork: (workId: number) => api.get<MarginNote[]>(`/works/${workId}/margin-notes`),
   create: (workId: number, data: CreateMarginNote) =>
@@ -786,9 +785,11 @@ export const marginNotesApi = {
   mine: (params: { work_id?: number; limit?: number; offset?: number }) =>
     api.get<{ items: MarginNote[]; total: number }>('/margin-notes', { params }),
   update: (id: number, body: string) => api.put<MarginNote>(`/margin-notes/${id}`, { body }),
-  remove: (id: number) => api.delete(`/margin-notes/${id}`),
+  remove: (id: number) => api.delete<void>(`/margin-notes/${id}`),
 };
 
+// Журнал закрытий: последняя запись по записи (сотрудник) и весь журнал
+// (администратор).
 export const closuresApi = {
   latest: (kind: ClosureKind, id: number) =>
     api.get<ClosureLatest>('/closures/latest', { params: { kind, id } }),
