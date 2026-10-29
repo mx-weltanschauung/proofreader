@@ -144,8 +144,11 @@ func TestMarginNoteHidesClosed(t *testing.T) {
 
 	// 1. закрытая работа
 	closedVol := newVolume(t, f.works, "заметки — закрытый том")
-	pc := f.addPages(t, closedVol.ID, 1)
-	nWork, _ := f.repo.Create(ctx, quoteInput(reader.ID, closedVol.ID, pc[0], "на закрытом томе"))
+	// Заметка на сам том, без полосы и главы: скрыть её может только условие
+	// по closed_works (полосы закрытой работы лежат и в closed_pages, так что
+	// цитата прошла бы проверку и без него).
+	nWork, _ := f.repo.Create(ctx, models.MarginNoteInput{OwnerID: reader.ID, WorkID: closedVol.ID,
+		Target: models.MarginTargetWork, Body: "на закрытом томе"})
 
 	// 2. открытый том: закрытая глава (с подглавой) и открытая глава
 	vol := newVolume(t, f.works, "заметки — открытый том")
