@@ -361,8 +361,8 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
       >
         {!p.found && (
           <>
-            <p className="margin-note-missing">Место в тексте не найдено</p>
-            {note.quote_text && <p className="margin-note-snapshot">«{note.quote_text}»</p>}
+            <div className="margin-note-missing">Место в тексте не найдено</div>
+            {note.quote_text && <div className="margin-note-snapshot">«{note.quote_text}»</div>}
           </>
         )}
         {open ? (

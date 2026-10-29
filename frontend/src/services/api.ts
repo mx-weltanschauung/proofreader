@@ -87,6 +87,20 @@ import type {
 // In production or if VITE_API_BASE_URL is set, use full URL
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /**
+     * Ответ 401 на этот запрос не уводит со страницы на дверь входа.
+     *
+     * Перехватчик ниже по умолчанию переписывает window.location — и вместе
+     * со страницей пропадает всё, что читатель успел набрать. Запросу,
+     * который несёт ввод читателя (запись заметки на полях), вызывающий сам
+     * показывает «войдите» рядом с полем, а текст остаётся в поле.
+     */
+    keepPageOn401?: boolean;
+  }
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL ? `${API_BASE_URL}/api` : '/api',
 });
@@ -131,6 +145,9 @@ api.interceptors.response.use(
       // route guard still sees isAuthenticated=true and bounces back to /works,
       // causing an infinite 401 redirect loop once the token expires.
       localStorage.removeItem('auth-storage');
+      // Токен снят и здесь (он истёк — слать его дальше незачем), а уход со
+      // страницы — нет: см. keepPageOn401.
+      if (error.config?.keepPageOn401) return Promise.reject(error);
       const doorPath = isReader ? '/join' : '/login';
       if (window.location.pathname !== doorPath) {
         window.location.href = isReader
@@ -777,15 +794,23 @@ export const suggestionsApi = {
   purgeRejected: () => api.delete<{ deleted: number }>('/suggestions/rejected'),
 };
 
+// Запросы заметок на полях не уводят со страницы на 401 (keepPageOn401):
+// запись несёт текст читателя — поле с набранным остаётся, «войдите»
+// показывает сам редактор; чтение списка идёт попутно с чтением главы, и
+// истёкшая сессия не должна выбрасывать читателя из текста — поля просто
+// пусты.
+const KEEP_PAGE = { keepPageOn401: true } as const;
+
 // Заметки читателя на полях: к тому, главе или цитате.
 export const marginNotesApi = {
-  ofWork: (workId: number) => api.get<MarginNote[]>(`/works/${workId}/margin-notes`),
+  ofWork: (workId: number) => api.get<MarginNote[]>(`/works/${workId}/margin-notes`, KEEP_PAGE),
   create: (workId: number, data: CreateMarginNote) =>
-    api.post<MarginNote>(`/works/${workId}/margin-notes`, data),
+    api.post<MarginNote>(`/works/${workId}/margin-notes`, data, KEEP_PAGE),
   mine: (params: { work_id?: number; limit?: number; offset?: number }) =>
     api.get<{ items: MarginNote[]; total: number }>('/margin-notes', { params }),
-  update: (id: number, body: string) => api.put<MarginNote>(`/margin-notes/${id}`, { body }),
-  remove: (id: number) => api.delete<void>(`/margin-notes/${id}`),
+  update: (id: number, body: string) =>
+    api.put<MarginNote>(`/margin-notes/${id}`, { body }, KEEP_PAGE),
+  remove: (id: number) => api.delete<void>(`/margin-notes/${id}`, KEEP_PAGE),
 };
 
 // Журнал закрытий: последняя запись по записи (сотрудник) и весь журнал

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import type { AxiosResponse } from 'axios';
+import { AxiosError, type AxiosResponse } from 'axios';
 import { NoteButton } from './NoteButton';
-import { marginNotesApi } from '../services/api';
+import api, { marginNotesApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { quoteKey, quoteTail } from '../utils/quoteKey';
 import type { MarginNote } from '../types';
@@ -206,5 +206,77 @@ describe('NoteButton', () => {
     );
     expect(screen.getByRole('textbox', { name: 'Текст заметки' })).toHaveValue('не потерять');
     expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  // Отказ 401 настоящего экземпляра api — не подменой marginNotesApi: общий
+  // перехватчик ответа на 401 переписывает window.location, и страница
+  // уходила вместе с набранным. Запись заметки от этого отказывается.
+  it('401 настоящего api не уводит со страницы, текст остаётся', async () => {
+    asReader();
+    const originalAdapter = api.defaults.adapter;
+    const originalLocation = window.location;
+    Object.defineProperty(window, 'location', {
+      value: { pathname: '/works/19/chapters/4', search: '', href: '' },
+      writable: true,
+      configurable: true,
+    });
+    api.defaults.adapter = async (config) => {
+      throw new AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, null, {
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config,
+        data: { message: 'нужен вход' },
+      });
+    };
+    try {
+      const root = surface();
+      const onCreated = renderButton(root);
+      selectAcrossSeam(root);
+      fireEvent.click(screen.getByRole('button', { name: 'Заметка' }));
+      fireEvent.change(await screen.findByRole('textbox', { name: 'Текст заметки' }), {
+        target: { value: 'не потерять' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+      expect(await screen.findByText(/Войдите, чтобы сохранить заметку/)).toBeInTheDocument();
+      expect(window.location.href).toBe('');
+      expect(screen.getByRole('textbox', { name: 'Текст заметки' })).toHaveValue('не потерять');
+      expect(onCreated).not.toHaveBeenCalled();
+    } finally {
+      api.defaults.adapter = originalAdapter;
+      Object.defineProperty(window, 'location', {
+        value: originalLocation,
+        writable: true,
+        configurable: true,
+      });
+    }
+  });
+
+  // В чтении подборки соседний элемент — другой том. Поле, открытое на
+  // одном, пишет заметку туда, откуда снята цитата, а не в том, что стоит
+  // на экране к моменту записи.
+  it('заметка уходит в том, с которого снята цитата', async () => {
+    asReader();
+    const create = vi.spyOn(marginNotesApi, 'create').mockImplementation(() => ok(NOTE));
+    const root = surface();
+    const ref = { current: root };
+    const ui = (workId: number) => (
+      <MemoryRouter>
+        <NoteButton contentRef={ref} workId={workId} onCreated={vi.fn()} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(ui(19));
+
+    selectAcrossSeam(root);
+    fireEvent.click(screen.getByRole('button', { name: 'Заметка' }));
+    fireEvent.change(await screen.findByRole('textbox', { name: 'Текст заметки' }), {
+      target: { value: 'мысль' },
+    });
+    rerender(ui(20));
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0][0]).toBe(19);
   });
 });

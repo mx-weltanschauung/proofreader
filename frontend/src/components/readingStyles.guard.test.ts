@@ -89,3 +89,38 @@ describe('кнопка «Цитировать»/«Ссылка» не завод
     expect(stripLineComments(source('CiteButton.tsx'))).not.toMatch(/toolbar-label/);
   });
 });
+
+/**
+ * Карточка заметки на полях на узком экране встаёт в текст полосы хост-узлом
+ * (MarginNotes.tsx) — под абзацем или в начале полосы — и разрывает соседство,
+ * на котором держатся исключения красной строки: «заголовок + абзац»,
+ * «цитата + абзац», «первый абзац полосы». Каждое такое исключение обязано
+ * иметь двойника через `.margin-note-host`, иначе абзац за карточкой получит
+ * отступ, которого без заметки у него нет.
+ */
+describe('исключения красной строки переживают карточку заметки', () => {
+  const css = stripCssComments(source('ReadingSurface.css'));
+  const prefix = '.chapter-pages-content .page-html-content';
+  const selectors = css
+    .split(/[{}]/)
+    .flatMap((chunk) => chunk.split(','))
+    .map((sel) => sel.trim().replace(/\s+/g, ' '));
+  const siblingRules = selectors.filter((sel) =>
+    new RegExp(`^${prefix.replace(/\./g, '\\.')} [a-z0-9]+ \\+ p$`).test(sel),
+  );
+
+  it('исключения через соседа найдены', () => {
+    expect(siblingRules.length).toBeGreaterThanOrEqual(7);
+  });
+
+  for (const sel of siblingRules) {
+    it(`${sel} — есть двойник через .margin-note-host`, () => {
+      expect(selectors).toContain(sel.replace(/ \+ p$/, ' + .margin-note-host + p'));
+    });
+  }
+
+  it('первый абзац полосы — есть двойник через .margin-note-host', () => {
+    expect(selectors).toContain(`${prefix} > p:first-child`);
+    expect(selectors).toContain(`${prefix} > .margin-note-host:first-child + p`);
+  });
+});

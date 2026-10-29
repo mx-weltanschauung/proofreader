@@ -66,6 +66,12 @@ function quoteOfSelection(root: HTMLElement): Quote | null {
 
 interface Opened {
   quote: Quote;
+  /**
+   * Том, с которого снята цитата. Берётся в момент нажатия, а не из пропа
+   * при записи: в чтении подборки соседний элемент — другой том, и поле,
+   * открытое на одном, записало бы полосы и ключ его цитаты в другой.
+   */
+  workId: number;
   /** Прямоугольник выделения в координатах документа. */
   top: number;
   left: number;
@@ -125,6 +131,7 @@ export const NoteButton: React.FC<NoteButtonProps> = ({
       typeof range?.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : null;
     setOpened({
       quote,
+      workId,
       top: (rect?.bottom ?? 0) + window.scrollY + POPOVER_GAP,
       left: (rect?.left ?? 0) + window.scrollX,
     });
@@ -154,10 +161,10 @@ export const NoteButton: React.FC<NoteButtonProps> = ({
             role="dialog"
             aria-label="Новая заметка"
           >
-            <p className="margin-note-popover-quote">{opened.quote.quote_text}</p>
+            <div className="margin-note-popover-quote">{opened.quote.quote_text}</div>
             <MarginNoteEditor
               save={(body) =>
-                marginNotesApi.create(workId, { ...opened.quote, body }).then((r) => r.data)
+                marginNotesApi.create(opened.workId, { ...opened.quote, body }).then((r) => r.data)
               }
               onSaved={(n) => {
                 setOpened(null);

@@ -209,6 +209,22 @@
   text-indent: 0;
 }
 
+/* Те же исключения через карточку заметки на полях. На узком экране она
+   встаёт хост-узлом под абзацем или в начале полосы (MarginNotes.tsx) и
+   разрывает соседство «заголовок + абзац» и «первый ребёнок»: без этих
+   правил настоящий абзац текста за ней получил бы красную строку, которой
+   у него без заметки нет, — колонка текста сдвинулась бы от одной заметки. */
+.chapter-pages-content .page-html-content h1 + .margin-note-host + p,
+.chapter-pages-content .page-html-content h2 + .margin-note-host + p,
+.chapter-pages-content .page-html-content h3 + .margin-note-host + p,
+.chapter-pages-content .page-html-content h4 + .margin-note-host + p,
+.chapter-pages-content .page-html-content h5 + .margin-note-host + p,
+.chapter-pages-content .page-html-content h6 + .margin-note-host + p,
+.chapter-pages-content .page-html-content blockquote + .margin-note-host + p,
+.chapter-pages-content .page-html-content > .margin-note-host:first-child + p {
+  text-indent: 0;
+}
+
 /* Structural elements keep their own alignment regardless of the body setting. */
 .chapter-pages-content h1,
 .chapter-pages-content h2,

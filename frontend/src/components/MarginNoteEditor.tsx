@@ -101,16 +101,16 @@ export const MarginNoteEditor: React.FC<MarginNoteEditorProps> = ({
         }}
       />
       {failure?.kind === 'auth' && (
-        <p className="margin-note-failure" role="alert">
+        <div className="margin-note-failure" role="alert">
           <Link to={joinPathFor(location.pathname, location.search)}>
             Войдите, чтобы сохранить заметку
           </Link>
-        </p>
+        </div>
       )}
       {failure?.kind === 'error' && (
-        <p className="margin-note-failure" role="alert">
+        <div className="margin-note-failure" role="alert">
           {failure.message}
-        </p>
+        </div>
       )}
       <div className="margin-note-actions">
         <button

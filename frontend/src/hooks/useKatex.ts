@@ -18,7 +18,15 @@ export function useKatex(containerRef: React.RefObject<HTMLElement>, deps: unkno
     const container = containerRef.current;
     if (!container) return;
     try {
-      renderMathInElement(container, { delimiters: DELIMITERS, throwOnError: false });
+      renderMathInElement(container, {
+        delimiters: DELIMITERS,
+        throwOnError: false,
+        // Карточка заметки на полях (MarginNotes.tsx) встаёт на узком экране
+        // в текст полосы, а текст заметки — простой: «$x$» читателя — это
+        // буквы, не формула. Auto-render сверяет класс каждого элемента, в
+        // который спускается, и поддерево хоста обходит целиком.
+        ignoredClasses: ['margin-note-host'],
+      });
     } catch (err) {
       // Битая формула не должна ронять страницу целиком.
       console.error('Math rendering error:', err);

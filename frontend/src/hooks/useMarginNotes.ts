@@ -12,6 +12,15 @@ export interface MarginNotesState {
 
 const EMPTY: MarginNote[] = [];
 
+interface State {
+  key: string | null;
+  notes: MarginNote[];
+  /** Ответ на список тома уже пришёл; до него правки копятся поверх пустого. */
+  loaded: boolean;
+  /** Снятые до ответа — ответ, отправленный раньше снятия, их ещё несёт. */
+  dropped: number[];
+}
+
 /**
  * Свои заметки тома, разложенные по полосам; пустой список и без запроса у
  * анонима.
@@ -27,9 +36,11 @@ const EMPTY: MarginNote[] = [];
 export function useMarginNotes(workId: number | null): MarginNotesState {
   const userId = useAuth((s) => s.user?.id ?? null);
   const key = workId !== null && userId !== null ? `${workId}:${userId}` : null;
-  const [state, setState] = useState<{ key: string | null; notes: MarginNote[] }>({
+  const [state, setState] = useState<State>({
     key: null,
     notes: EMPTY,
+    loaded: false,
+    dropped: [],
   });
 
   useEffect(() => {
@@ -38,7 +49,21 @@ export function useMarginNotes(workId: number | null): MarginNotesState {
     marginNotesApi
       .ofWork(workId)
       .then((r) => {
-        if (alive) setState({ key, notes: Array.isArray(r.data) ? r.data : EMPTY });
+        if (!alive) return;
+        const list = Array.isArray(r.data) ? r.data : EMPTY;
+        // Заметка, записанная, пока список ещё ехал, в ответе может не
+        // оказаться (запрос ушёл раньше записи): ответ ложится под неё, а не
+        // поверх. Снятая за это время — наоборот, из ответа выпадает.
+        setState((s) => {
+          if (s.key !== key || s.loaded) return { key, notes: list, loaded: true, dropped: [] };
+          const ids = new Set(list.map((n) => n.id));
+          const gone = new Set(s.dropped);
+          const kept = list
+            .filter((n) => !gone.has(n.id))
+            .map((n) => s.notes.find((x) => x.id === n.id) ?? n);
+          const added = s.notes.filter((n) => !ids.has(n.id));
+          return { key, notes: [...kept, ...added], loaded: true, dropped: [] };
+        });
       })
       // Поля без заметок — не поломка чтения: текст главы читается и так, а
       // сообщение об ошибке посреди текста мешало бы больше пустых полей.
@@ -52,21 +77,42 @@ export function useMarginNotes(workId: number | null): MarginNotesState {
 
   // Правки идут через функцию состояния и сверяют ключ: ответ на запись,
   // пришедший после смены тома, не должен лечь в список другого тома.
+  // До ответа на список (`s.key !== key`) правки начинают состояние этого
+  // ключа заново, с loaded: false, — ответ потом сольётся с ними.
   const add = useCallback(
     (n: MarginNote) =>
-      setState((s) => (s.key === key ? { key, notes: [...s.notes, n] } : { key, notes: [n] })),
+      setState((s) =>
+        s.key === key
+          ? { ...s, notes: [...s.notes, n] }
+          : { key, notes: [n], loaded: false, dropped: [] },
+      ),
     [key],
   );
   const replace = useCallback(
     (n: MarginNote) =>
       setState((s) =>
-        s.key === key ? { key, notes: s.notes.map((x) => (x.id === n.id ? n : x)) } : s,
+        s.key === key
+          ? {
+              ...s,
+              notes: s.notes.some((x) => x.id === n.id)
+                ? s.notes.map((x) => (x.id === n.id ? n : x))
+                : s.notes,
+            }
+          : s,
       ),
     [key],
   );
   const drop = useCallback(
     (id: number) =>
-      setState((s) => (s.key === key ? { key, notes: s.notes.filter((x) => x.id !== id) } : s)),
+      setState((s) =>
+        s.key === key
+          ? {
+              ...s,
+              notes: s.notes.filter((x) => x.id !== id),
+              dropped: s.loaded ? s.dropped : [...s.dropped, id],
+            }
+          : { key, notes: EMPTY, loaded: false, dropped: [id] },
+      ),
     [key],
   );
 

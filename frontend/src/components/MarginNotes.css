@@ -51,6 +51,12 @@ mark.margin-hit:hover {
   margin: 0 0 var(--reading-para-gap);
 }
 
+/* Последним ребёнком хост встаёт в конце пункта списка или рамки маргиналий
+   (.ln-box > :last-child снимает нижнее поле): своё поле он тоже снимает. */
+.margin-note-host:last-child {
+  margin-bottom: 0;
+}
+
 /* Карточка. Набросок «A»: мягкая жёлтая плашка с полосой слева. Шрифт —
    интерфейсный, а не читальный: заметка — голос читателя, не текст книги.
    Под абзацем карточка наследовала бы настройки колонки (выключку по
@@ -151,7 +157,8 @@ mark.margin-hit:hover {
   border-radius: 4px;
 }
 
-.margin-note-failure a {
+.margin-note-card .margin-note-failure a,
+.margin-note-popover .margin-note-failure a {
   color: inherit;
   text-decoration: underline;
 }
