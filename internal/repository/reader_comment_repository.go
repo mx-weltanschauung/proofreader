@@ -30,11 +30,26 @@ var commentSelect = strings.Replace(strings.Replace(marginNoteSelect, "mn.owner_
  mn.published_revision, mn.reject_reason, mn.edited_at
  FROM reader_comments mn`, 1)
 
-// Цитата может пересекать закрытую полосу в середине, а не только концами.
-const commentOpen = marginNoteOpen + ` AND NOT EXISTS (
- SELECT 1 FROM closed_pages cp WHERE cp.work_id=mn.work_id
- AND cp.page_number BETWEEN COALESCE((SELECT page_number FROM pages WHERE id=mn.start_page_id),mn.start_page_number)
- AND COALESCE((SELECT page_number FROM pages WHERE id=mn.end_page_id),mn.end_page_number))`
+// Проверяем только главы цели и их предков. Разворачивание closed_pages
+// несколько раз строило рекурсивное дерево всего корпуса: дорогая оценка
+// плана включала JIT и тратила секунды на компиляцию одной строки.
+// Пересечение диапазонов учитывает и середину цитаты; подъём к предкам —
+// наследуемое закрытие. Снесённые полосы проверяются по снимкам номеров.
+const commentOpen = `
+ AND NOT EXISTS (SELECT 1 FROM closed_works w WHERE w.id=mn.work_id)
+ AND NOT EXISTS (
+  WITH RECURSIVE ancestors AS (
+   SELECT c.id,c.parent_id,c.closed FROM chapters c
+   WHERE c.work_id=mn.work_id AND (
+    c.id=mn.chapter_id OR (
+     c.start_page <= COALESCE((SELECT page_number FROM pages WHERE id=mn.end_page_id),mn.end_page_number)
+     AND c.end_page >= COALESCE((SELECT page_number FROM pages WHERE id=mn.start_page_id),mn.start_page_number)
+    )
+   )
+   UNION
+   SELECT p.id,p.parent_id,p.closed FROM chapters p JOIN ancestors a ON p.id=a.parent_id
+  ) SELECT 1 FROM ancestors WHERE closed
+ )`
 
 type commentScanner struct {
 	row   rowScanner

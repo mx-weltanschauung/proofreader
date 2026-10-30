@@ -3,8 +3,15 @@ import { render, screen, act, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
-import type { AudioQueueItem, Chapter, User, Work } from '../types';
-import { audioApi, chaptersApi, worksApi, cacheApi, closuresApi } from '../services/api';
+import type { AudioQueueItem, Chapter, User, Work, ReaderComment } from '../types';
+import {
+  audioApi,
+  chaptersApi,
+  worksApi,
+  cacheApi,
+  closuresApi,
+  readerCommentsApi,
+} from '../services/api';
 import { findChapterById } from '../utils/chapterTree';
 import { shareFrom, stubShare, unstubShare } from '../test/shareStub';
 import { RECENT_KEY, readRecent, storageKey } from '../hooks/useReadingProgress';
@@ -82,6 +89,57 @@ function renderChapter() {
 }
 
 describe('ChapterView page markers', () => {
+  it('загружает комментарии один раз для блока главы и полей', async () => {
+    const common = {
+      work_id: 3,
+      chapter_title: '',
+      quote_tail: '',
+      quote_text: '',
+      page_missing: false,
+      created_at: '2026-10-31T00:00:00Z',
+      updated_at: '2026-10-31T00:00:00Z',
+      author_nickname: 'читатель',
+      revision: 1,
+      can_edit: false,
+      can_manage: false,
+    };
+    const comments: ReaderComment[] = [
+      {
+        ...common,
+        id: 1,
+        target: 'quote',
+        chapter_id: null,
+        start_page: 245,
+        end_page: 245,
+        snapshot_start_page: 245,
+        quote_key: 'Так',
+        quote_tail: 'он.',
+        quote_text: 'Так писал он.',
+        body: 'Мысль на полях',
+      },
+      {
+        ...common,
+        id: 2,
+        target: 'chapter',
+        chapter_id: 127,
+        start_page: null,
+        end_page: null,
+        snapshot_start_page: null,
+        quote_key: '',
+        body: 'Мысль к главе',
+      },
+    ];
+    const request = vi
+      .spyOn(readerCommentsApi, 'ofWork')
+      .mockResolvedValue({ data: comments } as never);
+    renderChapter();
+    await screen.findByRole('link', { name: 'Страница 245' });
+    await waitFor(() => expect(request).toHaveBeenCalled());
+    expect(await screen.findByText('Мысль на полях')).toBeInTheDocument();
+    await userEvent.click(screen.getByText(/Комментарии к главе/));
+    expect(screen.getByText('Мысль к главе')).toBeInTheDocument();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CHAPTER));
