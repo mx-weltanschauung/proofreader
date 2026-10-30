@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import { useAuth } from '../hooks/useAuth';
-import { suggestionsApi, feedbackApi } from '../services/api';
+import { readerCommentsApi, suggestionsApi, feedbackApi } from '../services/api';
 import { Header } from './Header';
 import { resetSiteForTests } from '../services/site';
 // Header рендерит ReadingSettings, которому нужен провайдер настроек чтения —
@@ -18,6 +18,7 @@ vi.mock('../services/api', () => ({
   feedbackApi: {
     unreadCount: vi.fn(),
   },
+  readerCommentsApi: { pendingCount: vi.fn().mockResolvedValue({ data: { count: 0 } }) },
   suggestionsApi: {
     queue: vi.fn(),
   },
@@ -95,6 +96,7 @@ describe('подпись под именем', () => {
 
 describe('Header', () => {
   beforeEach(() => {
+    vi.mocked(readerCommentsApi.pendingCount).mockResolvedValue({ data: { count: 0 } } as never);
     useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
     // Значок очереди спрашивает suggestionsApi.queue у любого редактора или
     // администратора — без заглушки тесты били бы реальным axios-запросом.
@@ -364,8 +366,10 @@ describe('Header', () => {
       ).toEqual([
         '/suggestions/queue',
         '/documents/review',
+        '/reader-comments/review',
         '/admin/audio',
         '/mine/notes',
+        '/mine/comments',
         '/admin/users',
         '/admin/readers',
         '/admin/feedback',
@@ -384,7 +388,14 @@ describe('Header', () => {
         within(staff)
           .getAllByRole('link')
           .map((a) => a.getAttribute('href')),
-      ).toEqual(['/suggestions/queue', '/documents/review', '/admin/audio', '/mine/notes']);
+      ).toEqual([
+        '/suggestions/queue',
+        '/documents/review',
+        '/reader-comments/review',
+        '/admin/audio',
+        '/mine/notes',
+        '/mine/comments',
+      ]);
       expect(within(staff).queryByText('Управление')).toBeNull();
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
     });

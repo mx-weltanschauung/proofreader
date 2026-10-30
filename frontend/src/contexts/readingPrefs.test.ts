@@ -44,6 +44,7 @@ describe('sanitizePrefs', () => {
       paragraph: 'spaced',
       align: 'justify',
       pageNumbers: false,
+      readerComments: false,
     };
     expect(sanitizePrefs(all)).toEqual(all);
   });

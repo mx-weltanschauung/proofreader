@@ -160,7 +160,15 @@ describe('WorkRead', () => {
     await waitFor(() => expect(screen.getByText('Текст страницы 43')).toBeInTheDocument());
 
     vi.mocked(readingApi.window).mockResolvedValueOnce({ data: windowOf(48, 5, null) } as never);
-    FakeObserver.instances.forEach((o) => o.enter());
+    // Текст уже виден, а эффект наблюдателя может ещё не отработать.
+    // Отключённые экземпляры хранят старый loadMore: тот же случай, что
+    // в тесте сбоя догрузки ниже. Ждём актуального наблюдателя сентинеля.
+    const observer = await waitFor(() => {
+      const latest = [...FakeObserver.instances].reverse().find((o) => o.observed.some(isSentinel));
+      expect(latest).toBeDefined();
+      return latest!;
+    });
+    await act(async () => observer.enterOnly(isSentinel));
 
     await waitFor(() => expect(screen.getByText('Текст страницы 48')).toBeInTheDocument());
     // Прежнее окно осталось на месте.

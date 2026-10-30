@@ -32,6 +32,12 @@ const PageView = lazy(() => import('./pages/PageView').then((m) => ({ default: m
 const PageSuggest = lazy(() =>
   import('./pages/PageSuggest').then((m) => ({ default: m.PageSuggest })),
 );
+const MyComments = lazy(() =>
+  import('./pages/CommentPages').then((m) => ({ default: m.MyComments })),
+);
+const CommentReviewQueue = lazy(() =>
+  import('./pages/CommentPages').then((m) => ({ default: m.CommentReviewQueue })),
+);
 const MyNotes = lazy(() => import('./pages/MyNotes').then((m) => ({ default: m.MyNotes })));
 const MySuggestions = lazy(() =>
   import('./pages/MySuggestions').then((m) => ({ default: m.MySuggestions })),
@@ -232,6 +238,15 @@ function App() {
                     экране приглашение записаться вместо списка правок. */}
                 <Route path="/mine" element={<MySuggestions />} />
                 <Route path="/mine/notes" element={<MyNotes />} />
+                <Route path="/mine/comments" element={<MyComments />} />
+                <Route
+                  path="/reader-comments/review"
+                  element={
+                    <RequireRole roles={['editor', 'administrator']}>
+                      <CommentReviewQueue />
+                    </RequireRole>
+                  }
+                />
                 {/* Старый адрес — редирект, не удаление: мог остаться в закладках. */}
                 <Route path="/suggestions/mine" element={<Navigate to="/mine" replace />} />
                 <Route

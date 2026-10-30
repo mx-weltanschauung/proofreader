@@ -24,7 +24,7 @@ import { PagePager } from '../components/PagePager';
 import { ScanViewer } from '../components/ScanViewer';
 import { CiteButton } from '../components/CiteButton';
 import { QuoteNotice } from '../components/QuoteNotice';
-import { MarginNotes } from '../components/MarginNotes';
+import { CommentedMarginNotes } from '../components/ReaderComments';
 import { NoteButton } from '../components/NoteButton';
 import { useMarginNotes } from '../hooks/useMarginNotes';
 import { apiErrorMessage } from '../utils/apiError';
@@ -299,7 +299,8 @@ export const PageView: React.FC = () => {
             <QuoteNotice match={quoteMatch} editedAt={page.text_edited_at} />
             {/* Слой полей: карточки заметок этой полосы; контейнер ниже уже
                 несёт data-page и .page-html-content, которых слой ищет. */}
-            <MarginNotes
+            <CommentedMarginNotes
+              workId={work.id}
               contentRef={contentRef}
               notes={notes.notes}
               pageNumbers={[page.page_number]}

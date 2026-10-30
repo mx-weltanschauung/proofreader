@@ -46,6 +46,21 @@ const (
 // router.go (public/authRequired/staff/reader/admin), а не по догадке о
 // смысле маршрута.
 var routeAccess = map[string]access{
+	"GET /api/works/{workId}/reader-comments":    accessPublic,
+	"POST /api/works/{workId}/reader-comments":   accessReader,
+	"GET /api/reader-comments/mine":              accessReader,
+	"POST /api/reader-comments/from-note":        accessReader,
+	"PUT /api/reader-comments/{id}":              accessReader,
+	"DELETE /api/reader-comments/{id}":           accessReader,
+	"GET /api/reader-comments/{id}/history":      accessReader,
+	"POST /api/reader-comments/{id}/to-note":     accessReader,
+	"GET /api/reader-comments/review":            accessStaff,
+	"GET /api/reader-comments/review/count":      accessStaff,
+	"GET /api/reader-comments/banned":            accessAdmin,
+	"POST /api/reader-comments/{id}/approve":     accessStaff,
+	"POST /api/reader-comments/{id}/reject":      accessStaff,
+	"POST /api/reader-comments/{id}/ban":         accessStaff,
+	"POST /api/reader-comments/users/{id}/unban": accessAdmin,
 	// Вне /api: страницы для краулеров и служебные адреса читальни. Без
 	// единого middleware — см. router.go, начало Setup().
 	"GET /seo":          accessPublic,

@@ -51,7 +51,7 @@ func TestMarginNotesMigrationDownRefuses(t *testing.T) {
 	t.Cleanup(func() { m.Close() })
 
 	up := func() {
-		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		if err := m.Migrate(44); err != nil && err != migrate.ErrNoChange {
 			t.Fatalf("up: %v", err)
 		}
 	}

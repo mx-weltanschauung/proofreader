@@ -26,7 +26,7 @@ import { useReadingPrefs } from '../contexts/readingPrefsContext';
 import { pagePath } from '../utils/paths';
 import { CiteButton, type CitationContext } from './CiteButton';
 import { PageJump, type PageJumpProps } from './PageJump';
-import { MarginNotes } from './MarginNotes';
+import { CommentedMarginNotes } from './ReaderComments';
 import { NoteButton } from './NoteButton';
 import { useMarginNotes, type MarginNotesState } from '../hooks/useMarginNotes';
 
@@ -416,7 +416,8 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
 
         {/* Слой полей стоит вплотную перед колонкой: на широком окне карточки
             висят в нём на высоте своих цитат, на узком уходят под абзацы. */}
-        <MarginNotes
+        <CommentedMarginNotes
+          workId={work.id}
           contentRef={contentRef}
           notes={notes.notes}
           pageNumbers={pageNumbers}

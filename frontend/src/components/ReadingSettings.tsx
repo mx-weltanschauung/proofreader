@@ -273,6 +273,15 @@ export const ReadingSettings: React.FC = () => {
                   value={prefs.pageNumbers ? 'on' : 'off'}
                   onChange={(key) => setPref('pageNumbers', key === 'on')}
                 />
+                <Choice
+                  label="Комментарии читателей"
+                  options={[
+                    { key: 'on', label: 'Включить' },
+                    { key: 'off', label: 'Выключить' },
+                  ]}
+                  value={prefs.readerComments ? 'on' : 'off'}
+                  onChange={(key) => setPref('readerComments', key === 'on')}
+                />
               </div>
 
               <div className="rs-foot">

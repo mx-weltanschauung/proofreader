@@ -1340,6 +1340,27 @@ export interface MarginNote {
   numbering_style?: string;
 }
 
+export interface ReaderComment extends MarginNote {
+  author_nickname: string;
+  status?: 'на_рассмотрении' | 'одобрено' | 'отклонено';
+  revision: number;
+  published_body?: string;
+  published_revision?: number;
+  reject_reason?: string;
+  edited_at?: string;
+  can_edit: boolean;
+  can_manage: boolean;
+  author_id?: number;
+  rejections?: number;
+}
+export interface CommentRevision {
+  revision: number;
+  body: string;
+  status: string;
+  reason?: string;
+  created_at: string;
+}
+
 /** Тело `POST /works/{id}/margin-notes`. */
 export type CreateMarginNote =
   | {

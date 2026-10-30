@@ -56,6 +56,7 @@ type Router struct {
 	feedbackHandler       *FeedbackHandler
 	pageSuggestionHandler *PageSuggestionHandler
 	marginNoteHandler     *MarginNoteHandler
+	readerCommentHandler  *ReaderCommentHandler
 	searchHandler         *SearchHandler
 	seoHandler            *seo.Handler
 	cacheHandler          *CacheHandler
@@ -161,6 +162,11 @@ func NewRouter(
 // WithAudio: маршруты регистрируются всегда, чтобы их видел сторож ролей.
 func (rt *Router) WithMarginNotes(h *MarginNoteHandler) *Router {
 	rt.marginNoteHandler = h
+	return rt
+}
+
+func (rt *Router) WithReaderComments(h *ReaderCommentHandler) *Router {
+	rt.readerCommentHandler = h
 	return rt
 }
 
@@ -501,6 +507,20 @@ func (rt *Router) Setup() *mux.Router {
 	reader.HandleFunc("/margin-notes/{id}", rt.marginNoteHandler.Update).Methods("PUT")
 	reader.HandleFunc("/margin-notes/{id}", rt.marginNoteHandler.Delete).Methods("DELETE")
 
+	public.HandleFunc("/works/{workId}/reader-comments", rt.readerCommentHandler.ListByWork).Methods("GET")
+	reader.HandleFunc("/works/{workId}/reader-comments", rt.readerCommentHandler.Create).Methods("POST")
+	reader.HandleFunc("/reader-comments/mine", rt.readerCommentHandler.Mine).Methods("GET")
+	reader.HandleFunc("/reader-comments/{id}", rt.readerCommentHandler.Update).Methods("PUT")
+	reader.HandleFunc("/reader-comments/{id}", rt.readerCommentHandler.Delete).Methods("DELETE")
+	reader.HandleFunc("/reader-comments/{id}/history", rt.readerCommentHandler.History).Methods("GET")
+	reader.HandleFunc("/reader-comments/{id}/to-note", rt.readerCommentHandler.ToNote).Methods("POST")
+	staffEarly.HandleFunc("/reader-comments/review", rt.readerCommentHandler.Queue).Methods("GET")
+	staffEarly.HandleFunc("/reader-comments/review/count", rt.readerCommentHandler.PendingCount).Methods("GET")
+	staff.HandleFunc("/reader-comments/{id}/approve", rt.readerCommentHandler.Approve).Methods("POST")
+	staff.HandleFunc("/reader-comments/{id}/reject", rt.readerCommentHandler.Reject).Methods("POST")
+	staff.HandleFunc("/reader-comments/{id}/ban", rt.readerCommentHandler.Ban).Methods("POST")
+	reader.HandleFunc("/reader-comments/from-note", rt.readerCommentHandler.Create).Methods("POST")
+
 	// Очередь предложений разбирает редактор — это работа с текстом полосы,
 	// та же, что он делает через PUT /pages/{id}. Поэтому staff, а не admin.
 	//
@@ -720,6 +740,8 @@ func (rt *Router) Setup() *mux.Router {
 
 	// User management (Administrator only)
 	admin := api.PathPrefix("").Subrouter()
+	admin.HandleFunc("/reader-comments/users/{id}/unban", rt.readerCommentHandler.Unban).Methods("POST")
+	admin.HandleFunc("/reader-comments/banned", rt.readerCommentHandler.Banned).Methods("GET")
 	admin.Use(middleware.AuthMiddleware(rt.authService))
 	admin.Use(middleware.RequireRole(models.RoleAdministrator))
 	// Читатели глазами администратора — отдельный вид, а не снятие фильтра с

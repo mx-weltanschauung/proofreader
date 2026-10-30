@@ -3,6 +3,8 @@ import { loginPathFor, joinPathFor } from '../utils/returnUrl';
 import { EMPTY_SCOPE, type SearchScope } from '../utils/searchScope';
 import type {
   MarginNote,
+  ReaderComment,
+  CommentRevision,
   CreateMarginNote,
   ArticleCredit,
   CreditInput,
@@ -811,6 +813,39 @@ export const marginNotesApi = {
   update: (id: number, body: string) =>
     api.put<MarginNote>(`/margin-notes/${id}`, { body }, KEEP_PAGE),
   remove: (id: number) => api.delete<void>(`/margin-notes/${id}`, KEEP_PAGE),
+};
+
+export const readerCommentsApi = {
+  pendingCount: () => api.get<{ count: number }>('/reader-comments/review/count', KEEP_PAGE),
+  banned: () => api.get<{ id: number; nickname: string }[]>('/reader-comments/banned', KEEP_PAGE),
+  ofWork: (workId: number, showPublic: boolean, offset = 0) =>
+    api.get<ReaderComment[]>(`/works/${workId}/reader-comments`, {
+      ...KEEP_PAGE,
+      params: { public: showPublic, limit: 200, offset },
+    }),
+  create: (workId: number, data: CreateMarginNote | { note_id: number; body: string }) =>
+    api.post<ReaderComment>(
+      'note_id' in data ? '/reader-comments/from-note' : `/works/${workId}/reader-comments`,
+      data,
+      KEEP_PAGE,
+    ),
+  update: (id: number, body: string, revision: number) =>
+    api.put<ReaderComment>(`/reader-comments/${id}`, { body, revision }, KEEP_PAGE),
+  remove: (id: number) => api.delete(`/reader-comments/${id}`, KEEP_PAGE),
+  mine: (offset = 0) =>
+    api.get<ReaderComment[]>('/reader-comments/mine', { params: { limit: 50, offset } }),
+  queue: (offset = 0) =>
+    api.get<ReaderComment[]>('/reader-comments/review', { params: { limit: 50, offset } }),
+  history: (id: number) => api.get<CommentRevision[]>(`/reader-comments/${id}/history`, KEEP_PAGE),
+  review: (id: number, revision: number, approve: boolean, reason = '') =>
+    api.post(
+      `/reader-comments/${id}/${approve ? 'approve' : 'reject'}`,
+      { revision, reason },
+      KEEP_PAGE,
+    ),
+  ban: (id: number) => api.post(`/reader-comments/${id}/ban`, {}, KEEP_PAGE),
+  unban: (id: number) => api.post(`/reader-comments/users/${id}/unban`, {}, KEEP_PAGE),
+  toNote: (id: number) => api.post<MarginNote>(`/reader-comments/${id}/to-note`, {}, KEEP_PAGE),
 };
 
 // Журнал закрытий: последняя запись по записи (сотрудник) и весь журнал
