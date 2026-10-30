@@ -4,10 +4,12 @@ import { marginNotesApi } from '../services/api';
 import type { MarginNote } from '../types';
 import { MarginNoteEditor } from './MarginNoteEditor';
 import { TargetComments } from './ReaderComments';
+import type { ReaderCommentsState } from '../hooks/useReaderComments';
 import './MarginNotes.css';
 import './TargetNotes.css';
 
 export interface TargetNotesProps {
+  readerComments?: ReaderCommentsState;
   workId: number;
   /** Есть — заметки к этой главе; нет — к тому целиком. */
   chapterId?: number;
@@ -158,6 +160,7 @@ export const TargetNotes: React.FC<TargetNotesProps> = (props) => (
       key={`comments:${props.workId}:${props.chapterId ?? 'work'}`}
       workId={props.workId}
       chapterId={props.chapterId}
+      readerComments={props.readerComments}
     />
   </>
 );

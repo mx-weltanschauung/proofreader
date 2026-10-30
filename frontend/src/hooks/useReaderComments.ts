@@ -6,8 +6,13 @@ import { readerCommentsApi } from '../services/api';
 import type { ReaderComment } from '../types';
 
 const EMPTY: ReaderComment[] = [];
+export interface ReaderCommentsState {
+  comments: ReaderComment[];
+  replace(comment: ReaderComment): void;
+  drop(id: number): void;
+}
 /** Ключ включает сессию и настройку: старый ответ не раскрывает чужие тексты. */
-export function useReaderComments(workId: number | null) {
+export function useReaderComments(workId: number | null): ReaderCommentsState {
   const userId = useAuth((s) => s.user?.id ?? null);
   const context = useContext(ReadingPreferencesContext);
   const show = context?.prefs.readerComments ?? DEFAULT_PREFS.readerComments;

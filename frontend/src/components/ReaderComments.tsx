@@ -4,7 +4,7 @@ import { readerCommentsApi } from '../services/api';
 import { apiErrorMessage } from '../utils/apiError';
 import { MarginNoteEditor } from './MarginNoteEditor';
 import { MarginNotes, type MarginNotesProps } from './MarginNotes';
-import { useReaderComments } from '../hooks/useReaderComments';
+import { useReaderComments, type ReaderCommentsState } from '../hooks/useReaderComments';
 import { useAuth } from '../hooks/useAuth';
 import './ReaderComments.css';
 
@@ -154,8 +154,13 @@ export function ReaderCommentCard({
 }
 
 /** Единая раскладка исключает наложение независимых слоёв заметок и комментариев. */
-export function CommentedMarginNotes({ workId, ...props }: MarginNotesProps & { workId: number }) {
-  const state = useReaderComments(workId);
+export function CommentedMarginNotes({
+  workId,
+  readerComments,
+  ...props
+}: MarginNotesProps & { workId: number; readerComments?: ReaderCommentsState }) {
+  const own = useReaderComments(readerComments ? null : workId);
+  const state = readerComments ?? own;
   const combined = useMemo(
     () => [
       ...props.notes,
@@ -183,8 +188,15 @@ export function CommentedMarginNotes({ workId, ...props }: MarginNotesProps & { 
   );
 }
 
-function TargetCommentsInner({ workId, chapterId }: { workId: number; chapterId?: number }) {
-  const state = useReaderComments(workId);
+interface TargetCommentsProps {
+  workId: number;
+  chapterId?: number;
+  readerComments?: ReaderCommentsState;
+}
+
+function TargetCommentsInner({ workId, chapterId, readerComments }: TargetCommentsProps) {
+  const own = useReaderComments(readerComments ? null : workId);
+  const state = readerComments ?? own;
   const user = useAuth((s) => s.user);
   const [adding, setAdding] = useState(false);
   const items = state.comments.filter((c) =>
@@ -239,7 +251,7 @@ function TargetCommentsInner({ workId, chapterId }: { workId: number; chapterId?
   );
 }
 
-export function TargetComments(props: { workId: number; chapterId?: number }) {
+export function TargetComments(props: TargetCommentsProps) {
   const userId = useAuth((s) => s.user?.id ?? null);
   return <TargetCommentsInner key={`${userId}:${props.workId}:${props.chapterId}`} {...props} />;
 }

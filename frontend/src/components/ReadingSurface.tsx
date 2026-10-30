@@ -29,6 +29,7 @@ import { PageJump, type PageJumpProps } from './PageJump';
 import { CommentedMarginNotes } from './ReaderComments';
 import { NoteButton } from './NoteButton';
 import { useMarginNotes, type MarginNotesState } from '../hooks/useMarginNotes';
+import type { ReaderCommentsState } from '../hooks/useReaderComments';
 
 /** Адреса без цитаты: якоря нет, и useQuoteHighlight в DOM не ходит вовсе. */
 const EMPTY_QUOTE: QuoteSpan = { start: '' };
@@ -116,6 +117,8 @@ export interface ReadingSurfaceProps {
    * сама.
    */
   marginNotes?: MarginNotesState;
+  /** Общий с блоком комментариев к главе список: один запрос на экран. */
+  readerComments?: ReaderCommentsState;
 }
 
 /**
@@ -143,6 +146,7 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
   citation,
   pageJump,
   marginNotes,
+  readerComments,
 }) => {
   // Номера полос — настройка чтения, а не состояние экрана: своё состояние
   // забывалось при каждом переходе на соседнюю главу, и выключивший номера
@@ -418,6 +422,7 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
             висят в нём на высоте своих цитат, на узком уходят под абзацы. */}
         <CommentedMarginNotes
           workId={work.id}
+          readerComments={readerComments}
           contentRef={contentRef}
           notes={notes.notes}
           pageNumbers={pageNumbers}
