@@ -20,6 +20,15 @@ describe('resolveTheme', () => {
 });
 
 describe('sanitizePrefs', () => {
+  it('shows published comments by default, including preferences saved before the setting', () => {
+    expect(DEFAULT_PREFS.readerComments).toBe(true);
+    expect(sanitizePrefs({ theme: 'oled' }).readerComments).toBe(true);
+    expect(sanitizePrefs({ readerComments: 'нет' }).readerComments).toBe(true);
+  });
+
+  it('preserves an explicit choice to hide comments', () => {
+    expect(sanitizePrefs({ readerComments: false }).readerComments).toBe(false);
+  });
   it('returns defaults for junk input', () => {
     expect(sanitizePrefs(null)).toEqual(DEFAULT_PREFS);
     expect(sanitizePrefs('nonsense')).toEqual(DEFAULT_PREFS);

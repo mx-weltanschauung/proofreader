@@ -42,7 +42,7 @@ export const DEFAULT_PREFS: ReadingPrefs = {
   paragraph: 'indent',
   align: 'left',
   pageNumbers: true,
-  readerComments: false,
+  readerComments: true,
 };
 
 export const PREFS_KEY = 'reading-prefs';
@@ -101,7 +101,8 @@ export function sanitizePrefs(raw: unknown): ReadingPrefs {
     // умолчание обязано быть «показывать», а не то, во что превратится
     // undefined.
     pageNumbers: typeof o.pageNumbers === 'boolean' ? o.pageNumbers : DEFAULT_PREFS.pageNumbers,
-    readerComments: typeof o.readerComments === 'boolean' ? o.readerComments : false,
+    readerComments:
+      typeof o.readerComments === 'boolean' ? o.readerComments : DEFAULT_PREFS.readerComments,
   };
 }
 

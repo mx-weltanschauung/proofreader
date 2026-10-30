@@ -1,5 +1,6 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ReadingPreferencesContext } from '../contexts/readingPrefsContext';
+import { DEFAULT_PREFS } from '../contexts/readingPrefs';
 import { useAuth } from './useAuth';
 import { readerCommentsApi } from '../services/api';
 import type { ReaderComment } from '../types';
@@ -9,7 +10,7 @@ const EMPTY: ReaderComment[] = [];
 export function useReaderComments(workId: number | null) {
   const userId = useAuth((s) => s.user?.id ?? null);
   const context = useContext(ReadingPreferencesContext);
-  const show = context?.prefs.readerComments ?? false;
+  const show = context?.prefs.readerComments ?? DEFAULT_PREFS.readerComments;
   const key = workId !== null && (show || userId !== null) ? `${workId}:${userId}:${show}` : null;
   const [state, setState] = useState<{ key: string | null; items: ReaderComment[] }>({
     key: null,
