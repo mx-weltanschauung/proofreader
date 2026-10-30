@@ -8,15 +8,40 @@ import { ReadingPreferencesContext } from '../contexts/readingPrefsContext';
 import { DEFAULT_PREFS } from '../contexts/readingPrefs';
 import type { ReaderComment } from '../types';
 
+function HiddenComments({ children }: { children: React.ReactNode }) {
+  return (
+    <ReadingPreferencesContext.Provider
+      value={{
+        prefs: { ...DEFAULT_PREFS, readerComments: false },
+        setPref: vi.fn(),
+        reset: vi.fn(),
+      }}
+    >
+      {children}
+    </ReadingPreferencesContext.Provider>
+  );
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   useAuth.setState({ user: null, isAuthenticated: false });
 });
 describe('useReaderComments', () => {
-  it('не запрашивает чужие комментарии у анонима по умолчанию', () => {
+  it('запрашивает опубликованные комментарии у анонима по умолчанию', async () => {
+    useAuth.setState({ user: null });
+    const request = vi
+      .spyOn(readerCommentsApi, 'ofWork')
+      .mockResolvedValue({ data: [{ id: 1, body: 'Опубликованный комментарий' }] } as AxiosResponse<
+        ReaderComment[]
+      >);
+    const { result } = renderHook(() => useReaderComments(7));
+    await waitFor(() => expect(result.current.comments).toHaveLength(1));
+    expect(request).toHaveBeenCalledWith(7, true, 0);
+  });
+  it('не запрашивает комментарии у анонима, явно выключившего их показ', () => {
     useAuth.setState({ user: null });
     const request = vi.spyOn(readerCommentsApi, 'ofWork');
-    const { result } = renderHook(() => useReaderComments(7));
+    const { result } = renderHook(() => useReaderComments(7), { wrapper: HiddenComments });
     expect(result.current.comments).toEqual([]);
     expect(request).not.toHaveBeenCalled();
   });
@@ -27,7 +52,7 @@ describe('useReaderComments', () => {
       .mockResolvedValue({ data: [{ id: 1, body: 'личный черновик' }] } as AxiosResponse<
         ReaderComment[]
       >);
-    const { result } = renderHook(() => useReaderComments(7));
+    const { result } = renderHook(() => useReaderComments(7), { wrapper: HiddenComments });
     await waitFor(() => expect(result.current.comments).toHaveLength(1));
     expect(request).toHaveBeenCalledWith(7, false, 0);
     act(() => useAuth.setState({ user: null }));

@@ -26,6 +26,13 @@ const openPanel = async (user: ReturnType<typeof userEvent.setup>) => {
 };
 
 describe('ReadingSettings', () => {
+  it('shows published comments by default and lets the reader hide them', async () => {
+    const user = await setup();
+    await openPanel(user);
+    expect(screen.getByRole('radio', { name: 'Включить' })).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getByRole('radio', { name: 'Выключить' }));
+    expect(JSON.parse(localStorage.getItem(PREFS_KEY)!).readerComments).toBe(false);
+  });
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
