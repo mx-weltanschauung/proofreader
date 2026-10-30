@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ReadingSettings } from './ReadingSettings';
 import { FeatureHint } from './FeatureHint';
+import type { MarginNote } from '../types';
 import { CiteButton, type CitationContext } from './CiteButton';
+import { NoteButton } from './NoteButton';
 import { PageJump, type PageJumpProps } from './PageJump';
 import { ProgressTicks } from './ProgressTicks';
 // Маршруты грузятся лениво, и Vite режет CSS по тем же чанкам: стили,
@@ -66,6 +68,8 @@ export interface ReadingStreamBarProps {
    * панели главы (ReadingSurface). Без него панель печатает долю.
    */
   pageJump?: Omit<PageJumpProps, 'className'>;
+  /** Кнопка «Заметка» к выделенной цитате; без неё кнопки в панели нет. */
+  note?: { workId: number; onCreated: (n: MarginNote) => void };
 }
 
 /**
@@ -87,6 +91,7 @@ export const ReadingStreamBar: React.FC<ReadingStreamBarProps> = ({
   contentRef,
   visiblePage,
   pageJump,
+  note,
 }) => {
   const [hidden, setHidden] = useState(false);
   // Прошлая позиция живёт в ref, а не в состоянии: она нужна только для
@@ -184,6 +189,14 @@ export const ReadingStreamBar: React.FC<ReadingStreamBarProps> = ({
             visiblePage={visiblePage}
             className="reading-settings-toggle"
             {...citation}
+          />
+        )}
+        {note && (
+          <NoteButton
+            contentRef={contentRef}
+            workId={note.workId}
+            onCreated={note.onCreated}
+            className="reading-settings-toggle"
           />
         )}
         {/* Класс взят у соседней кнопки настроек намеренно: две кнопки стоят

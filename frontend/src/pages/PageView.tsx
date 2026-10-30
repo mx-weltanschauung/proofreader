@@ -24,6 +24,9 @@ import { PagePager } from '../components/PagePager';
 import { ScanViewer } from '../components/ScanViewer';
 import { CiteButton } from '../components/CiteButton';
 import { QuoteNotice } from '../components/QuoteNotice';
+import { MarginNotes } from '../components/MarginNotes';
+import { NoteButton } from '../components/NoteButton';
+import { useMarginNotes } from '../hooks/useMarginNotes';
 import { apiErrorMessage } from '../utils/apiError';
 import { printedFolio } from '../utils/folio';
 import { citationPlaceFromLevels } from '../utils/citationPlace';
@@ -136,6 +139,9 @@ export const PageView: React.FC = () => {
     [htmlContent],
   );
 
+  // Свои заметки тома: аноним их не запрашивает (хук сам пуст без читателя).
+  const notes = useMarginNotes(parsedWorkId);
+
   const { numbers } = useWorkPageMap(page?.work_id);
   const neighbours = pageNeighbours(numbers, page?.page_number ?? 0);
   // Пока открыт полноэкранный просмотр скана, стрелками возят увеличенную
@@ -218,6 +224,13 @@ export const PageView: React.FC = () => {
             visiblePage={page.page_number}
             className="btn btn-secondary btn-sm"
           />
+          {/* Заметка к выделенной цитате; видна только вошедшему. */}
+          <NoteButton
+            contentRef={contentRef}
+            workId={work.id}
+            onCreated={notes.add}
+            className="btn btn-secondary btn-sm"
+          />
           <Link to={`${pagePath(work, page.page_number)}/suggest`} className="suggest-link">
             Предложить исправление
           </Link>
@@ -284,6 +297,16 @@ export const PageView: React.FC = () => {
           <div className="content-section">
             <h2>Содержимое</h2>
             <QuoteNotice match={quoteMatch} editedAt={page.text_edited_at} />
+            {/* Слой полей: карточки заметок этой полосы; контейнер ниже уже
+                несёт data-page и .page-html-content, которых слой ищет. */}
+            <MarginNotes
+              contentRef={contentRef}
+              notes={notes.notes}
+              pageNumbers={[page.page_number]}
+              deps={[htmlContent]}
+              onChange={notes.replace}
+              onDelete={notes.drop}
+            />
             <div
               ref={contentRef}
               className="page-html-content"

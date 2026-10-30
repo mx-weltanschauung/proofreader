@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { AxiosResponse } from 'axios';
-import api, { audioApi, conceptsApi, editionsApi, readingApi, searchApi } from './api';
+import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+import api, {
+  marginNotesApi,
+  audioApi,
+  conceptsApi,
+  editionsApi,
+  readingApi,
+  searchApi,
+} from './api';
 import { EMPTY_SCOPE, type SearchScope } from '../utils/searchScope';
 
 /**
@@ -445,5 +452,87 @@ describe('audioApi', () => {
     ]);
     expect(patch.mock.calls).toEqual([['/audio/rec/9', { position: 2 }]]);
     expect(del.mock.calls.map((c) => c[0])).toEqual(['/audio/queue/7', '/audio/rec/9']);
+  });
+});
+
+/**
+ * Запись заметки на полях несёт текст читателя: 401 на ней не должен
+ * переписывать window.location — иначе страница уходит вместе с набранным.
+ * Проверяется настоящим экземпляром api (своим адаптером вместо сети), а не
+ * подменой marginNotesApi: дефект живёт ровно в перехватчике экземпляра.
+ */
+describe('заметки на полях: 401 не уводит со страницы', () => {
+  const originalLocation = window.location;
+  const originalAdapter = api.defaults.adapter;
+  let seen: InternalAxiosRequestConfig[] = [];
+
+  beforeEach(() => {
+    seen = [];
+    localStorage.clear();
+    localStorage.setItem('token', 't');
+    localStorage.setItem(
+      'auth-storage',
+      JSON.stringify({
+        state: { user: { id: 5, nickname: 'чтец', role: 'reader' }, token: 't' },
+        version: 0,
+      }),
+    );
+    Object.defineProperty(window, 'location', {
+      value: { pathname: '/works/6/chapters/2', search: '', href: '' },
+      writable: true,
+      configurable: true,
+    });
+    api.defaults.adapter = async (config) => {
+      seen.push(config);
+      throw new AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, null, {
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config,
+        data: { message: 'нужен вход' },
+      });
+    };
+  });
+
+  afterEach(() => {
+    api.defaults.adapter = originalAdapter;
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+      configurable: true,
+    });
+  });
+
+  const calls: [string, () => Promise<unknown>][] = [
+    [
+      'create',
+      () =>
+        marginNotesApi.create(6, {
+          target: 'quote',
+          start_page: 1,
+          end_page: 1,
+          quote_key: 'к',
+          quote_tail: '',
+          quote_text: 'к',
+          body: 'мысль',
+        }),
+    ],
+    ['update', () => marginNotesApi.update(3, 'мысль')],
+    ['remove', () => marginNotesApi.remove(3)],
+    ['ofWork', () => marginNotesApi.ofWork(6)],
+  ];
+
+  it.each(calls)('%s: отказ доходит до вызывающего, адрес не тронут', async (_name, call) => {
+    const err = await call().catch((e: unknown) => e);
+    expect((err as AxiosError).response?.status).toBe(401);
+    expect(seen).toHaveLength(1);
+    expect(window.location.href).toBe('');
+    // Истёкший токен снимается и здесь — слать его дальше незачем.
+    expect(localStorage.getItem('token')).toBeNull();
+  });
+
+  it('прочие запросы по-прежнему уводят читателя на /join', async () => {
+    await api.get('/suggestions/mine').catch(() => {});
+    expect(window.location.href).toBe('/join?next=%2Fworks%2F6%2Fchapters%2F2');
   });
 });

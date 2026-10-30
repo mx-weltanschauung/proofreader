@@ -946,3 +946,61 @@ const BlankCutset = " \t\n\v\f\r\u0085              �
 
 // IsBlankArticleText — у статьи нет своего текста.
 func IsBlankArticleText(s string) bool { return strings.Trim(s, BlankCutset) == "" }
+
+// Цели заметки читателя на полях и пределы её полей.
+const (
+	MarginTargetWork    = "work"
+	MarginTargetChapter = "chapter"
+	MarginTargetQuote   = "quote"
+
+	MarginNoteBodyMaxRunes  = 10000
+	MarginNoteQuoteMaxRunes = 4000
+	// MarginNotesPerOwner — потолок заметок одного читателя.
+	MarginNotesPerOwner = 10000
+)
+
+// MarginNote — личная заметка читателя на полях: весь том, глава или цитата.
+// Видна только владельцу; своего признака «закрыта» у неё нет, закрытость
+// выводится при чтении по work_id, главе и полосам.
+type MarginNote struct {
+	ID           int64  `json:"id"`
+	OwnerID      int64  `json:"-"`
+	WorkID       int64  `json:"work_id"`
+	Target       string `json:"target"`
+	ChapterID    *int64 `json:"chapter_id"`
+	ChapterTitle string `json:"chapter_title"`
+	// StartPage/EndPage — текущие номера полос из pages; nil — полосы больше нет.
+	StartPage *int `json:"start_page"`
+	EndPage   *int `json:"end_page"`
+	// PageMissing — цитата, а её полоса снесена (перезаливкой).
+	PageMissing   bool      `json:"page_missing"`
+	SnapshotStart *int      `json:"snapshot_start_page"`
+	QuoteKey      string    `json:"quote_key"`
+	QuoteTail     string    `json:"quote_tail"`
+	QuoteText     string    `json:"quote_text"`
+	Body          string    `json:"body"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+
+	// Сведения о работе и контексте приходят в каждом ответе (список тома,
+	// «Мои заметки», создание и правка), читает их список «Мои заметки».
+	WorkTitle string `json:"work_title,omitempty"`
+	WorkSlug  string `json:"work_slug,omitempty"`
+	// PageOffset/NumberingStyle — колонцифра работы: список печатает
+	// печатный номер полосы, а не внутренний page_number.
+	PageOffset     int    `json:"page_offset"`
+	NumberingStyle string `json:"numbering_style"`
+	// ContextChapter — самая узкая глава, накрывающая start_page (у цитаты).
+	ContextChapter string `json:"context_chapter,omitempty"`
+}
+
+// MarginNoteInput — то, что пишет обработчик после проверки.
+type MarginNoteInput struct {
+	OwnerID, WorkID                      int64
+	Target                               string
+	ChapterID                            *int64
+	ChapterTitle                         string
+	StartPageID, EndPageID               *int64
+	StartPageNumber, EndPageNumber       *int
+	QuoteKey, QuoteTail, QuoteText, Body string
+}

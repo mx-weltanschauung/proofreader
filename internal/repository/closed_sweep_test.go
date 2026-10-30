@@ -84,6 +84,9 @@ type closedSweep struct {
 	eventKindClosed string
 
 	adminTok string
+	// marginClosed — заметки читателя на закрытом: на закрытой работе, на
+	// полосе и на главе закрытой подглавы открытого тома.
+	marginClosed []int64
 	// ch — закрытая подглава открытого тома (сторож закрытых глав).
 	ch closedChapterSweep
 }
@@ -122,6 +125,9 @@ type closedChapterSweep struct {
 	// suggestion — правка читателя на закрытой полосе, openSuggestion — на
 	// открытой полосе того же тома (без неё пустые «мои правки» прошли бы).
 	suggestion, openSuggestion int64
+	// openNote — заметка читателя на открытой полосе того же тома: без неё
+	// пустой список заметок прошёл бы проверку.
+	openNote int64
 	// Номер открытого журнала с закрытой статьёй и человек, подписанный
 	// только под ней.
 	issue, article int64
@@ -537,6 +543,24 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 	f.ch.openSuggestion = one(`INSERT INTO page_suggestions (page_id, base_markdown, proposed_markdown, user_id)
 		SELECT id, content_markdown, content_markdown || ' правка', $2 FROM pages WHERE id = $1 RETURNING id`,
 		f.ch.pages[1], reader)
+
+	// Заметки читателя на полях: на закрытой работе, на полосе и на главе
+	// закрытой подглавы — и одна открытая рядом.
+	margin := func(sql string, args ...any) int64 {
+		t.Helper()
+		return one(`INSERT INTO margin_notes (owner_id, work_id, target, chapter_id, chapter_title,
+				start_page_id, end_page_id, start_page_number, end_page_number, quote_key, quote_text, body) `+sql, args...)
+	}
+	f.marginClosed = append(f.marginClosed,
+		margin(`SELECT $1, work_id, 'quote', NULL, '', id, id, page_number, page_number, 'ключ', $3, $3
+			FROM pages WHERE id = $2 RETURNING id`, reader, f.pages[f.self], "Цитата "+closedMarker),
+		margin(`SELECT $1, work_id, 'quote', NULL, '', id, id, page_number, page_number, 'ключ', $3, $3
+			FROM pages WHERE id = $2 RETURNING id`, reader, f.ch.pages[3], "Цитата "+chapterMarker),
+		margin(`SELECT $1, work_id, 'chapter', id, $3, NULL, NULL, NULL, NULL, '', '', $3
+			FROM chapters WHERE id = $2 RETURNING id`, reader, f.ch.closed, "Глава "+chapterMarker),
+	)
+	f.ch.openNote = margin(`SELECT $1, work_id, 'quote', NULL, '', id, id, page_number, page_number, 'ключ', $3, $3
+		FROM pages WHERE id = $2 RETURNING id`, reader, f.ch.pages[1], "Открытая заметка")
 	return f
 }
 
@@ -626,6 +650,7 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		"audio/{id}":             ids(f.track, f.openTrack, f.ch.track, f.ch.sharedTrack, f.ch.openTrack),
 		"rec/{id}":               ids(f.recording, f.openRecording, f.ch.recording, f.ch.parentRecording),
 		"suggestions/{id}":       ids(f.suggestion, f.ch.suggestion),
+		"margin-notes/{id}":      ids(append(append([]int64{}, f.marginClosed...), f.ch.openNote)...),
 		"documents/{slug}":       {"razbor"},
 		"documents/{nickname}":   {f.readerNick},
 		"cuts/{cutId}":           ids(append(append([]int64{}, f.cuts...), f.ch.cuts...)...),
@@ -833,6 +858,19 @@ func sweepDo(t *testing.T, h http.Handler, path, token string) sweepResponse {
 
 // sweepFollow — sweepDo, который идёт по постоянному редиректу краулера на
 // канонический адрес (голый номер → номер со слагом).
+// sweepSend — запрос с телом (PUT/POST/DELETE) под токеном.
+func sweepSend(t *testing.T, h http.Handler, method, path, token, body string) sweepResponse {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return sweepResponse{code: rec.Code, text: rec.Body.String(), loc: rec.Header().Get("Location")}
+}
+
 func sweepFollow(t *testing.T, h http.Handler, path, token string) sweepResponse {
 	t.Helper()
 	res := sweepDo(t, h, path, token)
@@ -971,7 +1009,7 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 	}
 
 	closeSweepChapter(t, router, f, cache)
-	checkClosedChapter(t, router, f, cache)
+	checkClosedChapter(t, router, f, cache, pool)
 
 	// Сотрудник видит закрытое — и заодно прогревает кэш главы, который
 	// анониму обязан не достаться.
@@ -1229,7 +1267,7 @@ func closeSweepChapter(t *testing.T, router http.Handler, f *closedSweep, cache 
 // получают том, соседку и родителя без закрытых полос (общая с соседкой —
 // тоже), сотрудник видит маркер. Прочее (маркер ни в одном ответе, 404 на
 // прямые адреса) проверяет общий обход маршрутов.
-func checkClosedChapter(t *testing.T, router http.Handler, f *closedSweep, cache *pagecache.Store) {
+func checkClosedChapter(t *testing.T, router http.Handler, f *closedSweep, cache *pagecache.Store, pool *pgxpool.Pool) {
 	t.Helper()
 	c := f.ch
 	vol := "/api/works/" + itoa(c.work)
@@ -1303,6 +1341,55 @@ func checkClosedChapter(t *testing.T, router http.Handler, f *closedSweep, cache
 	}
 	if strings.Contains(res.text, fmt.Sprintf(`"page_id":%d,`, c.pages[3])) {
 		t.Errorf("мои правки: правка на закрытой полосе %d видна читателю", c.pages[3])
+	}
+
+	// Заметки на полях: читатель видит свою открытую заметку и не видит
+	// заметок на закрытом; чужую (закрытую) не правит и не снимает; пишущие
+	// запросы на закрытое отвечают 404 и ничего не оставляют.
+	openNote := fmt.Sprintf(`"id":%d,`, c.openNote)
+	for _, path := range []string{"/api/margin-notes", "/api/works/" + itoa(c.work) + "/margin-notes"} {
+		res := sweepDo(t, router, path, f.readerTok)
+		if res.code != http.StatusOK || !strings.Contains(res.text, openNote) {
+			t.Errorf("заметки на полях: %s (%d) не отдаёт открытую заметку — проверка ничего не значит", path, res.code)
+		}
+		if chapterLeak.FindString(res.text) != "" || leakIn(f, res.text) != "" {
+			t.Errorf("заметки на полях: %s отдаёт читателю заметку на закрытом", path)
+		}
+	}
+	if res := sweepDo(t, router, "/api/margin-notes", f.editorTok); strings.Contains(res.text, "Открытая заметка") {
+		t.Error("заметки на полях: редактор видит заметку читателя")
+	}
+	countNotes := func() int {
+		var n int
+		if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM margin_notes`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := countNotes()
+	for _, id := range f.marginClosed {
+		for _, method := range []string{http.MethodPut, http.MethodDelete} {
+			if res := sweepSend(t, router, method, "/api/margin-notes/"+itoa(id), f.readerTok, `{"body":"x"}`); res.code != http.StatusNotFound {
+				t.Errorf("заметки на полях: %s заметки %d на закрытом отвечает %d, ждали 404", method, id, res.code)
+			}
+		}
+	}
+	closedStart := `{"target":"quote","start_page":3,"end_page":3,"quote_key":"k","body":"x"}`
+	for name, w := range map[string]struct {
+		work int64
+		body string
+	}{
+		"цитата на закрытой полосе подглавы": {c.work, closedStart},
+		"заметка к закрытой главе":           {c.work, fmt.Sprintf(`{"target":"chapter","chapter_id":%d,"body":"x"}`, c.closed)},
+		"заметка на закрытой работе":         {f.self, `{"target":"work","body":"x"}`},
+	} {
+		res := sweepSend(t, router, http.MethodPost, "/api/works/"+itoa(w.work)+"/margin-notes", f.readerTok, w.body)
+		if res.code != http.StatusNotFound {
+			t.Errorf("заметки на полях: %s — POST отвечает %d, ждали 404", name, res.code)
+		}
+	}
+	if after := countNotes(); after != before {
+		t.Errorf("заметки на полях: отказанные запросы оставили строки (%d -> %d)", before, after)
 	}
 
 	// Сотрудник видит именно маркер подглавы, и его чтение закрытого в кэш не

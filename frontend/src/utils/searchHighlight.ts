@@ -26,8 +26,9 @@ export function highlightTerms(root: HTMLElement, terms: string[]): number {
       // .katex — вывод формулы: и скрытый исходник TeX (annotation в
       // katex-mathml), и разложенная по спанам вёрстка, где каждый знак —
       // свой текстовый узел. Числовой или однобуквенный запрос обернул бы
-      // такие знаки в mark и разъехал бы формулу.
-      if (!parent || parent.closest('mark.search-hit, script, style, .katex')) {
+      // такие знаки в mark и разъехал бы формулу. .margin-note-host —
+      // карточка заметки под абзацем (MarginNotes.tsx): не текст полосы.
+      if (!parent || parent.closest('mark.search-hit, script, style, .katex, .margin-note-host')) {
         return NodeFilter.FILTER_REJECT;
       }
       return NodeFilter.FILTER_ACCEPT;

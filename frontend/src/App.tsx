@@ -32,6 +32,7 @@ const PageView = lazy(() => import('./pages/PageView').then((m) => ({ default: m
 const PageSuggest = lazy(() =>
   import('./pages/PageSuggest').then((m) => ({ default: m.PageSuggest })),
 );
+const MyNotes = lazy(() => import('./pages/MyNotes').then((m) => ({ default: m.MyNotes })));
 const MySuggestions = lazy(() =>
   import('./pages/MySuggestions').then((m) => ({ default: m.MySuggestions })),
 );
@@ -230,6 +231,7 @@ function App() {
                 {/* Публичный, без RequireRole: невошедший читатель видит на
                     экране приглашение записаться вместо списка правок. */}
                 <Route path="/mine" element={<MySuggestions />} />
+                <Route path="/mine/notes" element={<MyNotes />} />
                 {/* Старый адрес — редирект, не удаление: мог остаться в закладках. */}
                 <Route path="/suggestions/mine" element={<Navigate to="/mine" replace />} />
                 <Route

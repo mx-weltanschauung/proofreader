@@ -1313,3 +1313,43 @@ export interface AgendaInput {
     entries: { label: string; targets: AgendaTargetInput[] }[];
   }[];
 }
+
+/** Заметка читателя на полях: к тому, главе или цитате. */
+export type MarginTarget = 'work' | 'chapter' | 'quote';
+export interface MarginNote {
+  id: number;
+  work_id: number;
+  target: MarginTarget;
+  chapter_id: number | null;
+  chapter_title: string;
+  start_page: number | null;
+  end_page: number | null;
+  page_missing: boolean;
+  snapshot_start_page: number | null;
+  quote_key: string;
+  quote_tail: string;
+  quote_text: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  work_title?: string;
+  work_slug?: string;
+  context_chapter?: string;
+  /** Колонцифра работы: «Мои заметки» печатают печатный номер полосы. */
+  page_offset?: number;
+  numbering_style?: string;
+}
+
+/** Тело `POST /works/{id}/margin-notes`. */
+export type CreateMarginNote =
+  | {
+      target: 'quote';
+      start_page: number;
+      end_page: number;
+      quote_key: string;
+      quote_tail: string;
+      quote_text: string;
+      body: string;
+    }
+  | { target: 'chapter'; chapter_id: number; body: string }
+  | { target: 'work'; body: string };

@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { suggestionsApi, collectionsApi, documentsApi, authApi } from '../services/api';
+import {
+  suggestionsApi,
+  collectionsApi,
+  documentsApi,
+  authApi,
+  marginNotesApi,
+} from '../services/api';
 import type { Collection, Document, RejectReason, SuggestionRow } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { joinPathFor } from '../utils/returnUrl';
@@ -65,6 +71,7 @@ export const MySuggestions: React.FC = () => {
   const [collectionsState, setCollectionsState] = useState<CollectionsFetchState>(() =>
     isAuthenticated ? { status: 'loading' } : { status: 'idle' },
   );
+  const [notesTotal, setNotesTotal] = useState<number | null>(null);
   const [documentsState, setDocumentsState] = useState<DocumentsFetchState>(() =>
     isAuthenticated ? { status: 'loading' } : { status: 'idle' },
   );
@@ -137,6 +144,24 @@ export const MySuggestions: React.FC = () => {
             message: apiErrorMessage(err, 'Не удалось загрузить список разборов'),
           });
         }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
+
+  // Заметки на полях: здесь нужно лишь число и ссылка; сами строки — на
+  // /mine/notes. Не вышло — раздел просто без числа.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    marginNotesApi
+      .mine({ limit: 1 })
+      .then((response) => {
+        if (!cancelled) setNotesTotal(response.data.total);
+      })
+      .catch(() => {
+        if (!cancelled) setNotesTotal(null);
       });
     return () => {
       cancelled = true;
@@ -310,6 +335,20 @@ export const MySuggestions: React.FC = () => {
         </div>
       )}
 
+      <h2 className="my-suggestions-section-title">Мои заметки</h2>
+      <div className="my-suggestions-empty">
+        <p>
+          {notesTotal === null
+            ? 'Заметки на полях видите только вы.'
+            : notesTotal === 0
+              ? 'Заметок пока нет.'
+              : `Заметок: ${notesTotal}.`}
+        </p>
+        <Link to="/mine/notes" className="btn btn-secondary">
+          Открыть заметки
+        </Link>
+      </div>
+
       {user?.role === 'reader' && (
         <section className="mine-section mine-leave">
           <h2 className="my-suggestions-section-title">Уйти из читальни</h2>
@@ -330,6 +369,12 @@ export const MySuggestions: React.FC = () => {
           </p>
           {/* Ник НЕ освобождается (I4): под ним в читальне остались тексты, и
               занять его заново значило бы подписать чужое чужим именем. */}
+          {/* margin_notes.owner_id — ON DELETE CASCADE: заметки уходят вместе
+              с учётной записью, их никто, кроме автора, и не видел. */}
+          <p>
+            Заметки на полях удаляются вместе с учётной записью: их видели только вы, и сохранить их
+            негде.
+          </p>
           <p>
             Ваш ник останется занятым навсегда: ни вы, ни кто-либо другой не сможет записаться под
             ним снова — под этим именем в читальне остались тексты.

@@ -10,6 +10,8 @@ import { VolumeScale } from '../components/VolumeScale';
 import { VolumeOutline } from '../components/VolumeOutline';
 import { VolumeManagePanel } from '../components/VolumeManagePanel';
 import { VolumeAudio } from '../components/VolumeAudio';
+import { TargetNotes } from '../components/TargetNotes';
+import { useMarginNotes } from '../hooks/useMarginNotes';
 import { useWorkAudio } from '../hooks/useWorkAudio';
 import { SearchTrigger } from '../components/SearchTrigger';
 import { readRecent, type LastRead } from '../hooks/useReadingProgress';
@@ -23,6 +25,7 @@ export const WorkDetail: React.FC = () => {
   const id = numericId(idParam);
   const navigate = useNavigate();
   const { user } = useAuth();
+  const marginNotes = useMarginNotes(id);
 
   const [work, setWork] = useState<Work | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -293,6 +296,14 @@ export const WorkDetail: React.FC = () => {
         pages={pageMap}
         lastRead={recent.find((e) => e.workId === work.id) ?? null}
         hasAudio={hasAudio}
+      />
+
+      <TargetNotes
+        workId={work.id}
+        notes={marginNotes.notes}
+        onCreated={marginNotes.add}
+        onChange={marginNotes.replace}
+        onDelete={marginNotes.drop}
       />
 
       {!emptyVolume && (

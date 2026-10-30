@@ -51,6 +51,8 @@ import { plural } from '../utils/volumeLabel';
 import { missingPageMessage, parsePrintedPage, resolvePageJump } from '../utils/pageJump';
 import { printedFolio } from '../utils/folio';
 import { ChapterEvents } from '../components/ChapterEvents';
+import { TargetNotes } from '../components/TargetNotes';
+import { useMarginNotes } from '../hooks/useMarginNotes';
 
 export const ChapterView: React.FC = () => {
   // workParam/chapterParam — сырые сегменты адреса (несут слаг); workId и
@@ -85,6 +87,9 @@ export const ChapterView: React.FC = () => {
   // главы без звука, со строками заливки прежней главы — у сотрудника).
   const [listenFor, setListenFor] = useState<number | null>(null);
   const listenOpen = listenFor !== null && listenFor === chapterId;
+  // Заметки читателя тома грузятся здесь одним запросом: ими пользуются и
+  // блок «к главе», и слой полей ReadingSurface (пропом marginNotes).
+  const marginNotes = useMarginNotes(workId);
   const { audio, failed: audioFailed, reload: reloadAudio } = useWorkAudio(workId);
   // Звук тома неизвестен вовсе (первое чтение упало) — в отличие от упавшего
   // перечитывания, при котором прежний звук остаётся на экране.
@@ -546,6 +551,7 @@ export const ChapterView: React.FC = () => {
         footnotesHtml={footnotesHtml}
         work={work}
         progressPercent={progress}
+        marginNotes={marginNotes}
         pageJump={{
           currentLabel:
             visiblePage !== null ? (printedFolio(visiblePage, work) ?? String(visiblePage)) : null,
@@ -607,6 +613,16 @@ export const ChapterView: React.FC = () => {
             </h1>
             {workId != null && chapterId != null && (
               <ChapterEvents workId={workId} chapterId={chapterId} />
+            )}
+            {workId != null && chapterId != null && (
+              <TargetNotes
+                workId={workId}
+                chapterId={chapterId}
+                notes={marginNotes.notes}
+                onCreated={marginNotes.add}
+                onChange={marginNotes.replace}
+                onDelete={marginNotes.drop}
+              />
             )}
             <div className="chapter-meta">
               <span>

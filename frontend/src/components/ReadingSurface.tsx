@@ -26,6 +26,9 @@ import { useReadingPrefs } from '../contexts/readingPrefsContext';
 import { pagePath } from '../utils/paths';
 import { CiteButton, type CitationContext } from './CiteButton';
 import { PageJump, type PageJumpProps } from './PageJump';
+import { MarginNotes } from './MarginNotes';
+import { NoteButton } from './NoteButton';
+import { useMarginNotes, type MarginNotesState } from '../hooks/useMarginNotes';
 
 /** Адреса без цитаты: якоря нет, и useQuoteHighlight в DOM не ходит вовсе. */
 const EMPTY_QUOTE: QuoteSpan = { start: '' };
@@ -106,6 +109,13 @@ export interface ReadingSurfaceProps {
    * адресует, — там остаётся доля.
    */
   pageJump?: Omit<PageJumpProps, 'className'>;
+  /**
+   * Заметки читателя на полях — когда потребителю они нужны и вне
+   * поверхности (ChapterView показывает ещё и заметки к главе): тогда список
+   * один на экран и один запрос. Без пропа поверхность грузит заметки тома
+   * сама.
+   */
+  marginNotes?: MarginNotesState;
 }
 
 /**
@@ -132,6 +142,7 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
   quote = EMPTY_QUOTE,
   citation,
   pageJump,
+  marginNotes,
 }) => {
   // Номера полос — настройка чтения, а не состояние экрана: своё состояние
   // забывалось при каждом переходе на соседнюю главу, и выключивший номера
@@ -155,6 +166,13 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
   // остановился». Секции порождаются страницами, поэтому pages — признак их
   // смены для наблюдателя.
   const visiblePage = useVisiblePage(true, pages);
+
+  // Хук зовётся всегда (правило хуков), а запрос идёт, только когда заметки
+  // не пришли пропом: `null` — «не грузить». Нулевой id — работа-источник
+  // элемента подборки ещё не известна (CollectionRead), спрашивать не о чем.
+  const ownNotes = useMarginNotes(marginNotes || work.id <= 0 ? null : work.id);
+  const notes = marginNotes ?? ownNotes;
+  const pageNumbers = useMemo(() => pages.map((p) => p.page_number), [pages]);
 
   // Видимая страница считается здесь, а нужна снаружи: по ней потребитель
   // подсвечивает оглавление и пишет прогресс чтения.
@@ -345,6 +363,16 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
               {...citation}
             />
           )}
+          {/* Заметка к выделенной цитате — рядом с «Цитировать»: тот же жест
+              (выделить и нажать), другой адресат. Видна только вошедшему. */}
+          {work.id > 0 && (
+            <NoteButton
+              contentRef={contentRef}
+              workId={work.id}
+              onCreated={notes.add}
+              className="btn btn-secondary"
+            />
+          )}
           {/* Вторая кнопка номеров страниц в читальне: значок «№» в панели
               потокового чтения делает то же самое (ReadingStreamBar). Выноска
               нужна обеим — глава и чтение подборки идут через этот экран, и
@@ -385,6 +413,17 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
         {nav}
 
         <QuoteNotice match={quoteMatch} />
+
+        {/* Слой полей стоит вплотную перед колонкой: на широком окне карточки
+            висят в нём на высоте своих цитат, на узком уходят под абзацы. */}
+        <MarginNotes
+          contentRef={contentRef}
+          notes={notes.notes}
+          pageNumbers={pageNumbers}
+          deps={[pages, footnotesHtml]}
+          onChange={notes.replace}
+          onDelete={notes.drop}
+        />
 
         <div
           ref={contentRef}

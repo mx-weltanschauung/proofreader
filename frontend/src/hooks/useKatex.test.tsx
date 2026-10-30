@@ -23,4 +23,22 @@ describe('useKatex', () => {
     expect(container.textContent).toBe('обычный текст');
     expect(container.querySelector('.katex')).toBeNull();
   });
+
+  it('карточку заметки на полях не трогает: «$x$» читателя остаётся буквами', () => {
+    const { container } = render(
+      <Probe
+        html={
+          '<p>формула $a^2$</p><div class="margin-note-host"><div class="margin-note-card">' +
+          '<button>$x$ и $$y$$</button></div></div>'
+        }
+      />,
+    );
+
+    // Проход состоялся — формула полосы отрисована…
+    expect(container.querySelector('p .katex')).not.toBeNull();
+    // …а текст заметки остался тем, что набрал читатель.
+    const host = container.querySelector('.margin-note-host')!;
+    expect(host.querySelector('.katex')).toBeNull();
+    expect(host.textContent).toBe('$x$ и $$y$$');
+  });
 });

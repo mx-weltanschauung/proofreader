@@ -192,6 +192,9 @@ export const Header: React.FC = () => {
               <HeaderLink to="/admin/audio" pathname={location.pathname}>
                 Озвучка
               </HeaderLink>
+              <HeaderLink to="/mine/notes" pathname={location.pathname}>
+                Заметки
+              </HeaderLink>
             </div>
             {admin && (
               <div className="header-staff-group">
