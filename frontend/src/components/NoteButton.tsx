@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CreateMarginNote, MarginNote } from '../types';
-import { marginNotesApi } from '../services/api';
+import { marginNotesApi, readerCommentsApi } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { readSelection, fullyInsideExcluded } from '../utils/quoteSelection';
 import { normalizeQuote } from '../utils/quoteMatch';
@@ -95,6 +95,7 @@ export const NoteButton: React.FC<NoteButtonProps> = ({
   const signedIn = useAuth((s) => s.user !== null);
   const [hasSelection, setHasSelection] = useState(false);
   const [opened, setOpened] = useState<Opened | null>(null);
+  const [asComment, setAsComment] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -181,14 +182,27 @@ export const NoteButton: React.FC<NoteButtonProps> = ({
             aria-label="Новая заметка"
           >
             <div className="margin-note-popover-quote">{opened.quote.quote_text}</div>
+            <label>
+              <input
+                type="checkbox"
+                checked={asComment}
+                onChange={(e) => setAsComment(e.target.checked)}
+              />
+              Публичный комментарий (после проверки)
+            </label>
             <MarginNoteEditor
+              kind={asComment ? 'comment' : 'note'}
               save={(body) =>
-                marginNotesApi.create(opened.workId, { ...opened.quote, body }).then((r) => r.data)
+                (asComment
+                  ? readerCommentsApi.create(opened.workId, { ...opened.quote, body })
+                  : marginNotesApi.create(opened.workId, { ...opened.quote, body })
+                ).then((r) => r.data)
               }
               onSaved={(n) => {
                 setOpened(null);
                 window.getSelection()?.removeAllRanges();
-                onCreated(n);
+                if (asComment) window.dispatchEvent(new Event('reader-comments-changed'));
+                else onCreated(n);
               }}
               onCancel={() => setOpened(null)}
             />

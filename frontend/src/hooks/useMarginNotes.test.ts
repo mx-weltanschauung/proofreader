@@ -45,6 +45,26 @@ function asReader() {
 }
 
 describe('useMarginNotes', () => {
+  it('сразу показывает возвращённую из комментария заметку только своей сессии', async () => {
+    asReader();
+    vi.spyOn(marginNotesApi, 'ofWork').mockResolvedValue({ data: [] } as unknown as AxiosResponse<
+      MarginNote[]
+    >);
+    const { result } = renderHook(() => useMarginNotes(19));
+    await act(async () => {});
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('margin-note-created', { detail: { note: note(77), userId: 3 } }),
+      );
+    });
+    expect(result.current.notes.map((n) => n.id)).toEqual([77]);
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent('margin-note-created', { detail: { note: note(78), userId: 4 } }),
+      );
+    });
+    expect(result.current.notes.map((n) => n.id)).toEqual([77]);
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });

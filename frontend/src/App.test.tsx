@@ -22,6 +22,7 @@ vi.mock('./services/api', () => ({
     review: vi.fn(),
     view: vi.fn(),
   },
+  readerCommentsApi: { pendingCount: vi.fn().mockResolvedValue({ data: { count: 0 } }) },
   suggestionsApi: {
     queue: vi.fn(),
   },

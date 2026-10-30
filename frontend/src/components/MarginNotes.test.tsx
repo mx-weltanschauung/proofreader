@@ -74,6 +74,28 @@ function renderNotes(
 }
 
 describe('MarginNotes', () => {
+  it('удаляет прежние тексты сразу, до отложенной раскладки следующего списка', async () => {
+    const root = surface();
+    const contentRef = { current: root };
+    const previous = note({ id: -9, body: 'Секрет прежней сессии' });
+    const ui = (notes: MarginNote[], custom: boolean) => (
+      <MemoryRouter>
+        <MarginNotes
+          contentRef={contentRef}
+          notes={notes}
+          pageNumbers={[5, 6]}
+          deps={[1]}
+          onChange={vi.fn()}
+          onDelete={vi.fn()}
+          renderCard={() => (custom ? <span>Секрет прежней сессии</span> : null)}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(ui([previous], true));
+    expect(await screen.findByText('Секрет прежней сессии')).toBeInTheDocument();
+    rerender(ui([], false));
+    expect(screen.queryByText('Секрет прежней сессии')).toBeNull();
+  });
   beforeEach(() => {
     document.body.innerHTML = '';
   });

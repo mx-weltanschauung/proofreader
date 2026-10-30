@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { readerCommentsApi } from '../services/api';
+import { useAuth, canEdit } from '../hooks/useAuth';
 import { Link, useLocation } from 'react-router-dom';
 import type { MarginNote } from '../types';
 import { apiErrorMessage, apiErrorStatus } from '../utils/apiError';
@@ -20,6 +22,8 @@ export interface MarginNoteEditorProps {
   onRemoved?(): void;
   /** Ставить ли курсор в поле сразу (по умолчанию да: редактор открывают ради записи). */
   autoFocus?: boolean;
+  kind?: 'note' | 'comment';
+  noteId?: number;
 }
 
 type Failure = { kind: 'auth' } | { kind: 'error'; message: string } | null;
@@ -41,8 +45,11 @@ export const MarginNoteEditor: React.FC<MarginNoteEditorProps> = ({
   remove,
   onRemoved,
   autoFocus = true,
+  kind = 'note',
+  noteId,
 }) => {
   const location = useLocation();
+  const staff = useAuth((s) => canEdit(s.user));
   const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<Failure>(null);
@@ -100,9 +107,9 @@ export const MarginNoteEditor: React.FC<MarginNoteEditorProps> = ({
     <div className="margin-note-editor" onClick={(e) => e.stopPropagation()} onKeyDown={onKeyDown}>
       <textarea
         className="margin-note-field"
-        aria-label="Текст заметки"
+        aria-label={kind === 'comment' ? 'Текст комментария' : 'Текст заметки'}
         value={text}
-        maxLength={BODY_LIMIT}
+        maxLength={kind === 'comment' ? 2000 : BODY_LIMIT}
         rows={4}
         // Редактор открывают ради записи: курсор сразу в поле, без второго нажатия.
         autoFocus={autoFocus}
@@ -117,7 +124,9 @@ export const MarginNoteEditor: React.FC<MarginNoteEditorProps> = ({
       {failure?.kind === 'auth' && (
         <div className="margin-note-failure" role="alert">
           <Link to={joinPathFor(location.pathname, location.search)}>
-            Войдите, чтобы сохранить заметку
+            {kind === 'comment'
+              ? 'Войдите, чтобы отправить комментарий'
+              : 'Войдите, чтобы сохранить заметку'}
           </Link>
         </div>
       )}
@@ -133,7 +142,7 @@ export const MarginNoteEditor: React.FC<MarginNoteEditorProps> = ({
           disabled={busy || text.trim() === ''}
           onClick={() => void onSave()}
         >
-          Сохранить
+          {kind === 'comment' ? (staff ? 'Опубликовать' : 'Отправить на проверку') : 'Сохранить'}
         </button>
         <button type="button" className="btn btn-secondary btn-sm" onClick={onCancel}>
           Отмена
@@ -146,6 +155,30 @@ export const MarginNoteEditor: React.FC<MarginNoteEditorProps> = ({
             onClick={() => void onRemove()}
           >
             Удалить
+          </button>
+        )}
+        {noteId !== undefined && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy || text.trim() === '' || Array.from(text.trim()).length > 2000}
+            onClick={() => {
+              setBusy(true);
+              setFailure(null);
+              void readerCommentsApi
+                .create(0, { note_id: noteId, body: text.trim() })
+                .then(() => {
+                  setBusy(false);
+                  window.dispatchEvent(new Event('reader-comments-changed'));
+                  onRemoved?.();
+                })
+                .catch((err: unknown) => {
+                  setBusy(false);
+                  fail(err, 'Не удалось отправить комментарий');
+                });
+            }}
+          >
+            Сделать комментарием
           </button>
         )}
       </div>

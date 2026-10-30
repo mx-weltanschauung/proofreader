@@ -335,6 +335,11 @@ export const MySuggestions: React.FC = () => {
         </div>
       )}
 
+      <p>
+        <Link to="/mine/comments" className="btn btn-secondary">
+          Мои комментарии
+        </Link>
+      </p>
       <h2 className="my-suggestions-section-title">Мои заметки</h2>
       <div className="my-suggestions-empty">
         <p>

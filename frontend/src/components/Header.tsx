@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth, isAdmin, canEdit, isReader } from '../hooks/useAuth';
 import { useSiteHeaderHeight } from '../hooks/useSiteHeaderHeight';
-import { suggestionsApi } from '../services/api';
+import { readerCommentsApi, suggestionsApi } from '../services/api';
 import { ReadingSettings } from './ReadingSettings';
 import { feedbackApi } from '../services/api';
 import { roleLabel } from '../utils/roleLabel';
@@ -20,6 +20,8 @@ const HEADER_PATHS = [
   '/documents',
   '/suggestions/queue',
   '/documents/review',
+  '/reader-comments/review',
+  '/mine/comments',
   '/admin/audio',
   '/admin/users',
   '/admin/readers',
@@ -60,6 +62,26 @@ export const Header: React.FC = () => {
   const location = useLocation();
   const [unreadFeedback, setUnreadFeedback] = useState(0);
   const admin = isAdmin(user);
+  const staff = canEdit(user);
+  const [commentCount, setCommentCount] = useState(0);
+  useEffect(() => {
+    if (!staff) return;
+    let alive = true;
+    const load = () => {
+      void readerCommentsApi
+        .pendingCount()
+        .then((r) => {
+          if (alive) setCommentCount(r.data.count);
+        })
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener('reader-comments-changed', load);
+    return () => {
+      alive = false;
+      window.removeEventListener('reader-comments-changed', load);
+    };
+  }, [staff]);
 
   useEffect(() => {
     if (!admin) {
@@ -189,11 +211,18 @@ export const Header: React.FC = () => {
               <HeaderLink to="/documents/review" pathname={location.pathname}>
                 Разборы на проверку
               </HeaderLink>
+              <HeaderLink to="/reader-comments/review" pathname={location.pathname}>
+                Комментарии{' '}
+                {commentCount > 0 && <span className="header-badge">{commentCount}</span>}
+              </HeaderLink>
               <HeaderLink to="/admin/audio" pathname={location.pathname}>
                 Озвучка
               </HeaderLink>
               <HeaderLink to="/mine/notes" pathname={location.pathname}>
                 Заметки
+              </HeaderLink>
+              <HeaderLink to="/mine/comments" pathname={location.pathname}>
+                Мои комментарии
               </HeaderLink>
             </div>
             {admin && (

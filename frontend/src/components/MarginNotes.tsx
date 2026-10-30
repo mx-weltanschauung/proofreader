@@ -20,6 +20,7 @@ export interface MarginNotesProps {
   deps: unknown[];
   onChange(n: MarginNote): void;
   onDelete(id: number): void;
+  renderCard?(note: MarginNote): React.ReactNode;
 }
 
 /** Класс подсветки цитат заметок; его же снимает слой перед новым проходом. */
@@ -166,6 +167,7 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
   deps,
   onChange,
   onDelete,
+  renderCard,
 }) => {
   const layerRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('narrow');
@@ -370,7 +372,12 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
   }, [contentRef]);
 
   const card = (p: Placed) => {
-    const { note } = p;
+    // Раскладка пересчитывается отложенно; текст и видимость всегда из
+    // текущего списка, чтобы выход из сессии не оставлял прежние тексты.
+    const note = notes.find((n) => n.id === p.note.id && n.work_id === p.note.work_id);
+    if (!note) return null;
+    const custom = renderCard?.(note);
+    if (custom === null) return null;
     const open = editing === note.id;
     return (
       <div
@@ -388,34 +395,36 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
             {note.quote_text && <div className="margin-note-snapshot">«{note.quote_text}»</div>}
           </>
         )}
-        {open ? (
-          <MarginNoteEditor
-            initial={note.body}
-            save={(body) => marginNotesApi.update(note.id, body).then((r) => r.data)}
-            onSaved={(n) => {
-              setEditing(null);
-              onChange(n);
-            }}
-            onCancel={() => {
-              setEditing(null);
-            }}
-            remove={() => marginNotesApi.remove(note.id)}
-            onRemoved={() => {
-              setEditing(null);
-              onDelete(note.id);
-            }}
-          />
-        ) : (
-          <button
-            type="button"
-            className="margin-note-open"
-            title="Изменить заметку"
-            aria-label={shortLabel(note.body)}
-            onClick={() => setEditing(note.id)}
-          >
-            {note.body}
-          </button>
-        )}
+        {custom ??
+          (open ? (
+            <MarginNoteEditor
+              noteId={note.id}
+              initial={note.body}
+              save={(body) => marginNotesApi.update(note.id, body).then((r) => r.data)}
+              onSaved={(n) => {
+                setEditing(null);
+                onChange(n);
+              }}
+              onCancel={() => {
+                setEditing(null);
+              }}
+              remove={() => marginNotesApi.remove(note.id)}
+              onRemoved={() => {
+                setEditing(null);
+                onDelete(note.id);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="margin-note-open"
+              title="Изменить заметку"
+              aria-label={shortLabel(note.body)}
+              onClick={() => setEditing(note.id)}
+            >
+              {note.body}
+            </button>
+          ))}
       </div>
     );
   };

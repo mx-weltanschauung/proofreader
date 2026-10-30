@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { marginNotesApi } from '../services/api';
+import { marginNotesApi, readerCommentsApi } from '../services/api';
 import type { MarginNote } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { joinPathFor } from '../utils/returnUrl';
-import { chapterPath, pagePath, workPath } from '../utils/paths';
+import { noteHref } from '../utils/marginNoteHref';
 import { apiErrorMessage } from '../utils/apiError';
 import { printedFolio } from '../utils/folio';
 import './MyNotes.css';
@@ -12,34 +12,6 @@ import './MyNotes.css';
 const PAGE_SIZE = 50;
 
 type Load = { status: 'loading' } | { status: 'ok' } | { status: 'error'; message: string };
-
-/** Адрес места заметки; пустой `search` у главы и тома. */
-function noteHref(n: MarginNote): { to: string; missing: boolean; deletedChapter: boolean } {
-  const work = { id: n.work_id, slug: n.work_slug };
-  if (n.target === 'quote') {
-    const page = n.start_page ?? n.snapshot_start_page;
-    if (page === null) return { to: workPath(work), missing: true, deletedChapter: false };
-    const params = [
-      n.quote_key ? `quote=${encodeURIComponent(n.quote_key)}` : '',
-      n.quote_tail ? `to=${encodeURIComponent(n.quote_tail)}` : '',
-    ].filter(Boolean);
-    const search = params.length > 0 ? `?${params.join('&')}` : '';
-    return {
-      to: `${pagePath(work, page)}${search}`,
-      missing: n.start_page === null,
-      deletedChapter: false,
-    };
-  }
-  if (n.target === 'chapter') {
-    if (n.chapter_id === null) return { to: workPath(work), missing: false, deletedChapter: true };
-    return {
-      to: chapterPath(work, { id: n.chapter_id }),
-      missing: false,
-      deletedChapter: false,
-    };
-  }
-  return { to: workPath(work), missing: false, deletedChapter: false };
-}
 
 export const MyNotes: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -114,6 +86,9 @@ export const MyNotes: React.FC = () => {
   return (
     <div className="my-notes-container">
       <h1>Мои заметки</h1>
+      <p>
+        <Link to="/mine/comments">Мои комментарии</Link>
+      </p>
       <p className="my-notes-hint">
         Заметки на полях видите только вы. <Link to="/help#notes">Как они устроены</Link>
       </p>
@@ -183,6 +158,29 @@ export const MyNotes: React.FC = () => {
                   <blockquote className="my-notes-quote">{n.quote_text}</blockquote>
                 )}
                 <div className="my-notes-body">{n.body}</div>
+                {Array.from(n.body).length <= 2000 && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      void readerCommentsApi
+                        .create(n.work_id, { note_id: n.id, body: n.body })
+                        .then(() => {
+                          setItems((s) => s.filter((x) => x.id !== n.id));
+                          setTotal((v) => v - 1);
+                          window.dispatchEvent(new Event('reader-comments-changed'));
+                        })
+                        .catch((e) =>
+                          setLoad({
+                            status: 'error',
+                            message: apiErrorMessage(e, 'Не удалось отправить комментарий'),
+                          }),
+                        );
+                    }}
+                  >
+                    Сделать комментарием
+                  </button>
+                )}
               </li>
             );
           })}

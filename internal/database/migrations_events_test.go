@@ -43,6 +43,7 @@ func clearDownRefusals(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	openAllClosed(ctx, t, pool)
 	deleteAllEvents(ctx, t, pool)
 	deleteAllMarginNotes(ctx, t, pool)
+	deleteAllReaderComments(ctx, t, pool)
 }
 
 // TestEventsMigrationDownRefuses: шаг вниз 000041 при хоть одном событии

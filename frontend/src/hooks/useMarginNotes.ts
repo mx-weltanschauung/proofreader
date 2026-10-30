@@ -116,5 +116,14 @@ export function useMarginNotes(workId: number | null): MarginNotesState {
     [key],
   );
 
+  useEffect(() => {
+    const created = (event: Event) => {
+      const detail = (event as CustomEvent<{ note: MarginNote; userId: number | null }>).detail;
+      if (detail?.userId === userId && detail?.note.work_id === workId) add(detail.note);
+    };
+    window.addEventListener('margin-note-created', created);
+    return () => window.removeEventListener('margin-note-created', created);
+  }, [userId, workId, add]);
+
   return useMemo(() => ({ notes, add, replace, drop }), [notes, add, replace, drop]);
 }

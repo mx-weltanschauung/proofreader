@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { marginNotesApi } from '../services/api';
 import type { MarginNote } from '../types';
 import { MarginNoteEditor } from './MarginNoteEditor';
+import { TargetComments } from './ReaderComments';
 import './MarginNotes.css';
 import './TargetNotes.css';
 
@@ -104,6 +105,7 @@ const TargetNotesInner: React.FC<TargetNotesProps> = ({
               <li key={n.id} className="target-notes-item">
                 {editingId === n.id ? (
                   <MarginNoteEditor
+                    noteId={n.id}
                     initial={n.body}
                     save={(body) => marginNotesApi.update(n.id, body).then((r) => r.data)}
                     onSaved={(saved) => {
@@ -150,5 +152,12 @@ const TargetNotesInner: React.FC<TargetNotesProps> = ({
  * черновик иначе уехал бы в чужую главу.
  */
 export const TargetNotes: React.FC<TargetNotesProps> = (props) => (
-  <TargetNotesInner key={`${props.workId}:${props.chapterId ?? 'work'}`} {...props} />
+  <>
+    <TargetNotesInner key={`${props.workId}:${props.chapterId ?? 'work'}`} {...props} />
+    <TargetComments
+      key={`comments:${props.workId}:${props.chapterId ?? 'work'}`}
+      workId={props.workId}
+      chapterId={props.chapterId}
+    />
+  </>
 );

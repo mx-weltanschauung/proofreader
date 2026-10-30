@@ -86,7 +86,9 @@ type closedSweep struct {
 	adminTok string
 	// marginClosed — заметки читателя на закрытом: на закрытой работе, на
 	// полосе и на главе закрытой подглавы открытого тома.
-	marginClosed []int64
+	marginClosed  []int64
+	commentClosed []int64
+	openComment   int64
 	// ch — закрытая подглава открытого тома (сторож закрытых глав).
 	ch closedChapterSweep
 }
@@ -561,6 +563,18 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 	)
 	f.ch.openNote = margin(`SELECT $1, work_id, 'quote', NULL, '', id, id, page_number, page_number, 'ключ', $3, $3
 		FROM pages WHERE id = $2 RETURNING id`, reader, f.ch.pages[1], "Открытая заметка")
+	// Одобренные комментарии на тех же целях: новый публичный канал обязан
+	// проверять закрытость даже для автора и при включённом публичном показе.
+	for _, noteID := range append(append([]int64{}, f.marginClosed...), f.ch.openNote) {
+		id := one(`INSERT INTO reader_comments(owner_id,author_nickname,work_id,target,chapter_id,chapter_title,start_page_id,end_page_id,start_page_number,end_page_number,quote_key,quote_text,body,status,published_body,published_revision)
+	 SELECT owner_id,$2,work_id,target,chapter_id,chapter_title,start_page_id,end_page_id,start_page_number,end_page_number,quote_key,quote_text,body,'одобрено',body,1 FROM margin_notes WHERE id=$1 RETURNING id`, noteID, f.readerNick)
+		one(`INSERT INTO reader_comment_revisions(comment_id,revision,body,status) SELECT id,1,body,status FROM reader_comments WHERE id=$1 RETURNING comment_id`, id)
+		if noteID == f.ch.openNote {
+			f.openComment = id
+		} else {
+			f.commentClosed = append(f.commentClosed, id)
+		}
+	}
 	return f
 }
 
@@ -651,6 +665,7 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		"rec/{id}":               ids(f.recording, f.openRecording, f.ch.recording, f.ch.parentRecording),
 		"suggestions/{id}":       ids(f.suggestion, f.ch.suggestion),
 		"margin-notes/{id}":      ids(append(append([]int64{}, f.marginClosed...), f.ch.openNote)...),
+		"reader-comments/{id}":   ids(append(append([]int64{}, f.commentClosed...), f.openComment)...),
 		"documents/{slug}":       {"razbor"},
 		"documents/{nickname}":   {f.readerNick},
 		"cuts/{cutId}":           ids(append(append([]int64{}, f.cuts...), f.ch.cuts...)...),
@@ -699,6 +714,9 @@ func closedSweepSilent() map[string]string {
 	const admin = "только администратор: анониму 401, читателю 403"
 	const staff = "только сотрудник: анониму 401, читателю 403"
 	return map[string]string{
+		"/api/reader-comments/banned":                             admin,
+		"/api/reader-comments/review":                             staff,
+		"/api/reader-comments/review/count":                       staff,
 		"/api/admin/stats/crawlers":                               admin,
 		"/api/admin/stats/devices":                                admin,
 		"/api/admin/stats/health":                                 admin,
@@ -1347,6 +1365,29 @@ func checkClosedChapter(t *testing.T, router http.Handler, f *closedSweep, cache
 	// заметок на закрытом; чужую (закрытую) не правит и не снимает; пишущие
 	// запросы на закрытое отвечают 404 и ничего не оставляют.
 	openNote := fmt.Sprintf(`"id":%d,`, c.openNote)
+	for _, token := range []string{"", f.readerTok} {
+		for _, path := range []string{"/api/works/" + itoa(c.work) + "/reader-comments?public=true", "/api/reader-comments/mine"} {
+			if token == "" && strings.Contains(path, "/mine") {
+				continue
+			}
+			res := sweepDo(t, router, path, token)
+			if res.code != 200 || !strings.Contains(res.text, fmt.Sprintf(`"id":%d,`, f.openComment)) {
+				t.Errorf("комментарии: %s код %d, открытый отсутствует", path, res.code)
+			}
+			if leakIn(f, res.text) != "" || chapterLeak.FindString(res.text) != "" {
+				t.Errorf("комментарии раскрывают закрытое: %s", path)
+			}
+		}
+	}
+	for _, id := range f.commentClosed {
+		path := "/api/reader-comments/" + itoa(id) + "/history"
+		if res := sweepDo(t, router, path, f.readerTok); res.code != 404 {
+			t.Errorf("закрытая история: %s код %d", path, res.code)
+		}
+		if res := sweepDo(t, router, path, f.editorTok); res.code != 200 {
+			t.Errorf("сотрудник не видит историю: %s код %d", path, res.code)
+		}
+	}
 	for _, path := range []string{"/api/margin-notes", "/api/works/" + itoa(c.work) + "/margin-notes"} {
 		res := sweepDo(t, router, path, f.readerTok)
 		if res.code != http.StatusOK || !strings.Contains(res.text, openNote) {

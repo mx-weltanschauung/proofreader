@@ -26,6 +26,7 @@ export interface ReadingPrefs {
   align: AlignSetting;
   /** Показывать ли номера полос на поле рядом с текстом. */
   pageNumbers: boolean;
+  readerComments: boolean;
 }
 
 export const FONT_SIZE_MIN = 15;
@@ -41,6 +42,7 @@ export const DEFAULT_PREFS: ReadingPrefs = {
   paragraph: 'indent',
   align: 'left',
   pageNumbers: true,
+  readerComments: false,
 };
 
 export const PREFS_KEY = 'reading-prefs';
@@ -99,6 +101,7 @@ export function sanitizePrefs(raw: unknown): ReadingPrefs {
     // умолчание обязано быть «показывать», а не то, во что превратится
     // undefined.
     pageNumbers: typeof o.pageNumbers === 'boolean' ? o.pageNumbers : DEFAULT_PREFS.pageNumbers,
+    readerComments: typeof o.readerComments === 'boolean' ? o.readerComments : false,
   };
 }
 

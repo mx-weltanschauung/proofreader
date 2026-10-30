@@ -257,6 +257,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		WithClosed(closedRepo).
 		WithClosedWriter(NewClosedHandler(closedRepo, servingCache).WithChapters(chapterRepo).WithLog(closedRepo)).
 		WithMarginNotes(NewMarginNoteHandler(repository.NewMarginNoteRepository(pool), workRepo, viewPages, viewChapters)).
+		WithReaderComments(NewReaderCommentHandler(repository.NewReaderCommentRepository(pool), workRepo, viewPages, viewChapters, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders)).
 		WithAudio(audioHandler).
 		WithHighlights(highlightHandler).
 		WithEvents(NewEventHandler(eventRepo, closedRepo).WithClosedChapters(closedRepo)).
