@@ -398,6 +398,10 @@ phase_config() {
     own_cert=yes
   render_caddyfile "$APP_DIR/docker/caddy/Caddyfile.tmpl" \
     "$DOMAIN" "$S3_DOMAIN" "$ACME_EMAIL" "$own_cert" > "$CONFIG_DIR/Caddyfile"
+  if [[ -f "$CONFIG_DIR/Caddyfile.local" ]]; then
+    printf '\n' >> "$CONFIG_DIR/Caddyfile"
+    cat "$CONFIG_DIR/Caddyfile.local" >> "$CONFIG_DIR/Caddyfile"
+  fi
   chmod 644 "$CONFIG_DIR/Caddyfile"
   log "конфиги готовы: $CONFIG_DIR"
 }
