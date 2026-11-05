@@ -400,6 +400,20 @@ fake_app_for_config() {
   printf '#!/usr/bin/env bash\n%s\n' "$1" > "$APP_DIR/scripts/restore.sh"
 }
 
+test_private_caddy_blocks_survive_repeated_config_render() {
+  reset_mode
+  DOMAIN=lib.example.org S3_DOMAIN=s3.lib.example.org ACME_EMAIL=""
+  fake_app_for_config 'echo старый restore.sh'
+  mkdir -p "$CONFIG_DIR"
+  printf 'notes.example.org {\n\treverse_proxy notes:3000\n}\n' > "$CONFIG_DIR/Caddyfile.local"
+  phase_config >/dev/null
+  phase_config >/dev/null
+  grep -q '^lib.example.org {$' "$CONFIG_DIR/Caddyfile" || fail "основной домен пропал"
+  [[ "$(grep -c '^notes.example.org {$' "$CONFIG_DIR/Caddyfile")" -eq 1 ]] ||
+    fail "частный блок должен сохраниться один раз"
+  reset_mode
+}
+
 test_external_config_refuses_a_snapshot_without_db_only_restore() {
   reset_mode
   local out rc=0
