@@ -41,6 +41,16 @@ test_proxy_timeouts_are_generous() {
   (( send >= 300 )) || fail "proxy_send_timeout = $send с, для заливки оригинала мало"
 }
 
+test_backend_address_refreshes_after_container_replacement() {
+  local active
+  active="$(grep -v '^[[:space:]]*#' "$CONF")"
+  grep -q 'upstream backend_dynamic {' <<<"$active" || fail "нет upstream для динамического DNS бэкенда"
+  grep -q 'zone backend_dynamic ' <<<"$active" || fail "upstream без общей зоны не сможет обновлять адрес"
+  grep -q 'resolver 127.0.0.11 ' <<<"$active" || fail "upstream не использует DNS Docker"
+  grep -q 'server backend:8080 resolve;' <<<"$active" || fail "адрес backend не будет обновляться после пересоздания контейнера"
+  ! grep -q 'proxy_pass http://backend:8080' <<<"$active" || fail "хотя бы один маршрут всё ещё фиксирует адрес backend при старте nginx"
+}
+
 # crawler_map — строка регулярки в map $http_user_agent $is_crawler.
 crawler_map() {
   awk '/map \$http_user_agent \$is_crawler/{inside=1; next} inside && /^[[:space:]]*\}/{inside=0} inside' "$CONF"
@@ -77,7 +87,7 @@ test_md_goes_to_backend_for_everyone() {
   # gixy). rewrite…break + proxy_pass без пути экранирует заново —
   # тот же приём, что у location /seo/.
   grep -q 'rewrite ^ /seo$uri break;' <<<"$b" || fail ".md не переписывается в /seo"
-  grep -qE 'proxy_pass http://backend:8080;' <<<"$b" || fail ".md не проксируется в бэкенд без пути"
+  grep -qE 'proxy_pass http://backend_dynamic;' <<<"$b" || fail ".md не проксируется в бэкенд без пути"
   ! grep -v '^[[:space:]]*#' <<<"$b" | grep -q 'proxy_pass .*\$' || fail ".md проксируется адресом с переменной — декодированный \$uri уедет без экранирования"
   ! grep -q 'is_crawler' <<<"$b" || fail ".md зависит от агента — человек не увидит того, что видит модель"
   ! grep -q 'proxy_intercept_errors' <<<"$b" || fail "404/410 текста уведены в SPA"
@@ -89,7 +99,7 @@ test_concept_md_goes_to_backend_for_everyone() {
     b="$(block "$head")"
     [[ -n "$b" ]] || fail "нет $head — .md понятия отдаётся оболочкой SPA"
     grep -q 'rewrite ^ /seo$uri break;' <<<"$b" || fail "$head: не переписывается в /seo"
-    grep -qE 'proxy_pass http://backend:8080;' <<<"$b" || fail "$head: не проксируется в бэкенд без пути"
+    grep -qE 'proxy_pass http://backend_dynamic;' <<<"$b" || fail "$head: не проксируется в бэкенд без пути"
     ! grep -q 'is_crawler' <<<"$b" || fail "$head: зависит от агента"
     ! grep -q 'proxy_intercept_errors' <<<"$b" || fail "$head: ошибки уводятся в SPA"
   done
@@ -98,13 +108,13 @@ test_concept_md_goes_to_backend_for_everyone() {
 test_llms_txt_goes_to_backend() {
   local b; b="$(block 'location = /llms.txt {')"
   [[ -n "$b" ]] || fail "нет location = /llms.txt — отдаётся оболочка SPA"
-  grep -q 'proxy_pass http://backend:8080/seo/llms.txt;' <<<"$b" || fail "/llms.txt не проксируется в бэкенд"
+  grep -q 'proxy_pass http://backend_dynamic/seo/llms.txt;' <<<"$b" || fail "/llms.txt не проксируется в бэкенд"
 }
 
 test_mcp_goes_to_backend_for_everyone() {
   local b; b="$(block 'location = /mcp {')"
   [[ -n "$b" ]] || fail "нет location = /mcp — запрос нейросети получит оболочку SPA"
-  grep -qE 'proxy_pass http://backend:8080;' <<<"$b" || fail "/mcp не проксируется в бэкенд"
+  grep -qE 'proxy_pass http://backend_dynamic;' <<<"$b" || fail "/mcp не проксируется в бэкенд"
   ! grep -q 'is_crawler' <<<"$b" || fail "/mcp зависит от агента"
   ! grep -q 'proxy_intercept_errors' <<<"$b" || fail "ошибки /mcp уведены в SPA"
   grep -qE 'client_max_body_size\s+64k;' <<<"$b" || fail "/mcp без потолка тела 64k"
