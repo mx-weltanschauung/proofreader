@@ -65,6 +65,17 @@ describe('JournalDetail', () => {
     expect(screen.getByText('январь—февраль')).toBeInTheDocument();
   });
 
+  it('словесная подпись сборника показывается без №', async () => {
+    vi.spyOn(journalsApi, 'get').mockImplementation(() =>
+      ok({
+        ...DETAIL,
+        years: [{ year: 1921, issues: [{ ...DETAIL.years[0].issues[0], label: 'Сборник 2' }] }],
+      }),
+    );
+    renderAt('/journals/pzm');
+    expect(await screen.findByRole('link', { name: 'Сборник 2' })).toBeInTheDocument();
+  });
+
   it('неизвестный журнал — сообщение и ссылка в читальню', async () => {
     vi.spyOn(journalsApi, 'get').mockImplementation(() => Promise.reject(new Error('404')));
     renderAt('/journals/net');

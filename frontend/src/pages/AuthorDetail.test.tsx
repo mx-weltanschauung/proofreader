@@ -80,6 +80,15 @@ describe('AuthorDetail', () => {
     expect(screen.queryByText(/с\. 5—5/)).toBeNull();
   });
 
+  it('словесная подпись сборника не получает знак номера', async () => {
+    useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
+    vi.spyOn(personsApi, 'get').mockImplementation(() =>
+      ok({ ...DETAIL, articles: [{ ...DETAIL.articles[0], year: 1921, label: 'Сборник 2' }] }),
+    );
+    renderAt();
+    expect(await screen.findByText(/1921, Сборник 2, с\. 5—25/)).toBeInTheDocument();
+  });
+
   it('редактор сливает найденного автора сюда, себя в выдаче не видит', async () => {
     asEditor();
     vi.spyOn(personsApi, 'get').mockImplementation(() => ok(DETAIL));

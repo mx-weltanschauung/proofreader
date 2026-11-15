@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ArticleKinds — виды статьи журнала; те же строки держит CHECK
@@ -114,9 +116,20 @@ func IssueLabel(from, to int) string {
 	return fmt.Sprintf("%d—%d", from, to)
 }
 
+// IssueDesignation adds № to a numeric label; a written-out designation is
+// already complete («Сборник 2», «Книга восьмая»).
+func IssueDesignation(label string) string {
+	label = strings.TrimSpace(label)
+	first, _ := utf8.DecodeRuneInString(label)
+	if unicode.IsDigit(first) {
+		return "№ " + label
+	}
+	return label
+}
+
 // IssueTitle — заглавие работы номера: «Под знаменем марксизма, 1925, № 5—6».
 func IssueTitle(journal string, year int, label string) string {
-	return fmt.Sprintf("%s, %d, № %s", journal, year, label)
+	return fmt.Sprintf("%s, %d, %s", journal, year, IssueDesignation(label))
 }
 
 // Person — человек, подписавший статьи. Даты (сроки охраны) — спека Б.

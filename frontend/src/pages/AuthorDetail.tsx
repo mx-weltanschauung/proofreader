@@ -8,6 +8,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { apiErrorMessage } from '../utils/apiError';
 import { articleKindLabel } from '../utils/credits';
 import { chapterPath, journalPath } from '../utils/paths';
+import { issueDesignation } from '../utils/issueDesignation';
 import './AuthorDetail.css';
 
 export function AuthorDetail() {
@@ -132,7 +133,7 @@ export function AuthorDetail() {
                 <span className="author-article-meta">
                   {[
                     // Статья на одной полосе — «с. 5», а не «с. 5—5».
-                    `${a.year}, № ${a.label}, с. ${
+                    `${a.year}, ${issueDesignation(a.label)}, с. ${
                       a.start_page === a.end_page ? a.start_page : `${a.start_page}—${a.end_page}`
                     }`,
                     articleKindLabel(a.article_kind),

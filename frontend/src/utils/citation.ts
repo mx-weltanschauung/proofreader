@@ -1,4 +1,5 @@
 import { shownVolumeNumber, shownVolumePart, type VolumeCoordinates } from './shownVolume';
+import { issueDesignation } from './issueDesignation';
 
 /**
  * Подпись цитаты и обе грани буфера обмена.
@@ -103,7 +104,7 @@ export function citationSignature(i: SignatureInput): string {
     const tail = [
       i.issue.journal.trim(),
       String(i.issue.year),
-      `№ ${i.issue.label}`,
+      issueDesignation(i.issue.label),
       folio ? folio[0].toUpperCase() + folio.slice(1) : '',
     ].filter(Boolean);
     return [...head, `${tail.join('. ')}.`].join(' ');

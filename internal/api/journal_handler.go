@@ -264,8 +264,14 @@ func (h *JournalHandler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Журнал номера не найден")
 		return
 	}
+	wasDerived := issue.Label == models.IssueLabel(issue.NumberFrom, issue.NumberTo)
+	oldLabel := issue.Label
 	issue.Year, issue.NumberFrom, issue.NumberTo, issue.Months = req.Year, req.NumberFrom, req.NumberTo, req.Months
-	issue.Label = req.label()
+	if req.Label == "" && !wasDerived {
+		issue.Label = oldLabel
+	} else {
+		issue.Label = req.label()
+	}
 	if err := h.store.UpdateIssue(r.Context(), issue, models.IssueTitle(j.Title, issue.Year, issue.Label)); err != nil {
 		h.writeStoreError(w, err, "Не удалось сохранить номер")
 		return

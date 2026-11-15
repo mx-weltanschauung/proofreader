@@ -6,6 +6,7 @@ import type { JournalDetail as Detail } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { apiErrorMessage } from '../utils/apiError';
 import { workPath } from '../utils/paths';
+import { issueDesignation } from '../utils/issueDesignation';
 import { useAuth, canEdit } from '../hooks/useAuth';
 import { ClosedBadge } from '../components/ClosedBadge';
 import { ClosedToggle } from '../components/ClosedToggle';
@@ -92,7 +93,7 @@ export function JournalDetail() {
                       to={workPath({ id: issue.work_id, slug: issue.work_slug })}
                       className="journal-issue-link"
                     >
-                      № {issue.label}
+                      {issueDesignation(issue.label)}
                     </Link>
                     {issue.months && <span className="journal-issue-months">{issue.months}</span>}
                   </li>

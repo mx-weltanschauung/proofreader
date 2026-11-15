@@ -190,6 +190,21 @@ func TestJournalUpdateIssueRetitlesWork(t *testing.T) {
 	}
 }
 
+func TestJournalUpdateIssueKeepsExplicitLabelWhenOmitted(t *testing.T) {
+	store := &fakeJournalStore{
+		journal: &models.Journal{ID: 3, Title: "Каторга и ссылка"},
+		issue: &models.JournalIssue{ID: 9, JournalID: 3, Year: 1921,
+			NumberFrom: 2, NumberTo: 2, Label: "Сборник 2"},
+	}
+	rec := httptest.NewRecorder()
+	NewJournalHandler(store).UpdateIssue(rec, journalRequest(http.MethodPut, "/",
+		`{"year": 1921, "number_from": 2, "months": "ноябрь"}`, map[string]string{"id": "9"}))
+	if rec.Code != http.StatusOK || store.issue.Label != "Сборник 2" ||
+		store.updatedTitle != "Каторга и ссылка, 1921, Сборник 2" {
+		t.Fatalf("код %d, номер %+v, заглавие %q", rec.Code, store.issue, store.updatedTitle)
+	}
+}
+
 func TestJournalIssueExplicitLabel(t *testing.T) {
 	// «КИ» 1926: годовой счёт начат заново, № 7 весной и осенью; различает
 	// сквозной номер в скобках — он и порядок, и ключ года.
