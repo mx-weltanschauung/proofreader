@@ -17,6 +17,9 @@ func TestIssueTitle(t *testing.T) {
 	if got := IssueTitle("Под знаменем марксизма", 1925, "5—6"); got != "Под знаменем марксизма, 1925, № 5—6" {
 		t.Fatalf("got %q", got)
 	}
+	if got := IssueTitle("Каторга и ссылка", 1921, "Сборник 2"); got != "Каторга и ссылка, 1921, Сборник 2" {
+		t.Fatalf("словесная подпись: %q", got)
+	}
 }
 
 func TestValidArticleKind(t *testing.T) {

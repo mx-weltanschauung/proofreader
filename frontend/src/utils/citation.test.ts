@@ -158,6 +158,16 @@ describe('citationLinkHtml', () => {
 });
 
 describe('журнальная подпись', () => {
+  it('словесное обозначение сборника не получает знак номера', () => {
+    expect(
+      citationSignature({
+        ...base,
+        author: '',
+        workTitle: 'Как меня брили',
+        issue: { journal: 'Каторга и ссылка', year: 1921, label: 'Сборник 2' },
+      }),
+    ).toContain('Каторга и ссылка. 1921. Сборник 2.');
+  });
   it('номер: журнал, год, номер, страница с заглавной', () => {
     expect(
       citationSignature({

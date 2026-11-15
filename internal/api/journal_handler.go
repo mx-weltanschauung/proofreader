@@ -3,10 +3,12 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gorilla/mux"
 
@@ -53,6 +55,11 @@ type issueRequest struct {
 	Closed bool `json:"closed,omitempty"`
 	// ClosedReason — причина строки журнала при Closed.
 	ClosedReason string `json:"closed_reason,omitempty"`
+	// Label — подпись номера как напечатано, когда она не сводится к числам
+	// («1 (38)»: годовой номер и сквозной в скобках). Пусто — из чисел
+	// (`models.IssueLabel`). Числа при явной подписи — порядок и ключ
+	// уникальности внутри года, читателю они не печатаются.
+	Label string `json:"label,omitempty"`
 }
 
 func journalPathID(r *http.Request) (int64, bool) {
@@ -153,12 +160,25 @@ func (h *JournalHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSONStatus(w, http.StatusOK, j)
 }
 
+// maxIssueLabel — столбец journal_issues.label (varchar(16)).
+const maxIssueLabel = 16
+
+func (req *issueRequest) label() string {
+	if req.Label != "" {
+		return req.Label
+	}
+	return models.IssueLabel(req.NumberFrom, req.NumberTo)
+}
+
 func (req *issueRequest) normalize() string {
 	if req.NumberTo == 0 {
 		req.NumberTo = req.NumberFrom
 	}
 	req.Months = strings.TrimSpace(req.Months)
+	req.Label = strings.Join(strings.Fields(req.Label), " ")
 	switch {
+	case utf8.RuneCountInString(req.Label) > maxIssueLabel:
+		return fmt.Sprintf("Подпись номера длиннее %d знаков", maxIssueLabel)
 	case req.Year < 1800 || req.Year > 2100:
 		return "Год номера вне 1800—2100"
 	case req.NumberFrom < 1:
@@ -206,7 +226,7 @@ func (h *JournalHandler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Журнал не найден")
 		return
 	}
-	label := models.IssueLabel(req.NumberFrom, req.NumberTo)
+	label := req.label()
 	issue := &models.JournalIssue{ID: req.ID, JournalID: j.ID, Year: req.Year, NumberFrom: req.NumberFrom,
 		NumberTo: req.NumberTo, Label: label, Months: req.Months}
 	work := &models.Work{ID: req.WorkID, Title: models.IssueTitle(j.Title, req.Year, label), Language: "ru",
@@ -244,8 +264,14 @@ func (h *JournalHandler) UpdateIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Журнал номера не найден")
 		return
 	}
+	wasDerived := issue.Label == models.IssueLabel(issue.NumberFrom, issue.NumberTo)
+	oldLabel := issue.Label
 	issue.Year, issue.NumberFrom, issue.NumberTo, issue.Months = req.Year, req.NumberFrom, req.NumberTo, req.Months
-	issue.Label = models.IssueLabel(req.NumberFrom, req.NumberTo)
+	if req.Label == "" && !wasDerived {
+		issue.Label = oldLabel
+	} else {
+		issue.Label = req.label()
+	}
 	if err := h.store.UpdateIssue(r.Context(), issue, models.IssueTitle(j.Title, issue.Year, issue.Label)); err != nil {
 		h.writeStoreError(w, err, "Не удалось сохранить номер")
 		return

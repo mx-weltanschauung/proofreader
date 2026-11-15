@@ -189,3 +189,50 @@ func TestJournalUpdateIssueRetitlesWork(t *testing.T) {
 		t.Fatalf("код %d, заглавие %q", rec.Code, store.updatedTitle)
 	}
 }
+
+func TestJournalUpdateIssueKeepsExplicitLabelWhenOmitted(t *testing.T) {
+	store := &fakeJournalStore{
+		journal: &models.Journal{ID: 3, Title: "Каторга и ссылка"},
+		issue: &models.JournalIssue{ID: 9, JournalID: 3, Year: 1921,
+			NumberFrom: 2, NumberTo: 2, Label: "Сборник 2"},
+	}
+	rec := httptest.NewRecorder()
+	NewJournalHandler(store).UpdateIssue(rec, journalRequest(http.MethodPut, "/",
+		`{"year": 1921, "number_from": 2, "months": "ноябрь"}`, map[string]string{"id": "9"}))
+	if rec.Code != http.StatusOK || store.issue.Label != "Сборник 2" ||
+		store.updatedTitle != "Каторга и ссылка, 1921, Сборник 2" {
+		t.Fatalf("код %d, номер %+v, заглавие %q", rec.Code, store.issue, store.updatedTitle)
+	}
+}
+
+func TestJournalIssueExplicitLabel(t *testing.T) {
+	// «КИ» 1926: годовой счёт начат заново, № 7 весной и осенью; различает
+	// сквозной номер в скобках — он и порядок, и ключ года.
+	store := &fakeJournalStore{journal: &models.Journal{ID: 3, Title: "Коммунистический Интернационал"}}
+	rec := httptest.NewRecorder()
+	NewJournalHandler(store).CreateIssue(rec, journalRequest(http.MethodPost, "/",
+		`{"year": 1926, "number_from": 65, "label": " 7  (65) "}`, map[string]string{"id": "3"}))
+	if rec.Code != http.StatusCreated || store.createdIssue.Label != "7 (65)" || store.createdIssue.NumberFrom != 65 ||
+		store.createdWork.Title != "Коммунистический Интернационал, 1926, № 7 (65)" {
+		t.Fatalf("код %d, номер %+v, работа %q", rec.Code, store.createdIssue, store.createdWork.Title)
+	}
+
+	store = &fakeJournalStore{
+		journal: &models.Journal{ID: 3, Title: "Коммунистический Интернационал"},
+		issue:   &models.JournalIssue{ID: 9, JournalID: 3, Year: 1925, NumberFrom: 38, NumberTo: 38, Label: "38"},
+	}
+	rec = httptest.NewRecorder()
+	NewJournalHandler(store).UpdateIssue(rec, journalRequest(http.MethodPut, "/",
+		`{"year": 1925, "number_from": 38, "label": "1 (38)"}`, map[string]string{"id": "9"}))
+	if rec.Code != http.StatusOK || store.issue.Label != "1 (38)" ||
+		store.updatedTitle != "Коммунистический Интернационал, 1925, № 1 (38)" {
+		t.Fatalf("правка: код %d, номер %+v, заглавие %q", rec.Code, store.issue, store.updatedTitle)
+	}
+
+	rec = httptest.NewRecorder()
+	NewJournalHandler(&fakeJournalStore{journal: &models.Journal{ID: 3}}).CreateIssue(rec, journalRequest(http.MethodPost, "/",
+		`{"year": 1926, "number_from": 68, "label": "10—11 (68—69) экз"}`, map[string]string{"id": "3"}))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("подпись длиннее столбца: код %d", rec.Code)
+	}
+}
