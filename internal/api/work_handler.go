@@ -544,6 +544,23 @@ func (h *WorkHandler) RemoveCategory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// workFileDeadline stays below nginx's ten-minute /api/ response timeout.
+// Large originals and preview batches outlive the server's 15-second default.
+const workFileDeadline = 9 * time.Minute
+
+func extendWorkFileDeadline(w http.ResponseWriter, operation string, read bool) {
+	controller := http.NewResponseController(w)
+	deadline := time.Now().Add(workFileDeadline)
+	if read {
+		if err := controller.SetReadDeadline(deadline); err != nil {
+			log.Printf("%s: cannot extend read deadline: %v", operation, err)
+		}
+	}
+	if err := controller.SetWriteDeadline(deadline); err != nil {
+		log.Printf("%s: cannot extend write deadline: %v", operation, err)
+	}
+}
+
 // UploadFile handles file upload for a work
 func (h *WorkHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -552,6 +569,7 @@ func (h *WorkHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid work ID", http.StatusBadRequest)
 		return
 	}
+	extendWorkFileDeadline(w, "upload work file", true)
 
 	// Parse multipart form (32MB max)
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -643,6 +661,7 @@ func (h *WorkHandler) CreatePages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid work ID", http.StatusBadRequest)
 		return
 	}
+	extendWorkFileDeadline(w, "create work pages", false)
 
 	// Parse request body for page range
 	var req struct {
