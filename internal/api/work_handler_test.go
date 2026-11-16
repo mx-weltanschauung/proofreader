@@ -626,6 +626,41 @@ func TestWorkHandler_CreatePages_InvalidWorkID(t *testing.T) {
 	}
 }
 
+func TestWorkHandler_UploadFileExtendsConnectionDeadlines(t *testing.T) {
+	handler := createTestWorkHandler()
+	rec := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	req := httptest.NewRequest(http.MethodPost, "/api/works/7/upload", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": "7"})
+
+	handler.UploadFile(rec, req)
+
+	if len(rec.readDeadlines) != 1 || len(rec.deadlines) != 1 {
+		t.Fatalf("upload deadlines: read=%d write=%d; want one each", len(rec.readDeadlines), len(rec.deadlines))
+	}
+	for _, deadline := range []time.Time{rec.readDeadlines[0], rec.deadlines[0]} {
+		if remaining := time.Until(deadline); remaining < 8*time.Minute || remaining > 9*time.Minute {
+			t.Errorf("upload deadline in %v; want between 8 and 9 minutes", remaining)
+		}
+	}
+}
+
+func TestWorkHandler_CreatePagesExtendsWriteDeadline(t *testing.T) {
+	handler := createTestWorkHandler()
+	handler.workRepo = &fakeWorkRepo{}
+	rec := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	req := httptest.NewRequest(http.MethodPost, "/api/works/7/create-pages", nil)
+	req = mux.SetURLVars(req, map[string]string{"id": "7"})
+
+	handler.CreatePages(rec, req)
+
+	if len(rec.deadlines) != 1 {
+		t.Fatalf("create-pages write deadlines = %d; want one", len(rec.deadlines))
+	}
+	if remaining := time.Until(rec.deadlines[0]); remaining < 8*time.Minute || remaining > 9*time.Minute {
+		t.Errorf("create-pages deadline in %v; want between 8 and 9 minutes", remaining)
+	}
+}
+
 func TestCreateWorkRequest(t *testing.T) {
 	req := CreateWorkRequest{
 		Title:    "Test Work",
