@@ -37,6 +37,7 @@ func NewApparatusRepository(pool *pgxpool.Pool) *ApparatusRepository {
 
 // ErrApparatusClosed — среди уносимых снятием аппарата глав есть закрытая.
 var ErrApparatusClosed = errors.New("среди глав аппарата есть закрытая")
+var ErrApparatusScansHidden = errors.New("среди удаляемого аппарата есть скрытые сканы")
 
 // runner — то общее у пула и транзакции, что нужно здесь. План читается и
 // снаружи транзакции (для --plan), и внутри неё (перед сносом), и это обязан
@@ -110,6 +111,9 @@ func (r *ApparatusRepository) Remove(ctx context.Context, workID int64) (models.
 		return plan, fmt.Errorf("failed to begin apparatus removal: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // после Commit это no-op
+	if err := lockScanStructure(ctx, tx); err != nil {
+		return plan, err
+	}
 
 	plan, err = apparatusPlan(ctx, tx, workID)
 	if err != nil {
@@ -125,6 +129,9 @@ func (r *ApparatusRepository) Remove(ctx context.Context, workID int64) (models.
 	// планом и сносом.
 	if plan.ClosedChapters > 0 {
 		return plan, ErrApparatusClosed
+	}
+	if plan.ScansHiddenEntities > 0 {
+		return plan, ErrApparatusScansHidden
 	}
 
 	// Замки — полосы раньше дорожек, тем же порядком, что у SaveEdit (правка
@@ -286,6 +293,21 @@ func apparatusPlan(ctx context.Context, q runner, workID int64) (models.Apparatu
 		   OR cc.work_id IN (SELECT id FROM works WHERE parent_work_id = $1)`, workID,
 	).Scan(&plan.ClosedChapters); err != nil {
 		return plan, fmt.Errorf("failed to count closed apparatus chapters: %w", err)
+	}
+	if err := q.QueryRow(ctx, `
+		WITH RECURSIVE gone AS (
+			SELECT id FROM chapters WHERE work_id = $1 AND is_apparatus
+			UNION SELECT c.id FROM chapters c JOIN gone g ON c.parent_id = g.id
+		), children AS (
+			SELECT id FROM works WHERE parent_work_id = $1
+		)
+		SELECT (SELECT count(*) FROM scans_hidden_chapters c
+		        WHERE c.id IN (SELECT id FROM gone)
+		           OR c.work_id IN (SELECT id FROM children))
+		     + (SELECT count(*) FROM works w WHERE w.id IN (SELECT id FROM children)
+		        AND w.scans_hidden)`, workID,
+	).Scan(&plan.ScansHiddenEntities); err != nil {
+		return plan, fmt.Errorf("failed to count scan-restricted apparatus: %w", err)
 	}
 
 	// Полосы: счёт и ключи превью одним проходом. Ключи нужны обработчику —

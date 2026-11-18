@@ -56,13 +56,7 @@ const closedByCase = `CASE
 	    ELSE ''
 	END`
 
-const scansHiddenByCase = `CASE
-	    WHEN works.scans_hidden THEN 'work'
-	    WHEN cb_p.scans_hidden OR cb_pe.scans_hidden THEN 'parent'
-	    WHEN cb_e.scans_hidden THEN 'edition'
-	    WHEN cb_j.scans_hidden THEN 'journal'
-	    ELSE ''
-	END`
+const scansHiddenByCase = `work_scans_hidden_by(works.id)`
 
 var (
 	closedByJoinsW = strings.ReplaceAll(closedByJoins, "works.", "w.")
@@ -201,17 +195,26 @@ func (r *ClosedRepository) SetChapterClosed(ctx context.Context, id int64, close
 
 func (r *ClosedRepository) SetWorkScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error) {
 	return r.setScope(ctx, ClosureWork, "scans", `UPDATE works SET scans_hidden = $2 WHERE id = $1 RETURNING title`,
-		`SELECT id FROM works WHERE id = $1 OR parent_work_id = $1 ORDER BY id`, id, hidden, actor, reason)
+		`WITH RECURSIVE affected AS (
+			SELECT id FROM works WHERE id = $1
+			UNION SELECT w.id FROM works w JOIN affected a ON w.parent_work_id = a.id
+		) SELECT id FROM affected ORDER BY id`, id, hidden, actor, reason)
 }
 
 func (r *ClosedRepository) SetEditionScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error) {
 	return r.setScope(ctx, ClosureEdition, "scans", `UPDATE editions SET scans_hidden = $2 WHERE id = $1 RETURNING title`,
-		`SELECT w.id FROM works w WHERE w.edition_id = $1 OR w.parent_work_id IN (SELECT id FROM works WHERE edition_id = $1) ORDER BY w.id`, id, hidden, actor, reason)
+		`WITH RECURSIVE affected AS (
+			SELECT id FROM works WHERE edition_id = $1
+			UNION SELECT w.id FROM works w JOIN affected a ON w.parent_work_id = a.id
+		) SELECT id FROM affected ORDER BY id`, id, hidden, actor, reason)
 }
 
 func (r *ClosedRepository) SetJournalScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error) {
 	return r.setScope(ctx, ClosureJournal, "scans", `UPDATE journals SET scans_hidden = $2 WHERE id = $1 RETURNING title`,
-		`SELECT work_id FROM journal_issues WHERE journal_id = $1 ORDER BY work_id`, id, hidden, actor, reason)
+		`WITH RECURSIVE affected AS (
+			SELECT work_id AS id FROM journal_issues WHERE journal_id = $1
+			UNION SELECT w.id FROM works w JOIN affected a ON w.parent_work_id = a.id
+		) SELECT id FROM affected ORDER BY id`, id, hidden, actor, reason)
 }
 
 func (r *ClosedRepository) SetChapterScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error) {
@@ -235,6 +238,11 @@ func (r *ClosedRepository) setScope(ctx context.Context, kind, scope, update, af
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if scope == "scans" {
+		if err := lockScanStructure(ctx, tx); err != nil {
+			return nil, err
+		}
+	}
 	var title string
 	if err := tx.QueryRow(ctx, update, id, closed).Scan(&title); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

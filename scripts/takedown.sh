@@ -101,12 +101,17 @@ visibility_path() {
 }
 
 scan_page_ok() {
-  local body="$1" hidden="$2"
-  jq -e --argjson hidden "$hidden" '
-    has("content_markdown") and (.scan_restricted == $hidden) and
-    (if $hidden then (.preview_path // "") == "" and (.preview_url // "") == ""
+  local body="$1" must_hide="$2"
+  jq -e --argjson must_hide "$must_hide" '
+    has("content_markdown") and (.scan_restricted | type == "boolean") and
+    (($must_hide | not) or .scan_restricted) and
+    (if .scan_restricted then (.preview_path // "") == "" and (.preview_url // "") == ""
      else ((.preview_path // "") != "" or (.preview_url // "") != "") end)
   ' <<<"$body" >/dev/null
+}
+
+static_withdraw_needed() {
+  [[ "$1" == --prod && "$2" == true && "$3" != 1 ]]
 }
 
 # probe_ok ОЖИДАНИЕ КОД — сходится ли код анонимной пробы. Ожидание: 410, 404
@@ -580,15 +585,23 @@ main() {
     # подписанная ссылка на скан пусты. У главы берём первую полосу диапазона.
     scan_probe() { # ТОМ ПОЛОСА
       local work="$1" page="$2" out status payload
+      api GET "/api/works/$work/pages/by-number/$page" || die "не удалось перечитать полосу $work/$page"
+      api_ok || die "у работы $work нет полосы $page для сверки"
       out="$(curl -sS "$API_BASE/api/works/$work/pages/by-number/$page" -w $'\n%{http_code}')" || out=""
       status="${out##*$'\n'}"; payload="${out%$'\n'*}"
-      if [[ "$status" == 200 ]] && scan_page_ok "$payload" "$closed"; then
-        log "сверка: текст полосы $work/$page доступен, скан ограничен=$closed"
+      if [[ "$status" == 404 ]]; then
+        log "сверка: полоса $work/$page закрыта для анонима; собственный признак сканов проверен отдельно"
+      elif [[ "$status" == 200 ]] && scan_page_ok "$payload" "$closed"; then
+        log "сверка: текст полосы $work/$page доступен, скан не раскрыт"
       else
         mismatches+=("полоса $work/$page: код $status, ограничение скана не совпало")
       fi
     }
     probe_scan_work() { # ТОМ
+      api GET "/api/works/$1" || die "не удалось перечитать работу $1"
+      api_ok || die "работа $1 не отдалась после изменения"
+      [[ "$(jq -r '.scans_hidden' <<<"$API_BODY")" == "$closed" ]] ||
+        die "работа $1: собственный признак сканов не сохранился"
       api GET "/api/works/$1/page-map" || die "не удалось перечитать карту полос $1"
       api_ok || die "карта полос $1 не отдалась после изменения"
       local page
@@ -600,6 +613,8 @@ main() {
       api GET "/api/works/$1/chapters/$2" || die "не удалось перечитать главу $1/$2"
       api_ok || die "глава $1/$2 не отдалась после изменения"
       local page
+      [[ "$(jq -r '.scans_hidden' <<<"$API_BODY")" == "$closed" ]] ||
+        die "глава $1/$2: собственный признак сканов не сохранился"
       page="$(jq -r '.start_page // empty' <<<"$API_BODY")"
       [[ -n "$page" ]] || die "у главы $1/$2 нет начальной полосы"
       scan_probe "$1" "$page"
@@ -629,7 +644,7 @@ main() {
     esac
   fi
 
-  if [[ "$target" == "--prod" && "$closed" == true ]]; then
+  if static_withdraw_needed "$target" "$closed" "$scans_only"; then
     static_after_takedown "$id"
   fi
 

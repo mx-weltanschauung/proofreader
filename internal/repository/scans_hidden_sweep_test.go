@@ -2,6 +2,7 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -83,13 +84,72 @@ func TestScansHiddenSweep(t *testing.T) {
 	}
 }
 
+func TestScansHiddenStructuralRecheckAfterStaleRead(t *testing.T) {
+	pool := repository.SharedTestPool(t)
+	ctx := context.Background()
+	var editionID, workID, chapterID, parentID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO editions (title, slug) VALUES ('Ограниченное издание', 'scans-structural-stale') RETURNING id`).Scan(&editionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO works (title, author, language, country, file_path, owner_id, edition_id)
+		VALUES ('Том', 'Автор', 'ru', 'ru', 'works/stale.pdf', 1, $1) RETURNING id`, editionID).Scan(&workID); err != nil {
+		t.Fatal(err)
+	}
+	works := repository.NewWorkRepository(pool)
+	chapters := repository.NewChapterRepository(pool)
+	closed := repository.NewClosedRepository(pool)
+	staleWork, err := works.GetByID(ctx, workID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor := models.ClosureActor{Name: "администратор"}
+	if _, err := closed.SetEditionScansHidden(ctx, editionID, true, actor, "письмо"); err != nil {
+		t.Fatal(err)
+	}
+	staleWork.EditionID = nil
+	if err := works.Update(ctx, staleWork); !errors.Is(err, repository.ErrScansHiddenStructure) {
+		t.Fatalf("stale work move: %v", err)
+	}
+	if _, err := closed.SetWorkScansHidden(ctx, workID, true, actor, "сохранить ограничение"); err != nil {
+		t.Fatal(err)
+	}
+	if err := works.Update(ctx, staleWork); err != nil {
+		t.Fatalf("own hidden work can move without exposing scans: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page)
+		VALUES ($1, 'Скрытая глава', 'chapter', 1, 1, 2) RETURNING id`, workID).Scan(&chapterID); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO chapters (work_id, title, type, order_number, start_page, end_page)
+		VALUES ($1, 'Родитель', 'chapter', 2, 3, 4) RETURNING id`, workID).Scan(&parentID); err != nil {
+		t.Fatal(err)
+	}
+	staleChapter, err := chapters.GetByID(ctx, chapterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetChapterScansHidden(ctx, chapterID, true, actor, "письмо"); err != nil {
+		t.Fatal(err)
+	}
+	staleChapter.EndPage = 3
+	if err := chapters.Update(ctx, staleChapter); !errors.Is(err, repository.ErrScansHiddenStructure) {
+		t.Fatalf("stale chapter range: %v", err)
+	}
+	if err := chapters.Move(ctx, chapterID, &parentID, 1); !errors.Is(err, repository.ErrScansHiddenStructure) {
+		t.Fatalf("stale chapter move: %v", err)
+	}
+	if err := chapters.Delete(ctx, chapterID); !errors.Is(err, repository.ErrScansHiddenStructure) {
+		t.Fatalf("stale chapter delete: %v", err)
+	}
+}
+
 // The same public page and work routes must respect every parent level. Full
 // closure can be switched independently without clearing the scan restriction.
 func TestScansHiddenSweepParentsAndFullClosure(t *testing.T) {
 	pool := repository.SharedTestPool(t)
 	router, authService, _ := closedSweepRouter(t, pool)
 	ctx := context.Background()
-	var editionID, journalID, volumeID, issueID int64
+	var editionID, journalID, volumeID, issueID, issueChildID, issueGrandchildID int64
 	for _, item := range []struct {
 		query string
 		id    *int64
@@ -113,7 +173,17 @@ func TestScansHiddenSweepParentsAndFullClosure(t *testing.T) {
 		VALUES ($1, 1928, 1, 1, '1', $2)`, journalID, issueID); err != nil {
 		t.Fatal(err)
 	}
-	for _, work := range []int64{volumeID, issueID} {
+	newChild := func(parent int64) int64 {
+		var id int64
+		if err := pool.QueryRow(ctx, `INSERT INTO works (title, author, language, country, file_path, owner_id, role, parent_work_id)
+			VALUES ('Служебная работа со сканами', 'Автор', 'ru', 'ru', 'works/scans-sweep/child.pdf', 1, 'front_matter', $1) RETURNING id`, parent).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	issueChildID = newChild(issueID)
+	issueGrandchildID = newChild(issueChildID)
+	for _, work := range []int64{volumeID, issueID, issueChildID, issueGrandchildID} {
 		if _, err := pool.Exec(ctx, `INSERT INTO pages (work_id, page_number, content_markdown, preview_path)
 			VALUES ($1, 1, 'ТЕКСТ-СКВОЗНОЙ', 'works/scans-sweep/secret.png')`, work); err != nil {
 			t.Fatal(err)
@@ -166,11 +236,32 @@ func TestScansHiddenSweepParentsAndFullClosure(t *testing.T) {
 	} {
 		check(item.work, "", true, true)
 		set(item.path, true, "scans_hidden")
+		if item.path == editionScans {
+			deletePath := fmt.Sprintf("/api/editions/%d", editionID)
+			res := sweepSend(t, router, "DELETE", deletePath, editor, "")
+			if res.code != 409 {
+				t.Errorf("editor removed scan-restricted edition: %d %s", res.code, res.text)
+			}
+			for _, listPath := range []string{fmt.Sprintf("/api/editions/%d/works", editionID), "/api/shelf"} {
+				list := sweepDo(t, router, listPath, "")
+				if list.code != 200 || strings.Contains(list.text, "volume.pdf") || !strings.Contains(list.text, `"scans_hidden_by":"edition"`) {
+					t.Errorf("restricted edition summary leaked or lost flag: %s: %d %s", listPath, list.code, list.text)
+				}
+			}
+		}
 		check(item.work, "", false, true)
 		check(item.work, editor, false, true)
 		check(item.work, admin, true, true)
+		if item.path == journalScans {
+			check(issueChildID, "", false, true)
+			check(issueGrandchildID, "", false, true)
+		}
 		set(item.path, false, "scans_hidden")
 		check(item.work, "", true, true)
+		if item.path == journalScans {
+			check(issueChildID, "", true, true)
+			check(issueGrandchildID, "", true, true)
+		}
 	}
 	set(volumeScans, true, "scans_hidden")
 	full := fmt.Sprintf("/api/works/%d/closed", volumeID)

@@ -693,7 +693,7 @@ export const ChapterView: React.FC = () => {
                 <ScansHiddenToggle
                   kind="chapter"
                   hidden={!!chapter.scans_hidden}
-                  hiddenBy={work?.scans_hidden_by || chapter.scans_hidden_by}
+                  hiddenBy={chapter.scans_hidden_by || work?.scans_hidden_by}
                   onToggle={toggleChapterScansHidden}
                 />
               )}

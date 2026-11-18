@@ -56,4 +56,12 @@ describe('ScansHiddenToggle', () => {
     expect(screen.getByRole('button', { name: 'Открыть сканы' })).toBeDisabled();
     expect(screen.getByText(/у тома/)).toBeInTheDocument();
   });
+
+  it('даёт снять собственный флаг главы при одновременно скрытом томе', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('открыть свой флаг');
+    const onToggle = vi.fn().mockResolvedValue(undefined);
+    render(<ScansHiddenToggle kind="chapter" hidden hiddenBy="chapter" onToggle={onToggle} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Открыть сканы' }));
+    expect(onToggle).toHaveBeenCalledWith(false, 'открыть свой флаг');
+  });
 });

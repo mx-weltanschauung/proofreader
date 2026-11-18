@@ -272,6 +272,30 @@ func (r *ChapterRepository) GetChildren(ctx context.Context, parentID int64) ([]
 
 // Update updates a chapter
 func (r *ChapterRepository) Update(ctx context.Context, chapter *models.Chapter) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin chapter update: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockScanStructure(ctx, tx); err != nil {
+		return err
+	}
+	var changesRestrictedRange, hidden bool
+	err = tx.QueryRow(ctx, `SELECT c.parent_id IS DISTINCT FROM $2::bigint
+		OR c.start_page IS DISTINCT FROM $3::int OR c.end_page IS DISTINCT FROM $4::int,
+		(c.scans_hidden OR shc.id IS NOT NULL OR work_scans_hidden_by(c.work_id) <> '')
+		FROM chapters c LEFT JOIN scans_hidden_chapters shc ON shc.id = c.id
+		WHERE c.id = $1`, chapter.ID, chapter.ParentID, chapter.StartPage, chapter.EndPage).
+		Scan(&changesRestrictedRange, &hidden)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("chapter not found")
+	}
+	if err != nil {
+		return fmt.Errorf("check chapter scan restriction: %w", err)
+	}
+	if changesRestrictedRange && hidden {
+		return ErrScansHiddenStructure
+	}
 	query := `
 		UPDATE chapters
 		SET parent_id = $2, title = $3, type = $4, order_number = $5, start_page = $6, end_page = $7, is_apparatus = $8, article_kind = $9
@@ -279,7 +303,7 @@ func (r *ChapterRepository) Update(ctx context.Context, chapter *models.Chapter)
 		RETURNING updated_at
 	`
 
-	err := r.pool.QueryRow(
+	err = tx.QueryRow(
 		ctx, query,
 		chapter.ID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus, chapter.ArticleKind,
 	).Scan(&chapter.UpdatedAt)
@@ -291,6 +315,9 @@ func (r *ChapterRepository) Update(ctx context.Context, chapter *models.Chapter)
 		return fmt.Errorf("failed to update chapter: %w", err)
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit chapter update: %w", err)
+	}
 	return nil
 }
 
@@ -301,12 +328,19 @@ func (r *ChapterRepository) Move(ctx context.Context, chapterID int64, newParent
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
+	if err := lockScanStructure(ctx, tx); err != nil {
+		return err
+	}
 
 	var workID int64
 	var oldParentID *int64
 	var oldOrder int
-	err = tx.QueryRow(ctx, `SELECT work_id, parent_id, order_number FROM chapters WHERE id = $1`, chapterID).
-		Scan(&workID, &oldParentID, &oldOrder)
+	var hidden bool
+	err = tx.QueryRow(ctx, `SELECT c.work_id, c.parent_id, c.order_number,
+		(c.scans_hidden OR shc.id IS NOT NULL OR work_scans_hidden_by(c.work_id) <> '')
+		FROM chapters c LEFT JOIN scans_hidden_chapters shc ON shc.id = c.id
+		WHERE c.id = $1`, chapterID).
+		Scan(&workID, &oldParentID, &oldOrder, &hidden)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("chapter not found")
@@ -321,6 +355,9 @@ func (r *ChapterRepository) Move(ctx context.Context, chapterID int64, newParent
 
 	sameParent := (oldParentID == nil && newParentID == nil) ||
 		(oldParentID != nil && newParentID != nil && *oldParentID == *newParentID)
+	if !sameParent && hidden {
+		return ErrScansHiddenStructure
+	}
 
 	_, err = tx.Exec(ctx, `UPDATE chapters SET order_number = -1 WHERE id = $1`, chapterID)
 	if err != nil {
@@ -449,9 +486,28 @@ func (r *ChapterRepository) ReorderSiblings(ctx context.Context, workID int64, p
 
 // Delete deletes a chapter
 func (r *ChapterRepository) Delete(ctx context.Context, id int64) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin chapter deletion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockScanStructure(ctx, tx); err != nil {
+		return err
+	}
+	var hidden bool
+	err = tx.QueryRow(ctx, `WITH RECURSIVE subtree AS (
+		SELECT id, work_id FROM chapters WHERE id = $1
+		UNION SELECT c.id, c.work_id FROM chapters c JOIN subtree s ON c.parent_id = s.id
+	) SELECT COALESCE(work_scans_hidden_by((SELECT work_id FROM subtree LIMIT 1)) <> '', false)
+		OR EXISTS (SELECT 1 FROM scans_hidden_chapters WHERE id IN (SELECT id FROM subtree))`, id).Scan(&hidden)
+	if err != nil {
+		return fmt.Errorf("check chapter deletion: %w", err)
+	}
+	if hidden {
+		return ErrScansHiddenStructure
+	}
 	query := `DELETE FROM chapters WHERE id = $1`
-
-	result, err := r.pool.Exec(ctx, query, id)
+	result, err := tx.Exec(ctx, query, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete chapter: %w", err)
 	}
@@ -460,5 +516,8 @@ func (r *ChapterRepository) Delete(ctx context.Context, id int64) error {
 		return fmt.Errorf("chapter not found")
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit chapter deletion: %w", err)
+	}
 	return nil
 }

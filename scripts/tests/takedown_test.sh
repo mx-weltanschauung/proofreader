@@ -250,6 +250,15 @@ test_scans_only_probe_keeps_text_and_hides_image() {
   body='{"content_markdown":"Доступный текст","preview_path":"works/1/pages/2.png","scan_restricted":false}'
   scan_page_ok "$body" false || fail "открытый скан не принят"
   scan_page_ok "$body" true && fail "выданный скан принят за скрытый"
+  body='{"content_markdown":"Доступный текст","scan_restricted":true}'
+  scan_page_ok "$body" false || fail "унаследованное ограничение после открытия собственного флага должно быть допустимо"
+  return 0
+}
+
+test_scans_only_keeps_text_archive() {
+  static_withdraw_needed --prod true 1 && fail "текстовый архив снимается при скрытии сканов"
+  static_withdraw_needed --prod true 0 || fail "полное закрытие не сняло архив"
+  static_withdraw_needed --prod false 0 && fail "открытие снимает архив"
   return 0
 }
 

@@ -384,12 +384,16 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if previousScansHiddenBy != "" && (!sameOptionalID(previousEdition, work.EditionID) || !sameOptionalID(previousParent, work.ParentWorkID)) {
+	if previousScansHiddenBy != "" && !work.ScansHidden && (!sameOptionalID(previousEdition, work.EditionID) || !sameOptionalID(previousParent, work.ParentWorkID)) {
 		writeError(w, http.StatusConflict, "Сканы работы скрыты — сначала откройте их")
 		return
 	}
 
 	if err := h.workRepo.Update(ctx, work); err != nil {
+		if errors.Is(err, repository.ErrScansHiddenStructure) {
+			writeError(w, http.StatusConflict, "Сканы работы скрыты — сначала откройте их")
+			return
+		}
 		if isVolumeTakenError(err) {
 			http.Error(w, "volume already taken by another work in this edition", http.StatusConflict)
 			return

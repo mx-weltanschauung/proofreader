@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"proofreader/internal/models"
 	"proofreader/internal/pagecache"
+	"proofreader/internal/repository"
 	"proofreader/pkg/markdown"
 )
 
@@ -417,6 +419,10 @@ func (h *ChapterHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.chapterRepo.Update(ctx, chapter); err != nil {
+		if errors.Is(err, repository.ErrScansHiddenStructure) {
+			writeError(w, http.StatusConflict, "Сканы главы скрыты — сначала откройте их")
+			return
+		}
 		http.Error(w, "Failed to update chapter", http.StatusInternalServerError)
 		return
 	}
@@ -463,6 +469,10 @@ func (h *ChapterHandler) Move(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.chapterRepo.Move(ctx, chapterID, req.ParentID, req.OrderNumber); err != nil {
+		if errors.Is(err, repository.ErrScansHiddenStructure) {
+			writeError(w, http.StatusConflict, "Сканы главы скрыты — сначала откройте их")
+			return
+		}
 		http.Error(w, "Failed to move chapter", http.StatusInternalServerError)
 		return
 	}
@@ -513,6 +523,10 @@ func (h *ChapterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := h.chapterRepo.Delete(ctx, chapterID); err != nil {
+		if errors.Is(err, repository.ErrScansHiddenStructure) {
+			writeError(w, http.StatusConflict, "Сканы главы скрыты — сначала откройте их")
+			return
+		}
 		http.Error(w, "Failed to delete chapter", http.StatusInternalServerError)
 		return
 	}

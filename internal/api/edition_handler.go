@@ -285,6 +285,10 @@ func (h *EditionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "Собрание закрыто: удаление открыло бы все его тома — сначала откройте его, потом удаляйте")
 			return
 		}
+		if errors.Is(err, repository.ErrEditionScansHidden) {
+			writeError(w, http.StatusConflict, "Сканы собрания скрыты: удаление открыло бы их в томах — сначала откройте сканы администратором")
+			return
+		}
 		http.Error(w, "Failed to delete edition", http.StatusInternalServerError)
 		return
 	}

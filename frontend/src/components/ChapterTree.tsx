@@ -179,7 +179,7 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
                 <ScansHiddenToggle
                   kind="chapter"
                   hidden={!!chapter.scans_hidden}
-                  hiddenBy={work.scans_hidden_by || chapter.scans_hidden_by}
+                  hiddenBy={chapter.scans_hidden_by || work.scans_hidden_by}
                   onToggle={(next, reason) => onToggleScansHidden(chapter.id, next, reason)}
                 />
               )}

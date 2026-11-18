@@ -276,6 +276,29 @@ func (r *WorkRepository) ListChildren(ctx context.Context, parentID int64) ([]*m
 
 // Update updates a work
 func (r *WorkRepository) Update(ctx context.Context, work *models.Work) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin work update: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockScanStructure(ctx, tx); err != nil {
+		return err
+	}
+	var moving, ownScansHidden bool
+	var scansHiddenBy string
+	err = tx.QueryRow(ctx, `SELECT edition_id IS DISTINCT FROM $2::bigint
+		OR parent_work_id IS DISTINCT FROM $3::bigint, scans_hidden,
+		work_scans_hidden_by(id) FROM works WHERE id = $1`,
+		work.ID, work.EditionID, work.ParentWorkID).Scan(&moving, &ownScansHidden, &scansHiddenBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("work not found")
+	}
+	if err != nil {
+		return fmt.Errorf("check work scan restriction: %w", err)
+	}
+	if moving && scansHiddenBy != "" && !ownScansHidden {
+		return ErrScansHiddenStructure
+	}
 	query := `
 		UPDATE works
 		SET title = $2, author = $3, publication_date = $4, language = $5,
@@ -287,7 +310,7 @@ func (r *WorkRepository) Update(ctx context.Context, work *models.Work) error {
 		RETURNING updated_at
 	`
 
-	err := r.pool.QueryRow(
+	err = tx.QueryRow(
 		ctx, query,
 		work.ID, work.Title, work.Author, work.PublicationDate,
 		work.Language, work.Country, work.FilePath, work.Status,
@@ -303,6 +326,9 @@ func (r *WorkRepository) Update(ctx context.Context, work *models.Work) error {
 		return fmt.Errorf("failed to update work: %w", err)
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit work update: %w", err)
+	}
 	return nil
 }
 
