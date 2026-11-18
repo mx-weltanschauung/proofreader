@@ -230,6 +230,29 @@ test_closed_body_has_reason_and_flag() {
   assert_eq "false" "$(jq -r .closed <<<"$b")" "признак открытия"
 }
 
+test_scans_only_body_and_routes() {
+  local b
+  b="$(visibility_body true 'письмо' 1)"
+  assert_eq true "$(jq -r .scans_hidden <<<"$b")" "флаг сканов"
+  assert_eq null "$(jq -r .closed <<<"$b")" "не трогает полное закрытие"
+  assert_eq 'письмо' "$(jq -r .reason <<<"$b")" "причина"
+  b="$(visibility_body false 'открыть' 1)"
+  assert_eq false "$(jq -r .scans_hidden <<<"$b")" "открытие сканов"
+  assert_eq '/api/works/145/scans-hidden' "$(visibility_path volume 145 '' 1)" "том"
+  assert_eq '/api/works/145/chapters/9923/scans-hidden' "$(visibility_path chapter 145 9923 1)" "глава"
+  assert_eq '/api/works/145/chapters/9923/scans-hidden' "$(visibility_path apparatus 145 9923 1)" "аппарат"
+  assert_eq '/api/works/45/closed' "$(visibility_path volume 45 '' 0)" "обычное снятие"
+}
+
+test_scans_only_probe_keeps_text_and_hides_image() {
+  local body='{"content_markdown":"Доступный текст","preview_path":"","scan_restricted":true}'
+  scan_page_ok "$body" true || fail "скрытый скан с текстом не принят"
+  body='{"content_markdown":"Доступный текст","preview_path":"works/1/pages/2.png","scan_restricted":false}'
+  scan_page_ok "$body" false || fail "открытый скан не принят"
+  scan_page_ok "$body" true && fail "выданный скан принят за скрытый"
+  return 0
+}
+
 test_closed_body_survives_quotes_and_newlines() {
   local reason=$'он сказал "снять"\nвторая строка \\ и слэш'
   local b
