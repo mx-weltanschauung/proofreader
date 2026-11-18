@@ -105,6 +105,9 @@ func (r *ChapterRepository) create(ctx context.Context, chapter *models.Chapter,
 			return err
 		}
 		defer tx.Rollback(ctx) //nolint:errcheck
+		if err := lockScanStructure(ctx, tx); err != nil {
+			return err
+		}
 		row = tx.QueryRow(ctx, query,
 			chapter.WorkID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus, chapter.ArticleKind, chapter.ScansHidden)
 	} else {

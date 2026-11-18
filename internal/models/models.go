@@ -127,8 +127,9 @@ type Work struct {
 	// колонку не пишет.
 	Closed bool `json:"closed" db:"closed"`
 	// ScansHidden — собственное ограничение изображений; текст не затрагивает.
-	ScansHidden       bool   `json:"scans_hidden" db:"scans_hidden"`
-	ScanClosureReason string `json:"-" db:"-"`
+	ScansHidden           bool   `json:"scans_hidden" db:"scans_hidden"`
+	ScanClosureReason     string `json:"-" db:"-"`
+	RequireInheritedScans bool   `json:"-" db:"-"`
 	// ClosedBy — откуда действующая закрытость (ClosedBy*), пусто — открыта.
 	// Считается на чтении (work_closed_by), в базе не хранится.
 	ClosedBy      string    `json:"closed_by" db:"-"`

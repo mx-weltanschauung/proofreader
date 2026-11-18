@@ -761,6 +761,18 @@ func TestWorkHandler_Create_PassesExplicitID(t *testing.T) {
 	}
 }
 
+func TestWorkHandler_Create_AttachesInheritedScanSourceInInsert(t *testing.T) {
+	repo := &fakeWorkRepo{}
+	rec := createWorkAsEditor(t, repo, `{"id":312,"title":"Предисловие","status":"draft","edition_id":7,"parent_work_id":311,"role":"front_matter","page_offset":2}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("код %d, ждали 201: %s", rec.Code, rec.Body.String())
+	}
+	created := repo.created
+	if created == nil || created.EditionID == nil || *created.EditionID != 7 || created.ParentWorkID == nil || *created.ParentWorkID != 311 || created.Role != models.WorkRoleFrontMatter || created.PageOffset != 2 || created.ScansHidden {
+		t.Fatalf("работа должна быть вставлена с координатами без собственного скрытия: %+v", created)
+	}
+}
+
 func TestWorkHandler_Create_WithoutIDLeavesItToSequence(t *testing.T) {
 	repo := &fakeWorkRepo{}
 	createWorkAsEditor(t, repo, `{"title":"Том","status":"draft"}`)

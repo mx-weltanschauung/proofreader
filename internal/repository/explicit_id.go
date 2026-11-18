@@ -86,14 +86,28 @@ func insertRowTx(ctx context.Context, tx pgx.Tx, table string, id int64,
 // о закрытии пропала бы, а причину потом не восстановить). Открытая ведёт
 // себя как insertRow, журнал не трогает.
 func insertRowClosure(ctx context.Context, pool *pgxpool.Pool, table, kind, title string, closed, scansHidden bool,
-	actor models.ClosureActor, reason, scanReason string, id int64, cols []string, args []any, dest ...any) error {
+	actor models.ClosureActor, reason, scanReason string, requireInheritedScans bool, id int64, cols []string, args []any, dest ...any) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // после Commit это no-op
+	if requireInheritedScans || scansHidden {
+		if err := lockScanStructure(ctx, tx); err != nil {
+			return err
+		}
+	}
 	if err := insertRowTx(ctx, tx, table, id, cols, args, dest...); err != nil {
 		return err
+	}
+	if requireInheritedScans {
+		var inherited bool
+		if err := tx.QueryRow(ctx, `SELECT work_scans_hidden_by($1) IN ('parent', 'edition', 'journal')`, *dest[0].(*int64)).Scan(&inherited); err != nil {
+			return err
+		}
+		if !inherited {
+			return ErrRequiredInheritedScans
+		}
 	}
 	if closed {
 		// dest[0] — id по контракту RETURNING id, created_at, updated_at.

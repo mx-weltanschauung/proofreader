@@ -30,7 +30,7 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition,
 	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering", "shelf_group", "closed", "scans_hidden"}
 	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned,
 		edition.VolumeNumbering, edition.ShelfGroup, edition.Closed, edition.ScansHidden}
-	if err := insertRowClosure(ctx, r.pool, "editions", ClosureEdition, edition.Title, edition.Closed, edition.ScansHidden, actor, reason, edition.ScanClosureReason,
+	if err := insertRowClosure(ctx, r.pool, "editions", ClosureEdition, edition.Title, edition.Closed, edition.ScansHidden, actor, reason, edition.ScanClosureReason, false,
 		edition.ID, cols, args, &edition.ID, &edition.CreatedAt, &edition.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create edition: %w", err)
 	}

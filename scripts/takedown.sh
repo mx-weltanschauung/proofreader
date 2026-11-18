@@ -101,13 +101,17 @@ visibility_path() {
 }
 
 scan_page_ok() {
-  local body="$1" must_hide="$2"
-  jq -e --argjson must_hide "$must_hide" '
+  local body="$1" expected_hidden="$2"
+  jq -e --argjson expected_hidden "$expected_hidden" '
     has("content_markdown") and (.scan_restricted | type == "boolean") and
-    (($must_hide | not) or .scan_restricted) and
+    (.scan_restricted == $expected_hidden) and
     (if .scan_restricted then (.preview_path // "") == "" and (.preview_url // "") == ""
-     else ((.preview_path // "") != "" or (.preview_url // "") != "") end)
+     else true end)
   ' <<<"$body" >/dev/null
+}
+
+scan_text_status_unchanged() {
+  [[ "$1" == "$2" && ( "$2" == 200 || "$2" == 404 ) ]]
 }
 
 static_withdraw_needed() {
@@ -532,6 +536,42 @@ main() {
   fi
 
   local body started took r c
+  local roots=() children=() scan_targets=()
+  local -A scan_before_status=() scan_sample_page=()
+  if [[ "$kind" == apparatus ]]; then
+    mapfile -t roots < <(jq -r '(.chapters // [])[] | .id' <<<"$APPARATUS_PLAN")
+    mapfile -t children < <(jq -r '(.children // [])[] | .id' <<<"$APPARATUS_PLAN")
+  fi
+  if (( scans_only )); then
+    case "$kind" in
+      volume) scan_targets+=("volume:$id:") ;;
+      chapter) scan_targets+=("chapter:$id:$chapter") ;;
+      apparatus)
+        for r in "${roots[@]}"; do [[ -n "$r" ]] && scan_targets+=("chapter:$id:$r"); done
+        for c in "${children[@]}"; do [[ -n "$c" ]] && scan_targets+=("volume:$c:"); done ;;
+    esac
+    # Текстовая доступность должна остаться той же. Запоминаем анонимный
+    # статус каждой проверяемой полосы до первого PUT.
+    local target_kind target_work target_chapter page out status
+    for r in "${scan_targets[@]}"; do
+      IFS=: read -r target_kind target_work target_chapter <<<"$r"
+      if [[ "$target_kind" == chapter ]]; then
+        api GET "/api/works/$target_work/chapters/$target_chapter" || die "не удалось прочитать главу $target_work/$target_chapter"
+        api_ok || die "глава $target_work/$target_chapter не отдалась"
+        page="$(jq -r '.start_page // empty' <<<"$API_BODY")"
+      else
+        api GET "/api/works/$target_work/page-map" || die "не удалось прочитать карту полос $target_work"
+        api_ok || die "карта полос $target_work не отдалась"
+        page="$(jq -r '.[0].page_number // empty' <<<"$API_BODY")"
+      fi
+      [[ -n "$page" ]] || die "нет полосы для проверки $r"
+      scan_sample_page["$r"]="$page"
+      out="$(curl -sS "$API_BASE/api/works/$target_work/pages/by-number/$page" -w $'\n%{http_code}')" || die "не удалось проверить анонимную полосу $target_work/$page"
+      status="${out##*$'\n'}"
+      [[ "$status" == 200 || "$status" == 404 ]] || die "анонимная полоса $target_work/$page до изменения ответила $status"
+      scan_before_status["$r"]="$status"
+    done
+  fi
   body="$(visibility_body "$closed" "$reason" "$scans_only")"
   started="$(now_ms)"
   # put_closed ПУТЬ — один PUT .../closed с телом; любой не-2xx — отказ.
@@ -539,7 +579,6 @@ main() {
     api_put "$1" "$body" || die "запрос не прошёл: $1"
     api_ok || die "не удалось (код $API_STATUS) на $1: $API_BODY"
   }
-  local roots=() children=()
   case "$kind" in
     volume)
       put_closed "$(visibility_path volume "$id" '' "$scans_only")"
@@ -548,8 +587,6 @@ main() {
       put_closed "$(visibility_path chapter "$id" "$chapter" "$scans_only")"
       log "глава $id/$chapter: ограничение=$closed" ;;
     apparatus)
-      mapfile -t roots < <(jq -r '(.chapters // [])[] | .id' <<<"$APPARATUS_PLAN")
-      mapfile -t children < <(jq -r '(.children // [])[] | .id' <<<"$APPARATUS_PLAN")
       for r in "${roots[@]}"; do
         [[ -n "$r" ]] || continue
         put_closed "$(visibility_path apparatus "$id" "$r" "$scans_only")"
@@ -581,51 +618,34 @@ main() {
     fi
   }
   if (( scans_only )); then
-    # Проверка без токена: страница остаётся 200 и несёт текст, но ключ и
-    # подписанная ссылка на скан пусты. У главы берём первую полосу диапазона.
-    scan_probe() { # ТОМ ПОЛОСА
-      local work="$1" page="$2" out status payload
+    scan_probe() { # ТОМ ПОЛОСА ИСХОДНЫЙ_СТАТУС
+      local work="$1" page="$2" before="$3" out status payload expected
       api GET "/api/works/$work/pages/by-number/$page" || die "не удалось перечитать полосу $work/$page"
       api_ok || die "у работы $work нет полосы $page для сверки"
+      expected="$(jq -r '.scan_restricted' <<<"$API_BODY")"
+      [[ "$expected" == true || "$expected" == false ]] || die "административный ответ не содержит scan_restricted для $work/$page"
+      [[ "$closed" != true || "$expected" == true ]] || die "сканы полосы $work/$page не скрылись"
       out="$(curl -sS "$API_BASE/api/works/$work/pages/by-number/$page" -w $'\n%{http_code}')" || out=""
       status="${out##*$'\n'}"; payload="${out%$'\n'*}"
-      if [[ "$status" == 404 ]]; then
-        log "сверка: полоса $work/$page закрыта для анонима; собственный признак сканов проверен отдельно"
-      elif [[ "$status" == 200 ]] && scan_page_ok "$payload" "$closed"; then
-        log "сверка: текст полосы $work/$page доступен, скан не раскрыт"
+      if [[ "$before" == 404 ]] && scan_text_status_unchanged "$before" "$status"; then
+        log "сверка: полоса $work/$page осталась закрыта полностью"
+      elif [[ "$before" == 200 ]] && scan_text_status_unchanged "$before" "$status" && scan_page_ok "$payload" "$expected"; then
+        log "сверка: текст полосы $work/$page доступен, сканы ограничены=$expected"
       else
-        mismatches+=("полоса $work/$page: код $status, ограничение скана не совпало")
+        mismatches+=("полоса $work/$page: было $before, стало $status, ожидаемое ограничение скана=$expected")
       fi
     }
-    probe_scan_work() { # ТОМ
-      api GET "/api/works/$1" || die "не удалось перечитать работу $1"
-      api_ok || die "работа $1 не отдалась после изменения"
-      [[ "$(jq -r '.scans_hidden' <<<"$API_BODY")" == "$closed" ]] ||
-        die "работа $1: собственный признак сканов не сохранился"
-      api GET "/api/works/$1/page-map" || die "не удалось перечитать карту полос $1"
-      api_ok || die "карта полос $1 не отдалась после изменения"
-      local page
-      page="$(jq -r '.[0].page_number // empty' <<<"$API_BODY")"
-      [[ -n "$page" ]] || die "у работы $1 нет полосы для проверки скана"
-      scan_probe "$1" "$page"
-    }
-    probe_scan_chapter() { # ТОМ ГЛАВА
-      api GET "/api/works/$1/chapters/$2" || die "не удалось перечитать главу $1/$2"
-      api_ok || die "глава $1/$2 не отдалась после изменения"
-      local page
-      [[ "$(jq -r '.scans_hidden' <<<"$API_BODY")" == "$closed" ]] ||
-        die "глава $1/$2: собственный признак сканов не сохранился"
-      page="$(jq -r '.start_page // empty' <<<"$API_BODY")"
-      [[ -n "$page" ]] || die "у главы $1/$2 нет начальной полосы"
-      scan_probe "$1" "$page"
-    }
-    case "$kind" in
-      volume) probe_scan_work "$id" ;;
-      chapter) probe_scan_chapter "$id" "$chapter" ;;
-      apparatus)
-        for r in "${roots[@]}"; do [[ -n "$r" ]] && probe_scan_chapter "$id" "$r"; done
-        for c in "${children[@]}"; do [[ -n "$c" ]] && probe_scan_work "$c"; done ;;
-    esac
+    for r in "${scan_targets[@]}"; do
+      IFS=: read -r target_kind target_work target_chapter <<<"$r"
+      if [[ "$target_kind" == chapter ]]; then
+        api GET "/api/works/$target_work/chapters/$target_chapter" || die "не удалось перечитать главу $target_work/$target_chapter"
+      else
+        api GET "/api/works/$target_work" || die "не удалось перечитать работу $target_work"
+      fi
+      api_ok || die "цель $r не отдалась после изменения"
+      [[ "$(jq -r '.scans_hidden' <<<"$API_BODY")" == "$closed" ]] || die "цель $r: собственный признак сканов не сохранился"
+      scan_probe "$target_work" "${scan_sample_page[$r]}" "${scan_before_status[$r]}"
+    done
   else
     case "$kind" in
       volume)
@@ -652,8 +672,9 @@ main() {
     cat >&2 <<'TAIL_SCANS'
 
 Журнал ограничений доступа: GET /api/admin/closures (экран /admin/closures).
-Текст остаётся доступным. Уже выданные ссылки на сканы действуют до истечения
-срока подписи, а скачанные файлы и ранее опубликованные архивы не отзываются.
+Если текст был открыт, он остаётся доступным. Уже выданные ссылки на сканы
+действуют до истечения срока подписи, а скачанные файлы и ранее опубликованные
+архивы не отзываются.
 Обратный ход: та же команда с --scans-only --open и причиной.
 TAIL_SCANS
   else

@@ -251,7 +251,18 @@ test_scans_only_probe_keeps_text_and_hides_image() {
   scan_page_ok "$body" false || fail "открытый скан не принят"
   scan_page_ok "$body" true && fail "выданный скан принят за скрытый"
   body='{"content_markdown":"Доступный текст","scan_restricted":true}'
-  scan_page_ok "$body" false || fail "унаследованное ограничение после открытия собственного флага должно быть допустимо"
+  scan_page_ok "$body" false && fail "неожиданное ограничение принято за открытые сканы"
+  scan_page_ok "$body" true || fail "унаследованное ограничение не принято"
+  body='{"content_markdown":"Доступный текст","scan_restricted":false}'
+  scan_page_ok "$body" false || fail "полоса без готового превью должна считаться открытой"
+  return 0
+}
+
+test_scan_text_status_does_not_allow_disappearing_text() {
+  scan_text_status_unchanged 200 200 || fail "доступный текст отвергнут"
+  scan_text_status_unchanged 404 404 || fail "унаследованное полное закрытие отвергнуто"
+  scan_text_status_unchanged 200 404 && fail "доступный текст исчез после скрытия сканов"
+  scan_text_status_unchanged 404 200 && fail "полное закрытие снято скрытием сканов"
   return 0
 }
 

@@ -11,6 +11,7 @@ import (
 // ErrScansHiddenStructure means a structural edit would remove a scan
 // restriction without the administrator's separate reopening action.
 var ErrScansHiddenStructure = errors.New("hidden scans prevent structural change")
+var ErrRequiredInheritedScans = errors.New("inherited scan restriction is not active")
 
 // The same transaction lock is acquired before scan toggles and structural
 // mutations. It closes the gap between reading inherited access and writing

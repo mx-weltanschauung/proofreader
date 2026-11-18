@@ -49,7 +49,7 @@ func isUnique(err error, constraint string) bool {
 func (r *JournalRepository) Create(ctx context.Context, j *models.Journal, actor models.ClosureActor, reason string) error {
 	cols := []string{"slug", "title", "subtitle", "description", "closed", "scans_hidden"}
 	args := []any{j.Slug, j.Title, j.Subtitle, j.Description, j.Closed, j.ScansHidden}
-	err := insertRowClosure(ctx, r.pool, "journals", ClosureJournal, j.Title, j.Closed, j.ScansHidden, actor, reason, j.ScanClosureReason,
+	err := insertRowClosure(ctx, r.pool, "journals", ClosureJournal, j.Title, j.Closed, j.ScansHidden, actor, reason, j.ScanClosureReason, false,
 		j.ID, cols, args, &j.ID, &j.CreatedAt, &j.UpdatedAt)
 	if isUnique(err, "journals_slug_key") {
 		return fmt.Errorf("%w: %s", ErrJournalSlugTaken, j.Slug)

@@ -84,6 +84,56 @@ func TestScansHiddenSweep(t *testing.T) {
 	}
 }
 
+func TestNewWorkInHiddenEditionInheritsScansAtCreation(t *testing.T) {
+	pool := repository.SharedTestPool(t)
+	router, authService, _ := closedSweepRouter(t, pool)
+	ctx := context.Background()
+	var editionID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO editions (title, slug, scans_hidden)
+		VALUES ('Скрытое издание', 'hidden-at-create', true) RETURNING id`).Scan(&editionID); err != nil {
+		t.Fatal(err)
+	}
+	editor, err := authService.GenerateToken(&models.User{ID: 1, Role: models.RoleEditor, Email: "editor@example.org"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := sweepSend(t, router, "POST", "/api/works", editor,
+		fmt.Sprintf(`{"title":"Новый том","status":"draft","edition_id":%d,"volume_number":1,"require_inherited_scans":true}`, editionID))
+	if created.code != 201 || !strings.Contains(created.text, `"scans_hidden":false`) {
+		t.Fatalf("новый том должен создаться без собственного флага: %d %s", created.code, created.text)
+	}
+	var workID int64
+	if err := pool.QueryRow(ctx, `SELECT id FROM works WHERE title = 'Новый том'`).Scan(&workID); err != nil {
+		t.Fatal(err)
+	}
+	if work := sweepDo(t, router, fmt.Sprintf("/api/works/%d", workID), editor); work.code != 200 || !strings.Contains(work.text, `"scans_hidden_by":"edition"`) {
+		t.Fatalf("созданный том не наследует скрытие: %d %s", work.code, work.text)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO pages (work_id, page_number, content_markdown, preview_path)
+		VALUES ($1, 1, 'Открытый текст', 'works/hidden-at-create/page.png')`, workID); err != nil {
+		t.Fatal(err)
+	}
+	pagePath := fmt.Sprintf("/api/works/%d/pages/by-number/1", workID)
+	if page := sweepDo(t, router, pagePath, ""); page.code != 200 || !strings.Contains(page.text, "Открытый текст") || strings.Contains(page.text, "page.png") {
+		t.Fatalf("созданный том раскрыл скан: %d %s", page.code, page.text)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE editions SET scans_hidden = false WHERE id = $1`, editionID); err != nil {
+		t.Fatal(err)
+	}
+	if page := sweepDo(t, router, pagePath, ""); page.code != 200 || !strings.Contains(page.text, "page.png") {
+		t.Fatalf("после открытия издания скан должен открыться: %d %s", page.code, page.text)
+	}
+	rejected := sweepSend(t, router, "POST", "/api/works", editor,
+		fmt.Sprintf(`{"title":"Недопустимый том","status":"draft","edition_id":%d,"volume_number":2,"require_inherited_scans":true}`, editionID))
+	if rejected.code != 409 {
+		t.Fatalf("создание без ожидаемого наследования должно быть отклонено: %d %s", rejected.code, rejected.text)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM works WHERE title = 'Недопустимый том'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("отклонённая работа осталась в базе: count=%d err=%v", count, err)
+	}
+}
+
 func TestScansHiddenStructuralRecheckAfterStaleRead(t *testing.T) {
 	pool := repository.SharedTestPool(t)
 	ctx := context.Background()

@@ -149,9 +149,19 @@ type CreateWorkRequest struct {
 	// Update поле не читает: признак меняет только ClosedHandler.
 	Closed bool `json:"closed,omitempty"`
 	// ClosedReason — причина строки журнала при Closed; пусто — «закрыто при создании».
-	ClosedReason      string `json:"closed_reason,omitempty"`
-	ScansHidden       bool   `json:"scans_hidden,omitempty"`
-	ScansHiddenReason string `json:"scans_hidden_reason,omitempty"`
+	ClosedReason          string `json:"closed_reason,omitempty"`
+	ScansHidden           bool   `json:"scans_hidden,omitempty"`
+	ScansHiddenReason     string `json:"scans_hidden_reason,omitempty"`
+	RequireInheritedScans bool   `json:"require_inherited_scans,omitempty"`
+	// Coordinates and role can be supplied at creation so inherited scan
+	// restrictions are effective before the work is ever visible.
+	EditionID      *int64  `json:"edition_id,omitempty"`
+	VolumeNumber   *int    `json:"volume_number,omitempty"`
+	VolumePart     *string `json:"volume_part,omitempty"`
+	PageOffset     int     `json:"page_offset,omitempty"`
+	ParentWorkID   *int64  `json:"parent_work_id,omitempty"`
+	Role           string  `json:"role,omitempty"`
+	NumberingStyle string  `json:"numbering_style,omitempty"`
 }
 
 // UpdateWorkRequest represents a request to update a work.
@@ -254,21 +264,41 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Create work
 	work := &models.Work{
-		ID:                req.ID,
-		Title:             req.Title,
-		Author:            req.Author,
-		Language:          req.Language,
-		Country:           req.Country,
-		FilePath:          "", // Will be set during file upload
-		Status:            req.Status,
-		OwnerID:           claims.UserID,
-		Closed:            req.Closed,
-		ScansHidden:       req.ScansHidden,
-		ScanClosureReason: scanReason,
+		ID:                    req.ID,
+		Title:                 req.Title,
+		Author:                req.Author,
+		Language:              req.Language,
+		Country:               req.Country,
+		FilePath:              "", // Will be set during file upload
+		Status:                req.Status,
+		OwnerID:               claims.UserID,
+		Closed:                req.Closed,
+		ScansHidden:           req.ScansHidden,
+		ScanClosureReason:     scanReason,
+		RequireInheritedScans: req.RequireInheritedScans,
+		EditionID:             req.EditionID,
+		VolumeNumber:          req.VolumeNumber,
+		VolumePart:            req.VolumePart,
+		PageOffset:            req.PageOffset,
+		ParentWorkID:          req.ParentWorkID,
+		Role:                  req.Role,
+		NumberingStyle:        req.NumberingStyle,
+	}
+	if err := applyVolumeFields(work, volumeUpdate{}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := applyWorkMeta(work, workMeta{}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	ctx := context.Background()
 	if err := h.workRepo.Create(ctx, work, closureActor(r), closeReason); err != nil {
+		if errors.Is(err, repository.ErrRequiredInheritedScans) {
+			http.Error(w, "inherited scan restriction is not active", http.StatusConflict)
+			return
+		}
 		if errors.Is(err, repository.ErrIDTaken) {
 			http.Error(w, fmt.Sprintf("work id %d is already taken", req.ID), http.StatusConflict)
 			return

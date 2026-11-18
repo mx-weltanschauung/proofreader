@@ -127,7 +127,7 @@ func (r *WorkRepository) Create(ctx context.Context, work *models.Work, actor mo
 	// знающие о ролях (текущий POST /api/works), оставляют оба поля пустыми
 	// и должны получать том, как до этой миграции.
 	cols, args := prepareWorkInsert(work)
-	if err := insertRowClosure(ctx, r.pool, "works", ClosureWork, work.Title, work.Closed, work.ScansHidden, actor, reason, work.ScanClosureReason,
+	if err := insertRowClosure(ctx, r.pool, "works", ClosureWork, work.Title, work.Closed, work.ScansHidden, actor, reason, work.ScanClosureReason, work.RequireInheritedScans,
 		work.ID, cols, args, &work.ID, &work.CreatedAt, &work.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create work: %w", err)
 	}
