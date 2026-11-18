@@ -11,7 +11,8 @@ import (
 // pageResponse wraps a Page with a presigned preview URL for the frontend.
 type pageResponse struct {
 	*models.Page
-	PreviewURL string `json:"preview_url,omitempty"`
+	PreviewURL     string `json:"preview_url,omitempty"`
+	ScanRestricted bool   `json:"scan_restricted"`
 }
 
 // workResponse wraps a Work with a presigned original-file URL. children
@@ -38,8 +39,10 @@ func presign(ctx context.Context, store storage.Storage, key string, ttl time.Du
 	return url
 }
 
-func newPageResponse(ctx context.Context, p *models.Page, store storage.Storage, ttl time.Duration) pageResponse {
-	return pageResponse{Page: p, PreviewURL: presign(ctx, store, p.PreviewPath, ttl)}
+func newPageResponse(ctx context.Context, p *models.Page, store storage.Storage, ttl time.Duration, restricted ...bool) pageResponse {
+	hidden := len(restricted) > 0 && restricted[0]
+	visible := redactPageScan(p, hidden)
+	return pageResponse{Page: visible, PreviewURL: presign(ctx, store, visible.PreviewPath, ttl), ScanRestricted: hidden}
 }
 
 func newPageResponses(ctx context.Context, pages []*models.Page, store storage.Storage, ttl time.Duration) []pageResponse {

@@ -45,7 +45,10 @@ type WorkHandler struct {
 	// closedChapters — работы с закрытыми главами: их оригинал не-сотруднику
 	// не выдаётся. nil — закрытых глав нет.
 	closedChapters ClosedChapterWorks
+	scans          ScanVisibilityStore
 }
+
+func (h *WorkHandler) WithScans(s ScanVisibilityStore) *WorkHandler { h.scans = s; return h }
 
 // ClosedChapterWorks — работы, у которых есть хоть одна закрытая глава.
 // *repository.ClosedRepository удовлетворяет ему как есть.
@@ -65,15 +68,24 @@ func (h *WorkHandler) WithClosedChapterWorks(s ClosedChapterWorks) *WorkHandler 
 // чтения прячет все оригиналы, а не отдаёт их: карточка без файла хуже не
 // станет, а утечку не вернуть.
 func (h *WorkHandler) originalHidden(r *http.Request) func(workID int64) bool {
-	if h.closedChapters == nil || isStaffRequest(r) {
-		return func(int64) bool { return false }
+	var closedIDs, scanIDs map[int64]bool
+	if h.closedChapters != nil && !isStaffRequest(r) {
+		var err error
+		closedIDs, err = h.closedChapters.WorksWithClosedChapters(r.Context())
+		if err != nil {
+			log.Printf("работы с закрытыми главами: %v", err)
+			return func(int64) bool { return true }
+		}
 	}
-	ids, err := h.closedChapters.WorksWithClosedChapters(r.Context())
-	if err != nil {
-		log.Printf("работы с закрытыми главами: %v", err)
-		return func(int64) bool { return true }
+	if h.scans != nil && !scanAdministrator(r.Context()) {
+		var err error
+		scanIDs, err = h.scans.WorksWithHiddenScans(r.Context())
+		if err != nil {
+			log.Printf("работы со скрытыми сканами: %v", err)
+			return func(int64) bool { return true }
+		}
 	}
-	return func(workID int64) bool { return ids[workID] }
+	return func(workID int64) bool { return closedIDs[workID] || scanIDs[workID] }
 }
 
 // workResponseFor — ответ работы с оригиналом, если зрителю его можно. Без
@@ -81,9 +93,7 @@ func (h *WorkHandler) originalHidden(r *http.Request) func(workID int64) bool {
 // ни адресом в бакете.
 func (h *WorkHandler) workResponseFor(r *http.Request, wk *models.Work, hidden func(int64) bool) workResponse {
 	if hidden(wk.ID) {
-		cp := *wk
-		cp.FilePath = ""
-		return workResponse{Work: &cp}
+		return workResponse{Work: redactWorkOriginal(wk, true)}
 	}
 	return newWorkResponse(r.Context(), wk, h.store, h.presignTTL)
 }
@@ -269,7 +279,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(work)
+	json.NewEncoder(w).Encode(h.workResponseFor(r, work, h.originalHidden(r)))
 }
 
 // Get retrieves a work by ID
@@ -390,7 +400,7 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 	h.dropCacheIfClosednessMoved(ctx, work)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(work)
+	json.NewEncoder(w).Encode(h.workResponseFor(r, work, h.originalHidden(r)))
 }
 
 // dropCacheIfClosednessMoved — второй, после ClosedHandler, путь, которым
@@ -673,6 +683,9 @@ func (h *WorkHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		"message":    "File uploaded successfully",
 		"file_key":   key,
 		"page_count": pageCount,
+	}
+	if h.originalHidden(r)(workID) {
+		response["file_key"] = ""
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

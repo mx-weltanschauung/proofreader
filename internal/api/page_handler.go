@@ -25,6 +25,12 @@ type PageHandler struct {
 	renderer        *markdown.Renderer
 	store           storage.Storage
 	presignTTL      time.Duration
+	scans           ScanVisibilityStore
+}
+
+func (h *PageHandler) WithScans(s ScanVisibilityStore) *PageHandler {
+	h.scans = s
+	return h
 }
 
 // NewPageHandler creates a new page handler
@@ -78,8 +84,17 @@ func (h *PageHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	whole, spans, err := scanAccess(ctx, h.scans, workID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить доступ к сканам")
+		return
+	}
+	responses := make([]pageResponse, len(pages))
+	for i, p := range pages {
+		responses[i] = newPageResponse(ctx, p, h.store, h.presignTTL, whole || inSpans(spans, p.PageNumber))
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(newPageResponses(r.Context(), pages, h.store, h.presignTTL))
+	json.NewEncoder(w).Encode(responses)
 }
 
 // PageMap returns the number and status of every page in the work.
@@ -143,8 +158,7 @@ func (h *PageHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(newPageResponse(r.Context(), page, h.store, h.presignTTL))
+	h.writePage(w, r, page)
 }
 
 // GetByNumber retrieves a page by its number within a work. Page numbers are
@@ -173,8 +187,17 @@ func (h *PageHandler) GetByNumber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.writePage(w, r, page)
+}
+
+func (h *PageHandler) writePage(w http.ResponseWriter, r *http.Request, page *models.Page) {
+	whole, spans, err := scanAccess(r.Context(), h.scans, page.WorkID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось проверить доступ к сканам")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(newPageResponse(r.Context(), page, h.store, h.presignTTL))
+	json.NewEncoder(w).Encode(newPageResponse(r.Context(), page, h.store, h.presignTTL, whole || inSpans(spans, page.PageNumber)))
 }
 
 // Update updates a page and creates a version
@@ -229,8 +252,7 @@ func (h *PageHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(fresh)
+	h.writePage(w, r, fresh)
 }
 
 // Render renders a page as HTML
@@ -385,6 +407,5 @@ func (h *PageHandler) RestoreVersion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(fresh)
+	h.writePage(w, r, fresh)
 }
