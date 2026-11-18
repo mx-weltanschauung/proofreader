@@ -66,6 +66,14 @@ func scanChapter(row rowScanner) (*models.Chapter, error) {
 // аппаратной главе false осознанно можно правкой: Update пишет значение как
 // есть, и ручная поправка спорного случая переживает всё остальное.
 func (r *ChapterRepository) Create(ctx context.Context, chapter *models.Chapter) error {
+	return r.create(ctx, chapter, nil, "")
+}
+
+func (r *ChapterRepository) CreateWithScanRestriction(ctx context.Context, chapter *models.Chapter, actor models.ClosureActor, reason string) error {
+	return r.create(ctx, chapter, &actor, reason)
+}
+
+func (r *ChapterRepository) create(ctx context.Context, chapter *models.Chapter, actor *models.ClosureActor, reason string) error {
 	if !chapter.IsApparatus {
 		chapter.IsApparatus = models.IsApparatusTitle(chapter.Title, chapter.ParentID == nil)
 	}
@@ -81,18 +89,38 @@ func (r *ChapterRepository) Create(ctx context.Context, chapter *models.Chapter)
 	}
 
 	query := `
-		INSERT INTO chapters (work_id, parent_id, title, type, order_number, start_page, end_page, is_apparatus, article_kind)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO chapters (work_id, parent_id, title, type, order_number, start_page, end_page, is_apparatus, article_kind, scans_hidden)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at
 	`
-
-	err := r.pool.QueryRow(
-		ctx, query,
-		chapter.WorkID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus, chapter.ArticleKind,
-	).Scan(&chapter.ID, &chapter.CreatedAt, &chapter.UpdatedAt)
+	if chapter.ScansHidden && actor == nil {
+		return fmt.Errorf("scan restriction requires actor")
+	}
+	var row pgx.Row
+	var tx pgx.Tx
+	if chapter.ScansHidden {
+		var err error
+		tx, err = r.pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx) //nolint:errcheck
+		row = tx.QueryRow(ctx, query,
+			chapter.WorkID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus, chapter.ArticleKind, chapter.ScansHidden)
+	} else {
+		row = r.pool.QueryRow(ctx, query,
+			chapter.WorkID, chapter.ParentID, chapter.Title, chapter.Type, chapter.OrderNumber, chapter.StartPage, chapter.EndPage, chapter.IsApparatus, chapter.ArticleKind, chapter.ScansHidden)
+	}
+	err := row.Scan(&chapter.ID, &chapter.CreatedAt, &chapter.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to create chapter: %w", err)
+	}
+	if chapter.ScansHidden {
+		if err := insertClosureScopeTx(ctx, tx, ClosureChapter, "scans", chapter.ID, chapter.Title, true, *actor, reason); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	}
 
 	return nil

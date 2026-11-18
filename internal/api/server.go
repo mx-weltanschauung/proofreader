@@ -96,7 +96,7 @@ func NewServer(d ServerDeps) *mux.Router {
 	chapterHandler := NewChapterHandler(chapterRepo, viewPages, markdownRenderer, rangeCache).
 		WithRecordings(audioRecordingRepo).
 		WithCredits(personRepo).
-		WithClosedChapters(closedRepo)
+		WithClosedChapters(closedRepo).WithScansHiddenChapters(closedRepo)
 	eventRepo := repository.NewEventRepository(pool)
 	readingHandler := NewReadingHandler(viewPages, markdownRenderer).WithClosedMarkers(viewChapters)
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же

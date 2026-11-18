@@ -127,7 +127,7 @@ func (r *WorkRepository) Create(ctx context.Context, work *models.Work, actor mo
 	// знающие о ролях (текущий POST /api/works), оставляют оба поля пустыми
 	// и должны получать том, как до этой миграции.
 	cols, args := prepareWorkInsert(work)
-	if err := insertRowClosure(ctx, r.pool, "works", ClosureWork, work.Title, work.Closed, actor, reason,
+	if err := insertRowClosure(ctx, r.pool, "works", ClosureWork, work.Title, work.Closed, work.ScansHidden, actor, reason, work.ScanClosureReason,
 		work.ID, cols, args, &work.ID, &work.CreatedAt, &work.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create work: %w", err)
 	}
@@ -145,14 +145,14 @@ func prepareWorkInsert(work *models.Work) ([]string, []any) {
 	}
 	cols := []string{"title", "author", "publication_date", "language", "country", "file_path",
 		"status", "edition_id", "volume_number", "volume_part", "page_offset", "parent_work_id",
-		"role", "numbering_style", "precedes_volume", "shelf_label", "description", "owner_id", "closed"}
+		"role", "numbering_style", "precedes_volume", "shelf_label", "description", "owner_id", "closed", "scans_hidden"}
 	args := []any{
 		work.Title, work.Author, work.PublicationDate, work.Language,
 		work.Country, work.FilePath, work.Status,
 		work.EditionID, work.VolumeNumber, work.VolumePart, work.PageOffset,
 		work.ParentWorkID, work.Role, work.NumberingStyle, work.PrecedesVolume,
 		work.ShelfLabel, work.Description,
-		work.OwnerID, work.Closed,
+		work.OwnerID, work.Closed, work.ScansHidden,
 	}
 	return cols, args
 }

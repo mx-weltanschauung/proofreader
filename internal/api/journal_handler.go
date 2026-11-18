@@ -41,7 +41,9 @@ type journalBody struct {
 	// Closed — завести журнал сразу закрытым; Update поле не читает.
 	Closed bool `json:"closed,omitempty"`
 	// ClosedReason — причина строки журнала при Closed.
-	ClosedReason string `json:"closed_reason,omitempty"`
+	ClosedReason      string `json:"closed_reason,omitempty"`
+	ScansHidden       bool   `json:"scans_hidden,omitempty"`
+	ScansHiddenReason string `json:"scans_hidden_reason,omitempty"`
 }
 
 type issueRequest struct {
@@ -54,7 +56,9 @@ type issueRequest struct {
 	// Closed — признак работы номера (у номера своего нет); Update не читает.
 	Closed bool `json:"closed,omitempty"`
 	// ClosedReason — причина строки журнала при Closed.
-	ClosedReason string `json:"closed_reason,omitempty"`
+	ClosedReason      string `json:"closed_reason,omitempty"`
+	ScansHidden       bool   `json:"scans_hidden,omitempty"`
+	ScansHiddenReason string `json:"scans_hidden_reason,omitempty"`
 	// Label — подпись номера как напечатано, когда она не сводится к числам
 	// («1 (38)»: годовой номер и сквозной в скобках). Пусто — из чисел
 	// (`models.IssueLabel`). Числа при явной подписи — порядок и ключ
@@ -121,7 +125,14 @@ func (h *JournalHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	j := &models.Journal{ID: req.ID, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description, Closed: req.Closed}
+	scanReason, ok := requireAdminToHideScans(w, r, req.ScansHidden, req.ScansHiddenReason)
+	if !ok {
+		return
+	}
+	if !req.Closed {
+		closeReason = scanReason
+	}
+	j := &models.Journal{ID: req.ID, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description, Closed: req.Closed, ScansHidden: req.ScansHidden, ScanClosureReason: scanReason}
 	if err := h.store.Create(r.Context(), j, closureActor(r), closeReason); err != nil {
 		h.writeStoreError(w, err, "Не удалось завести журнал")
 		return
@@ -152,7 +163,7 @@ func (h *JournalHandler) Update(w http.ResponseWriter, r *http.Request) {
 		h.writeStoreError(w, err, "Не удалось сохранить журнал")
 		return
 	}
-	j := &models.Journal{ID: id, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description, Closed: stored.Closed}
+	j := &models.Journal{ID: id, Slug: req.Slug, Title: req.Title, Subtitle: req.Subtitle, Description: req.Description, Closed: stored.Closed, ScansHidden: stored.ScansHidden}
 	if err := h.store.Update(r.Context(), j); err != nil {
 		h.writeStoreError(w, err, "Не удалось сохранить журнал")
 		return
@@ -221,6 +232,13 @@ func (h *JournalHandler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	scanReason, ok := requireAdminToHideScans(w, r, req.ScansHidden, req.ScansHiddenReason)
+	if !ok {
+		return
+	}
+	if !req.Closed {
+		closeReason = scanReason
+	}
 	j, err := h.store.GetByID(r.Context(), journalID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Журнал не найден")
@@ -230,7 +248,7 @@ func (h *JournalHandler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	issue := &models.JournalIssue{ID: req.ID, JournalID: j.ID, Year: req.Year, NumberFrom: req.NumberFrom,
 		NumberTo: req.NumberTo, Label: label, Months: req.Months}
 	work := &models.Work{ID: req.WorkID, Title: models.IssueTitle(j.Title, req.Year, label), Language: "ru",
-		Status: models.WorkStatusDraft, OwnerID: claims.UserID, Closed: req.Closed}
+		Status: models.WorkStatusDraft, OwnerID: claims.UserID, Closed: req.Closed, ScansHidden: req.ScansHidden, ScanClosureReason: scanReason}
 	if err := h.store.CreateIssue(r.Context(), issue, work, closureActor(r), closeReason); err != nil {
 		h.writeStoreError(w, err, "Не удалось завести номер")
 		return

@@ -199,11 +199,36 @@ func (r *ClosedRepository) SetChapterClosed(ctx context.Context, id int64, close
 		`SELECT work_id FROM chapters WHERE id = $1`, id, closed, actor, reason)
 }
 
+func (r *ClosedRepository) SetWorkScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.setScope(ctx, ClosureWork, "scans", `UPDATE works SET scans_hidden = $2 WHERE id = $1 RETURNING title`,
+		`SELECT id FROM works WHERE id = $1 OR parent_work_id = $1 ORDER BY id`, id, hidden, actor, reason)
+}
+
+func (r *ClosedRepository) SetEditionScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.setScope(ctx, ClosureEdition, "scans", `UPDATE editions SET scans_hidden = $2 WHERE id = $1 RETURNING title`,
+		`SELECT w.id FROM works w WHERE w.edition_id = $1 OR w.parent_work_id IN (SELECT id FROM works WHERE edition_id = $1) ORDER BY w.id`, id, hidden, actor, reason)
+}
+
+func (r *ClosedRepository) SetJournalScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.setScope(ctx, ClosureJournal, "scans", `UPDATE journals SET scans_hidden = $2 WHERE id = $1 RETURNING title`,
+		`SELECT work_id FROM journal_issues WHERE journal_id = $1 ORDER BY work_id`, id, hidden, actor, reason)
+}
+
+func (r *ClosedRepository) SetChapterScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.setScope(ctx, ClosureChapter, "scans", `UPDATE chapters SET scans_hidden = $2 WHERE id = $1 RETURNING title`,
+		`SELECT work_id FROM chapters WHERE id = $1`, id, hidden, actor, reason)
+}
+
 // set пишет признак, строку журнала и собирает затронутые работы одной
 // транзакцией. Нет цели — ErrClosedTargetNotFound, ничего не записано. Повтор
 // с тем же значением безвреден, тоже пишет строку и возвращает те же работы:
 // вызывающему нужно сбросить по ним кэши.
 func (r *ClosedRepository) set(ctx context.Context, kind, update, affected string, id int64, closed bool,
+	actor models.ClosureActor, reason string) ([]int64, error) {
+	return r.setScope(ctx, kind, "full", update, affected, id, closed, actor, reason)
+}
+
+func (r *ClosedRepository) setScope(ctx context.Context, kind, scope, update, affected string, id int64, closed bool,
 	actor models.ClosureActor, reason string) ([]int64, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -217,7 +242,7 @@ func (r *ClosedRepository) set(ctx context.Context, kind, update, affected strin
 		}
 		return nil, fmt.Errorf("set closed: %w", err)
 	}
-	if err := insertClosureTx(ctx, tx, kind, id, title, closed, actor, reason); err != nil {
+	if err := insertClosureScopeTx(ctx, tx, kind, scope, id, title, closed, actor, reason); err != nil {
 		return nil, err
 	}
 	rows, err := tx.Query(ctx, affected, id)
@@ -248,10 +273,15 @@ func (r *ClosedRepository) set(ctx context.Context, kind, update, affected strin
 // таблицы, то есть откатывает всю транзакцию вызывающего.
 func insertClosureTx(ctx context.Context, tx pgx.Tx, kind string, id int64, title string, closed bool,
 	actor models.ClosureActor, reason string) error {
+	return insertClosureScopeTx(ctx, tx, kind, "full", id, title, closed, actor, reason)
+}
+
+func insertClosureScopeTx(ctx context.Context, tx pgx.Tx, kind, scope string, id int64, title string, closed bool,
+	actor models.ClosureActor, reason string) error {
 	if _, err := tx.Exec(ctx, `INSERT INTO closures
-		(entity_kind, entity_id, title_snapshot, closed, reason, actor_id, actor_name)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		kind, id, title, closed, reason, actor.ID, actor.Name); err != nil {
+		(entity_kind, scope, entity_id, title_snapshot, closed, reason, actor_id, actor_name)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		kind, scope, id, title, closed, reason, actor.ID, actor.Name); err != nil {
 		return fmt.Errorf("closures: %w", err)
 	}
 	return nil
@@ -296,6 +326,23 @@ func (r *ClosedRepository) ClosedChapterIDs(ctx context.Context, workID int64) (
 	return ids, rows.Err()
 }
 
+func (r *ClosedRepository) ScansHiddenChapterIDs(ctx context.Context, workID int64) (map[int64]bool, error) {
+	rows, err := r.pool.Query(ctx, `SELECT id FROM scans_hidden_chapters WHERE work_id = $1`, workID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = true
+	}
+	return ids, rows.Err()
+}
+
 // ClosuresGeneration — поколение закрытий: наибольший номер строки журнала
 // (0 — журнал пуст). Сдвигается любым закрытием и открытием; краулерская
 // половина подмешивает его в ETag (seo.Source.Closures).
@@ -307,20 +354,20 @@ func (r *ClosedRepository) ClosuresGeneration(ctx context.Context) (int64, error
 	return gen, nil
 }
 
-const closureColumns = `entity_kind, entity_id, title_snapshot, closed, reason, actor_name, created_at`
+const closureColumns = `entity_kind, scope, entity_id, title_snapshot, closed, reason, actor_name, created_at`
 
 func scanClosure(row rowScanner) (*models.Closure, error) {
 	var c models.Closure
-	if err := row.Scan(&c.Kind, &c.EntityID, &c.Title, &c.Closed, &c.Reason, &c.ActorName, &c.At); err != nil {
+	if err := row.Scan(&c.Kind, &c.Scope, &c.EntityID, &c.Title, &c.Closed, &c.Reason, &c.ActorName, &c.At); err != nil {
 		return nil, err
 	}
 	return &c, nil
 }
 
 // LatestClosure — последняя строка журнала по сущности; nil, nil — строк нет.
-func (r *ClosedRepository) LatestClosure(ctx context.Context, kind string, id int64) (*models.Closure, error) {
+func (r *ClosedRepository) LatestClosure(ctx context.Context, kind string, id int64, scope string) (*models.Closure, error) {
 	c, err := scanClosure(r.pool.QueryRow(ctx, `SELECT `+closureColumns+` FROM closures
-		WHERE entity_kind = $1 AND entity_id = $2 ORDER BY created_at DESC, id DESC LIMIT 1`, kind, id))
+		WHERE entity_kind = $1 AND entity_id = $2 AND scope = $3 ORDER BY created_at DESC, id DESC LIMIT 1`, kind, id, scope))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}

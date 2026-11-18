@@ -881,7 +881,7 @@ func TestLatestClosure(t *testing.T) {
 	pool := testPool(t)
 	works, closed := NewWorkRepository(pool), NewClosedRepository(pool)
 	w := newVolume(t, works, "последняя")
-	got, err := closed.LatestClosure(ctx, "work", w.ID)
+	got, err := closed.LatestClosure(ctx, "work", w.ID, "full")
 	if err != nil || got != nil {
 		t.Fatalf("без строк: %v, %v; ждали nil, nil", got, err)
 	}
@@ -891,7 +891,7 @@ func TestLatestClosure(t *testing.T) {
 	if _, err := closed.SetWorkClosed(ctx, w.ID, false, testActor, "вторая"); err != nil {
 		t.Fatal(err)
 	}
-	got, err = closed.LatestClosure(ctx, "work", w.ID)
+	got, err = closed.LatestClosure(ctx, "work", w.ID, "full")
 	if err != nil || got == nil || got.Reason != "вторая" || got.Closed || got.ActorName != "админ" || got.Title != w.Title {
 		t.Fatalf("LatestClosure = %+v, %v", got, err)
 	}

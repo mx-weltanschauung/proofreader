@@ -29,6 +29,9 @@ type ChapterHandler struct {
 	recordings  RecordingCounter
 	credits     CreditLister
 	closed      ClosedSpansStore
+	scansHidden interface {
+		ScansHiddenChapterIDs(context.Context, int64) (map[int64]bool, error)
+	}
 }
 
 // RecordingCounter — сколько записей человека у главы и её подглав.
@@ -49,6 +52,13 @@ func (h *ChapterHandler) WithClosedChapters(s ClosedSpansStore) *ChapterHandler 
 	return h
 }
 
+func (h *ChapterHandler) WithScansHiddenChapters(s interface {
+	ScansHiddenChapterIDs(context.Context, int64) (map[int64]bool, error)
+}) *ChapterHandler {
+	h.scansHidden = s
+	return h
+}
+
 // reads — хранилище глав за обёрткой зрителя: не-сотруднику закрытых глав
 // нет. Строится здесь, а не приходит снаружи, — так запись не получит обёртку
 // по ошибке проводки.
@@ -62,18 +72,33 @@ const chapterClosedMessage = "Глава закрыта — сначала от�
 // множестве закрытых главы workID. Ошибка проверки — 500: молча пропустить
 // правку нельзя.
 func (h *ChapterHandler) refuseClosed(ctx context.Context, w http.ResponseWriter, workID int64, ids ...*int64) bool {
-	if h.closed == nil {
+	if h.closed == nil && h.scansHidden == nil {
 		return false
 	}
-	set, err := h.closed.ClosedChapterIDs(ctx, workID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Не удалось проверить закрытость главы")
-		return true
-	}
-	for _, id := range ids {
-		if id != nil && set[*id] {
-			writeError(w, http.StatusConflict, chapterClosedMessage)
+	if h.closed != nil {
+		set, err := h.closed.ClosedChapterIDs(ctx, workID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось проверить закрытость главы")
 			return true
+		}
+		for _, id := range ids {
+			if id != nil && set[*id] {
+				writeError(w, http.StatusConflict, chapterClosedMessage)
+				return true
+			}
+		}
+	}
+	if h.scansHidden != nil {
+		set, err := h.scansHidden.ScansHiddenChapterIDs(ctx, workID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось проверить ограничение сканов главы")
+			return true
+		}
+		for _, id := range ids {
+			if id != nil && set[*id] {
+				writeError(w, http.StatusConflict, "Сканы главы скрыты — сначала откройте их")
+				return true
+			}
 		}
 	}
 	return false
@@ -81,7 +106,7 @@ func (h *ChapterHandler) refuseClosed(ctx context.Context, w http.ResponseWriter
 
 // subtreeHasClosed — есть ли среди глав поддерева корня id закрытая.
 func (h *ChapterHandler) subtreeHasClosed(ctx context.Context, w http.ResponseWriter, workID, id int64) bool {
-	if h.closed == nil {
+	if h.closed == nil && h.scansHidden == nil {
 		return false
 	}
 	tree, err := h.chapterRepo.ListByWorkHierarchical(ctx, workID)
@@ -164,12 +189,14 @@ func NewChapterHandler(
 
 // CreateChapterRequest represents a request to create a chapter
 type CreateChapterRequest struct {
-	ParentID    *int64 `json:"parent_id,omitempty"`
-	Title       string `json:"title"`
-	Type        string `json:"type"`
-	OrderNumber int    `json:"order_number"`
-	StartPage   int    `json:"start_page"`
-	EndPage     int    `json:"end_page"`
+	ScansHidden       bool   `json:"scans_hidden,omitempty"`
+	ScansHiddenReason string `json:"scans_hidden_reason,omitempty"`
+	ParentID          *int64 `json:"parent_id,omitempty"`
+	Title             string `json:"title"`
+	Type              string `json:"type"`
+	OrderNumber       int    `json:"order_number"`
+	StartPage         int    `json:"start_page"`
+	EndPage           int    `json:"end_page"`
 	// IsApparatus — ручная поправка классификатора: nil означает «решай сам»
 	// (по заголовку и родителю), непустое значение побеждает. Через него и
 	// правится спорный случай вроде «Указаний читателю».
@@ -257,6 +284,7 @@ func (h *ChapterHandler) Create(w http.ResponseWriter, r *http.Request) {
 		OrderNumber: req.OrderNumber,
 		StartPage:   req.StartPage,
 		EndPage:     req.EndPage,
+		ScansHidden: req.ScansHidden,
 	}
 	if req.IsApparatus != nil {
 		chapter.IsApparatus = *req.IsApparatus
@@ -277,7 +305,24 @@ func (h *ChapterHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if h.refuseClosed(ctx, w, workID, req.ParentID) {
 		return
 	}
-	if err := h.chapterRepo.Create(ctx, chapter); err != nil {
+	scanReason, ok := requireAdminToHideScans(w, r, req.ScansHidden, req.ScansHiddenReason)
+	if !ok {
+		return
+	}
+	var createErr error
+	if req.ScansHidden {
+		if creator, ok := h.chapterRepo.(interface {
+			CreateWithScanRestriction(context.Context, *models.Chapter, models.ClosureActor, string) error
+		}); ok {
+			createErr = creator.CreateWithScanRestriction(ctx, chapter, closureActor(r), scanReason)
+		} else {
+			writeError(w, http.StatusInternalServerError, "Запись ограничения сканов не подключена")
+			return
+		}
+	} else {
+		createErr = h.chapterRepo.Create(ctx, chapter)
+	}
+	if err := createErr; err != nil {
 		http.Error(w, "Failed to create chapter", http.StatusInternalServerError)
 		return
 	}
@@ -442,7 +487,7 @@ func (h *ChapterHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.Background()
-	if h.closed != nil {
+	if h.closed != nil || h.scansHidden != nil {
 		chapter, err := h.chapterRepo.GetByID(ctx, chapterID)
 		if err != nil {
 			http.Error(w, "Chapter not found", http.StatusNotFound)

@@ -65,6 +65,38 @@ func TestScansHiddenInheritance(t *testing.T) {
 	}
 }
 
+func TestScansHiddenClosureScope(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	w := newVolume(t, NewWorkRepository(pool), "две независимые причины")
+	repo := NewClosedRepository(pool)
+	actor := models.ClosureActor{Name: "administrator"}
+	if _, err := repo.SetWorkClosed(ctx, w.ID, true, actor, "закрыть весь том"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.SetWorkScansHidden(ctx, w.ID, true, actor, "скрыть сканы"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.SetWorkScansHidden(ctx, w.ID, false, actor, "открыть сканы"); err != nil {
+		t.Fatal(err)
+	}
+	full, err := repo.LatestClosure(ctx, "work", w.ID, "full")
+	if err != nil || full == nil || full.Scope != "full" || !full.Closed || full.Reason != "закрыть весь том" {
+		t.Fatalf("full latest=%+v, %v", full, err)
+	}
+	scans, err := repo.LatestClosure(ctx, "work", w.ID, "scans")
+	if err != nil || scans == nil || scans.Scope != "scans" || scans.Closed || scans.Reason != "открыть сканы" {
+		t.Fatalf("scans latest=%+v, %v", scans, err)
+	}
+	rows, err := repo.ListClosures(ctx, 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || rows[0].Scope != "scans" || rows[2].Scope != "full" {
+		t.Fatalf("journal=%+v; want separate scan and full actions", rows)
+	}
+}
+
 func TestScansHiddenSpansSharedPage(t *testing.T) {
 	ctx := context.Background()
 	pool := testPool(t)

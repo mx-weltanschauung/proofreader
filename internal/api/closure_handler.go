@@ -58,7 +58,15 @@ func (h *ClosedHandler) Latest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Журнал не подключён")
 		return
 	}
-	c, err := h.log.LatestClosure(r.Context(), kind, id)
+	scope := r.URL.Query().Get("scope")
+	if scope == "" {
+		scope = "full"
+	}
+	if scope != "full" && scope != "scans" {
+		writeError(w, http.StatusBadRequest, "Неверная область")
+		return
+	}
+	c, err := h.log.LatestClosure(r.Context(), kind, id, scope)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать журнал")
 		return

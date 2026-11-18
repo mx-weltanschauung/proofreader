@@ -139,7 +139,9 @@ type CreateWorkRequest struct {
 	// Update поле не читает: признак меняет только ClosedHandler.
 	Closed bool `json:"closed,omitempty"`
 	// ClosedReason — причина строки журнала при Closed; пусто — «закрыто при создании».
-	ClosedReason string `json:"closed_reason,omitempty"`
+	ClosedReason      string `json:"closed_reason,omitempty"`
+	ScansHidden       bool   `json:"scans_hidden,omitempty"`
+	ScansHiddenReason string `json:"scans_hidden_reason,omitempty"`
 }
 
 // UpdateWorkRequest represents a request to update a work.
@@ -232,18 +234,27 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	scanReason, ok := requireAdminToHideScans(w, r, req.ScansHidden, req.ScansHiddenReason)
+	if !ok {
+		return
+	}
+	if !req.Closed {
+		closeReason = scanReason
+	}
 
 	// Create work
 	work := &models.Work{
-		ID:       req.ID,
-		Title:    req.Title,
-		Author:   req.Author,
-		Language: req.Language,
-		Country:  req.Country,
-		FilePath: "", // Will be set during file upload
-		Status:   req.Status,
-		OwnerID:  claims.UserID,
-		Closed:   req.Closed,
+		ID:                req.ID,
+		Title:             req.Title,
+		Author:            req.Author,
+		Language:          req.Language,
+		Country:           req.Country,
+		FilePath:          "", // Will be set during file upload
+		Status:            req.Status,
+		OwnerID:           claims.UserID,
+		Closed:            req.Closed,
+		ScansHidden:       req.ScansHidden,
+		ScanClosureReason: scanReason,
 	}
 
 	ctx := context.Background()
@@ -276,7 +287,6 @@ func (h *WorkHandler) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Work not found", http.StatusNotFound)
 		return
 	}
-
 	hidden := h.originalHidden(r)
 	resp := h.workResponseFor(r, work, hidden)
 	// Служебные работы (передние листы) не показываются в каталоге, поэтому
@@ -346,6 +356,8 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Work not found", http.StatusNotFound)
 		return
 	}
+	previousEdition, previousParent := work.EditionID, work.ParentWorkID
+	previousScansHiddenBy := work.ScansHiddenBy
 
 	// Update fields
 	work.Title = req.Title
@@ -360,6 +372,10 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := applyWorkMeta(work, meta); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if previousScansHiddenBy != "" && (!sameOptionalID(previousEdition, work.EditionID) || !sameOptionalID(previousParent, work.ParentWorkID)) {
+		writeError(w, http.StatusConflict, "Сканы работы скрыты — сначала откройте их")
 		return
 	}
 
@@ -387,10 +403,12 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 // стоит пересборки, пропущенный — утечки закрытого.
 func (h *WorkHandler) dropCacheIfClosednessMoved(ctx context.Context, work *models.Work) {
 	before := work.ClosedBy
+	beforeScans := work.ScansHiddenBy
 	fresh, err := h.workRepo.GetByID(ctx, work.ID)
 	if err == nil {
 		work.ClosedBy = fresh.ClosedBy
-		if fresh.ClosedBy == before {
+		work.ScansHiddenBy = fresh.ScansHiddenBy
+		if fresh.ClosedBy == before && fresh.ScansHiddenBy == beforeScans {
 			return
 		}
 	}
@@ -403,6 +421,13 @@ func (h *WorkHandler) dropCacheIfClosednessMoved(ctx context.Context, work *mode
 		h.cache.DropWork(kid.ID)
 	}
 	h.cache.DropWork(work.ID)
+}
+
+func sameOptionalID(a, b *int64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // Delete deletes a work

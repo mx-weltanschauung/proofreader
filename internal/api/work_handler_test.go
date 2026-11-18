@@ -331,6 +331,9 @@ type fakeWorkRepo struct {
 	createErr     error
 	role          string
 	closed        bool
+	scansHiddenBy string
+	editionID     *int64
+	updates       int
 	list          []*models.Work
 }
 
@@ -339,13 +342,13 @@ func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int6
 }
 
 func (f *fakeWorkRepo) GetByID(_ context.Context, id int64) (*models.Work, error) {
-	return &models.Work{ID: id, Role: f.role, Closed: f.closed}, nil
+	return &models.Work{ID: id, Role: f.role, Closed: f.closed, ScansHiddenBy: f.scansHiddenBy, EditionID: f.editionID}, nil
 }
 func (f *fakeWorkRepo) Create(_ context.Context, w *models.Work, _ models.ClosureActor, reason string) error {
 	f.created, f.createdReason = w, reason
 	return f.createErr
 }
-func (f *fakeWorkRepo) Update(context.Context, *models.Work) error { return nil }
+func (f *fakeWorkRepo) Update(context.Context, *models.Work) error { f.updates++; return nil }
 
 func (f *fakeWorkRepo) Delete(_ context.Context, id int64) error {
 	f.deleted = append(f.deleted, id)

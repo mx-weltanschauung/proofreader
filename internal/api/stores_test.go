@@ -131,6 +131,10 @@ func (f *fakeChapterStore) Create(ctx context.Context, chapter *models.Chapter) 
 	return nil
 }
 
+func (f *fakeChapterStore) CreateWithScanRestriction(ctx context.Context, chapter *models.Chapter, _ models.ClosureActor, _ string) error {
+	return f.Create(ctx, chapter)
+}
+
 func (f *fakeChapterStore) Delete(ctx context.Context, id int64) error {
 	if f.deleteFn != nil {
 		return f.deleteFn(ctx, id)

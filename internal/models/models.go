@@ -127,7 +127,8 @@ type Work struct {
 	// колонку не пишет.
 	Closed bool `json:"closed" db:"closed"`
 	// ScansHidden — собственное ограничение изображений; текст не затрагивает.
-	ScansHidden bool `json:"scans_hidden" db:"scans_hidden"`
+	ScansHidden       bool   `json:"scans_hidden" db:"scans_hidden"`
+	ScanClosureReason string `json:"-" db:"-"`
 	// ClosedBy — откуда действующая закрытость (ClosedBy*), пусто — открыта.
 	// Считается на чтении (work_closed_by), в базе не хранится.
 	ClosedBy      string    `json:"closed_by" db:"-"`
@@ -326,6 +327,7 @@ type ClosureActor struct {
 // Closure — строка журнала закрытий.
 type Closure struct {
 	Kind      string    `json:"kind"`
+	Scope     string    `json:"scope"`
 	EntityID  int64     `json:"entity_id"`
 	Title     string    `json:"title"`
 	Closed    bool      `json:"closed"`
@@ -423,10 +425,11 @@ type Edition struct {
 	ShelfGroup string `json:"shelf_group" db:"shelf_group"`
 	// Closed — издание закрыто: его тома видят только сотрудники. Общий
 	// Update колонку не пишет, меняет её ClosedRepository.SetEditionClosed.
-	Closed      bool      `json:"closed" db:"closed"`
-	ScansHidden bool      `json:"scans_hidden" db:"scans_hidden"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	Closed            bool      `json:"closed" db:"closed"`
+	ScansHidden       bool      `json:"scans_hidden" db:"scans_hidden"`
+	ScanClosureReason string    `json:"-" db:"-"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Виды нумерации томов собрания (editions.volume_numbering).

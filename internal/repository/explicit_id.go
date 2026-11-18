@@ -85,8 +85,8 @@ func insertRowTx(ctx context.Context, tx pgx.Tx, table string, id int64,
 // создании пишет строку журнала закрытий той же транзакцией (без неё запись
 // о закрытии пропала бы, а причину потом не восстановить). Открытая ведёт
 // себя как insertRow, журнал не трогает.
-func insertRowClosure(ctx context.Context, pool *pgxpool.Pool, table, kind, title string, closed bool,
-	actor models.ClosureActor, reason string, id int64, cols []string, args []any, dest ...any) error {
+func insertRowClosure(ctx context.Context, pool *pgxpool.Pool, table, kind, title string, closed, scansHidden bool,
+	actor models.ClosureActor, reason, scanReason string, id int64, cols []string, args []any, dest ...any) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -98,6 +98,14 @@ func insertRowClosure(ctx context.Context, pool *pgxpool.Pool, table, kind, titl
 	if closed {
 		// dest[0] — id по контракту RETURNING id, created_at, updated_at.
 		if err := insertClosureTx(ctx, tx, kind, *dest[0].(*int64), title, true, actor, reason); err != nil {
+			return err
+		}
+	}
+	if scansHidden {
+		if scanReason == "" {
+			scanReason = reason
+		}
+		if err := insertClosureScopeTx(ctx, tx, kind, "scans", *dest[0].(*int64), title, true, actor, scanReason); err != nil {
 			return err
 		}
 	}
