@@ -157,11 +157,16 @@ export const PageEditor: React.FC = () => {
 
       <div className="content-section">
         <h3>Содержимое</h3>
+        {page.scan_restricted && <p>Скан доступен только администратору</p>}
         <MarkdownEditor
           initialContent={content}
           onChange={setContent}
           onSubmit={handleSave}
-          imageUrl={page.preview_url ?? getPreviewUrl(page.preview_path) ?? undefined}
+          imageUrl={
+            page.scan_restricted
+              ? undefined
+              : (page.preview_url ?? getPreviewUrl(page.preview_path) ?? undefined)
+          }
         />
       </div>
     </div>

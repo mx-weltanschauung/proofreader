@@ -26,6 +26,7 @@ import { chapterPath } from '../utils/paths';
 import { chaptersApi } from '../services/api';
 import { ClosedBadge } from './ClosedBadge';
 import { ClosedToggle } from './ClosedToggle';
+import { ScansHiddenToggle } from './ScansHiddenToggle';
 import './ChapterTree.css';
 
 interface ChapterTreeProps {
@@ -36,6 +37,7 @@ interface ChapterTreeProps {
   onDelete: (chapterId: number) => void;
   /** Закрыть/открыть главу (администратору; причина уже спрошена). */
   onToggleClosed?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
+  onToggleScansHidden?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
 }
 
 interface ChapterNodeProps {
@@ -47,6 +49,7 @@ interface ChapterNodeProps {
   onToggleExpand: (chapterId: number) => void;
   onDelete: (chapterId: number) => void;
   onToggleClosed?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
+  onToggleScansHidden?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
   isOverlay?: boolean;
 }
 
@@ -78,6 +81,7 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
   onToggleExpand,
   onDelete,
   onToggleClosed,
+  onToggleScansHidden,
   isOverlay = false,
 }) => {
   const navigate = useNavigate();
@@ -171,6 +175,14 @@ const SortableChapterNode: React.FC<ChapterNodeProps> = ({
                   onToggle={(next, reason) => onToggleClosed(chapter.id, next, reason)}
                 />
               )}
+              {onToggleScansHidden && !isOverlay && (
+                <ScansHiddenToggle
+                  kind="chapter"
+                  hidden={!!chapter.scans_hidden}
+                  hiddenBy={work.scans_hidden_by || chapter.scans_hidden_by}
+                  onToggle={(next, reason) => onToggleScansHidden(chapter.id, next, reason)}
+                />
+              )}
             </>
           )}
         </div>
@@ -186,6 +198,7 @@ export const ChapterTree: React.FC<ChapterTreeProps> = ({
   onMove,
   onDelete,
   onToggleClosed,
+  onToggleScansHidden,
 }) => {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -307,6 +320,7 @@ export const ChapterTree: React.FC<ChapterTreeProps> = ({
                 onToggleExpand={toggleExpand}
                 onDelete={onDelete}
                 onToggleClosed={onToggleClosed}
+                onToggleScansHidden={onToggleScansHidden}
               />
             ))}
           </div>

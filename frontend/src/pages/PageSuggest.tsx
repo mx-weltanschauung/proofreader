@@ -164,7 +164,9 @@ export const PageSuggest: React.FC = () => {
     return <div className="error-state">{loadError || 'Страница не найдена'}</div>;
   }
 
-  const previewUrl = page.preview_url ?? getPreviewUrl(page.preview_path) ?? undefined;
+  const previewUrl = page.scan_restricted
+    ? undefined
+    : (page.preview_url ?? getPreviewUrl(page.preview_path) ?? undefined);
 
   // У тома offset нулевой — печатный номер совпадает с адресным, дублировать
   // незачем; показываем колонцифру только там, где она расходится с номером
@@ -296,6 +298,12 @@ export const PageSuggest: React.FC = () => {
           </div>
 
           <div className="page-suggest-right">
+            {page.scan_restricted && (
+              <div className="page-suggest-preview-section">
+                <h3>Скан страницы</h3>
+                <p>Скан доступен только администратору</p>
+              </div>
+            )}
             {previewUrl && (
               <div className="page-suggest-preview-section">
                 <h3>Скан страницы</h3>

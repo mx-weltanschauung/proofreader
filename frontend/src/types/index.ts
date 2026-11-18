@@ -82,6 +82,7 @@ export interface Journal {
   description: string;
   /** Закрыт ли журнал; поле приходит только сотруднику. */
   closed?: boolean;
+  scans_hidden?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -207,8 +208,10 @@ export interface Work {
   page_offset: number;
   /** Закрыта ли работа для всех, кроме сотрудников; поле приходит только им. */
   closed?: boolean;
+  scans_hidden?: boolean;
   /** Откуда закрытие: `''|'work'|'parent'|'edition'|'journal'`. */
   closed_by?: string;
+  scans_hidden_by?: string;
   created_at: string;
   updated_at: string;
 }
@@ -228,6 +231,7 @@ export interface Edition {
   volumes_planned?: number;
   /** Закрыто ли собрание; поле приходит только сотруднику. */
   closed?: boolean;
+  scans_hidden?: boolean;
   /**
    * Нумерация томов: `printed` — номер стоит на книге и печатается читателю;
    * `order` — условная, номер только задаёт порядок полки. Старый сервер
@@ -417,6 +421,7 @@ export interface Page {
   preview_path: string;
   /** Presigned URL for the page preview image; provided by the API. */
   preview_url?: string;
+  scan_restricted?: boolean;
   content_markdown: string;
   status: PageStatus;
   chapter_id?: number;
@@ -463,6 +468,8 @@ export interface Chapter {
   is_apparatus: boolean;
   /** Закрыта ли глава; поле приходит только сотруднику. */
   closed?: boolean;
+  scans_hidden?: boolean;
+  scans_hidden_by?: '' | 'chapter' | 'parent';
   /** Откуда закрытие главы: `''|'chapter'` (сама) `|'parent'` (глава выше). */
   closed_by?: '' | 'chapter' | 'parent';
   created_at: string;
@@ -490,6 +497,7 @@ export type ClosureKind = 'work' | 'edition' | 'journal' | 'chapter';
 /** Строка журнала закрытий (`GET /admin/closures`). */
 export interface ClosureEntry {
   kind: ClosureKind;
+  scope: 'full' | 'scans';
   entity_id: number;
   title: string;
   closed: boolean;

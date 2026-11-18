@@ -60,10 +60,10 @@ export const ClosuresAdmin: React.FC = () => {
 
   return (
     <div className="closures-admin">
-      <h1>Журнал закрытий</h1>
+      <h1>Журнал ограничений доступа</h1>
       <p className="closures-admin-note">
-        Кто и почему закрывал или открывал тома, собрания, журналы и главы. Причину видит только
-        администратор.
+        Кто и почему закрывал или открывал тома, собрания, журналы и главы целиком или скрывал их
+        сканы. Причину видит только администратор.
       </p>
       {rows.length === 0 ? (
         <p>Закрытий пока не было.</p>
@@ -73,6 +73,7 @@ export const ClosuresAdmin: React.FC = () => {
             <tr>
               <th>Когда</th>
               <th>Что</th>
+              <th>Область</th>
               <th>Действие</th>
               <th>Причина</th>
               <th>Кто</th>
@@ -82,13 +83,22 @@ export const ClosuresAdmin: React.FC = () => {
             {rows.map((row) => {
               const href = entityHref(row);
               return (
-                <tr key={`${row.kind}-${row.entity_id}-${row.at}`}>
+                <tr key={`${row.kind}-${row.entity_id}-${row.scope}-${row.at}`}>
                   <td>{DATE.format(new Date(row.at))}</td>
                   <td>
                     <span className="closures-admin-kind">{KIND_LABEL[row.kind]}</span>{' '}
                     {href ? <Link to={href}>{row.title}</Link> : row.title}
                   </td>
-                  <td>{row.closed ? 'закрыто' : 'открыто'}</td>
+                  <td>{row.scope === 'scans' ? 'Сканы' : 'Всё'}</td>
+                  <td>
+                    {row.scope === 'scans'
+                      ? row.closed
+                        ? 'скрыты'
+                        : 'открыты'
+                      : row.closed
+                        ? 'закрыто'
+                        : 'открыто'}
+                  </td>
                   <td>{row.reason}</td>
                   <td>{row.actor_name}</td>
                 </tr>

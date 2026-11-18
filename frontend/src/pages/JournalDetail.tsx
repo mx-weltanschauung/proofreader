@@ -10,6 +10,7 @@ import { issueDesignation } from '../utils/issueDesignation';
 import { useAuth, canEdit } from '../hooks/useAuth';
 import { ClosedBadge } from '../components/ClosedBadge';
 import { ClosedToggle } from '../components/ClosedToggle';
+import { ScansHiddenToggle } from '../components/ScansHiddenToggle';
 import './JournalDetail.css';
 
 export function JournalDetail() {
@@ -72,6 +73,22 @@ export function JournalDetail() {
                 setDetail({ ...detail, journal: { ...journal, closed: next } });
               } catch (err: unknown) {
                 toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к журналу'));
+              }
+            }}
+          />
+        )}
+        {canEdit(user) && (
+          <ScansHiddenToggle
+            kind="journal"
+            hidden={!!journal.scans_hidden}
+            onToggle={async (next, reason) => {
+              try {
+                await journalsApi.setScansHidden(journal.id, next, reason);
+                const { data } = await journalsApi.get(slug);
+                setDetail(data);
+                toast.success(next ? 'Сканы журнала скрыты' : 'Сканы журнала открыты');
+              } catch (err: unknown) {
+                toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к сканам'));
               }
             }}
           />

@@ -5,6 +5,7 @@ import { chaptersApi, worksApi, cacheApi, closuresApi } from '../services/api';
 import { useAuth, canEdit } from '../hooks/useAuth';
 import { ClosedBadge, type BadgeClosure } from '../components/ClosedBadge';
 import { ClosedToggle } from '../components/ClosedToggle';
+import { ScansHiddenToggle } from '../components/ScansHiddenToggle';
 import type { Chapter, ChapterPage, Work } from '../types';
 import { ChapterTocDrawer } from '../components/ChapterTocDrawer';
 import { ChapterBreadcrumb } from '../components/ChapterBreadcrumb';
@@ -229,6 +230,21 @@ export const ChapterView: React.FC = () => {
         toast.success(next ? 'Глава закрыта' : 'Глава открыта');
       } catch (err: unknown) {
         toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к главе'));
+      }
+    },
+    [workId, chapterId],
+  );
+
+  const toggleChapterScansHidden = useCallback(
+    async (next: boolean, reason: string) => {
+      if (workId === null || chapterId === null) return;
+      try {
+        await chaptersApi.setScansHidden(workId, chapterId, next, reason);
+        const { data } = await chaptersApi.get(workId, chapterId);
+        setChapter(data);
+        toast.success(next ? 'Сканы главы скрыты' : 'Сканы главы открыты');
+      } catch (err: unknown) {
+        toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к сканам главы'));
       }
     },
     [workId, chapterId],
@@ -671,6 +687,14 @@ export const ChapterView: React.FC = () => {
                   closedBy={chapter.closed_by}
                   loadPlan={async () => (await chaptersApi.closedPlan(workId, chapterId)).data}
                   onToggle={toggleChapterClosed}
+                />
+              )}
+              {workId != null && chapterId != null && (
+                <ScansHiddenToggle
+                  kind="chapter"
+                  hidden={!!chapter.scans_hidden}
+                  hiddenBy={work?.scans_hidden_by || chapter.scans_hidden_by}
+                  onToggle={toggleChapterScansHidden}
                 />
               )}
               {canEdit(user) && (
