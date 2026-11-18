@@ -114,6 +114,19 @@ scan_text_status_unchanged() {
   [[ "$1" == "$2" && ( "$2" == 200 || "$2" == 404 ) ]]
 }
 
+# Эффективное ограничение для анонимной полосы: работа (включая издание,
+# журнал и родителя) либо любая перекрывающая её глава. Администратор видит
+# сам скан, поэтому его page.scan_restricted всегда false и здесь непригоден.
+scan_expected_from_structure() { # JSON_РАБОТЫ JSON_ГЛАВ НОМЕР_ПОЛОСЫ
+  printf '%s\n%s\n' "$1" "$2" | jq -s -r --argjson page "$3" '
+    ((.[0].scans_hidden_by // "") != "") or
+    ([.[1] | .. | objects |
+      select((.start_page | type) == "number" and (.end_page | type) == "number" and
+             .start_page <= $page and .end_page >= $page and
+             (.scans_hidden_by // "") != "")] | length > 0)
+  '
+}
+
 static_withdraw_needed() {
   [[ "$1" == --prod && "$2" == true && "$3" != 1 ]]
 }
@@ -622,8 +635,13 @@ main() {
       local work="$1" page="$2" before="$3" out status payload expected
       api GET "/api/works/$work/pages/by-number/$page" || die "не удалось перечитать полосу $work/$page"
       api_ok || die "у работы $work нет полосы $page для сверки"
-      expected="$(jq -r '.scan_restricted' <<<"$API_BODY")"
-      [[ "$expected" == true || "$expected" == false ]] || die "административный ответ не содержит scan_restricted для $work/$page"
+      api GET "/api/works/$work" || die "не удалось перечитать работу $work"
+      api_ok || die "работа $work не отдалась после изменения"
+      local work_body="$API_BODY"
+      api GET "/api/works/$work/chapters" || die "не удалось перечитать главы $work"
+      api_ok || die "главы $work не отдались после изменения"
+      expected="$(scan_expected_from_structure "$work_body" "$API_BODY" "$page")" || die "не удалось вычислить ограничение полосы $work/$page"
+      [[ "$expected" == true || "$expected" == false ]] || die "не удалось вычислить ограничение полосы $work/$page"
       [[ "$closed" != true || "$expected" == true ]] || die "сканы полосы $work/$page не скрылись"
       out="$(curl -sS "$API_BASE/api/works/$work/pages/by-number/$page" -w $'\n%{http_code}')" || out=""
       status="${out##*$'\n'}"; payload="${out%$'\n'*}"

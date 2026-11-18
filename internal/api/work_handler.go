@@ -249,6 +249,10 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id must be positive", http.StatusBadRequest)
 		return
 	}
+	if req.Role == models.WorkRoleJournalIssue {
+		http.Error(w, "journal_issue is created only through the journal issue endpoint", http.StatusBadRequest)
+		return
+	}
 
 	closeReason, ok := requireAdminToClose(w, r, req.Closed, req.ClosedReason)
 	if !ok {

@@ -773,6 +773,14 @@ func TestWorkHandler_Create_AttachesInheritedScanSourceInInsert(t *testing.T) {
 	}
 }
 
+func TestWorkHandler_Create_RejectsOrphanJournalIssue(t *testing.T) {
+	repo := &fakeWorkRepo{}
+	rec := createWorkAsEditor(t, repo, `{"title":"Выпуск","status":"draft","role":"journal_issue"}`)
+	if rec.Code != http.StatusBadRequest || repo.created != nil {
+		t.Fatalf("общий POST создал выпуск без journal_issues: %d %+v", rec.Code, repo.created)
+	}
+}
+
 func TestWorkHandler_Create_WithoutIDLeavesItToSequence(t *testing.T) {
 	repo := &fakeWorkRepo{}
 	createWorkAsEditor(t, repo, `{"title":"Том","status":"draft"}`)

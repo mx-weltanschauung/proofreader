@@ -266,6 +266,14 @@ test_scan_text_status_does_not_allow_disappearing_text() {
   return 0
 }
 
+test_scan_expected_from_work_and_overlapping_chapters() {
+  local work='{"scans_hidden_by":""}' chapters='[{"start_page":2,"end_page":4,"scans_hidden_by":"chapter","children":[{"start_page":3,"end_page":3,"scans_hidden_by":"parent"}]}]'
+  assert_eq true "$(scan_expected_from_structure "$work" "$chapters" 3)" "скрытая глава и подглава"
+  assert_eq false "$(scan_expected_from_structure "$work" "$chapters" 5)" "вне диапазона"
+  work='{"scans_hidden_by":"edition"}'
+  assert_eq true "$(scan_expected_from_structure "$work" '[]' 5)" "скрытие изданием"
+}
+
 test_scans_only_keeps_text_archive() {
   static_withdraw_needed --prod true 1 && fail "текстовый архив снимается при скрытии сканов"
   static_withdraw_needed --prod true 0 || fail "полное закрытие не сняло архив"
