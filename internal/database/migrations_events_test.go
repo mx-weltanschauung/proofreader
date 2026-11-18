@@ -41,15 +41,21 @@ func deleteAllEvents(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 func clearDownRefusals(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	openAllClosed(ctx, t, pool)
-	// Миграция 000046 тоже отказывает при своём признаке или истории сканов.
-	// Круговые тесты ниже неё работают только с одноразовой базой.
-	for _, table := range []string{"works", "chapters", "editions", "journals"} {
-		if _, err := pool.Exec(ctx, "UPDATE "+table+" SET scans_hidden=false WHERE scans_hidden"); err != nil {
-			t.Fatalf("clear scans_hidden %s: %v", table, err)
-		}
+	// Некоторые круговые тесты останавливаются до 000046: там колонок ещё нет.
+	var hasScanFlag bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+		WHERE table_schema='public' AND table_name='works' AND column_name='scans_hidden')`).Scan(&hasScanFlag); err != nil {
+		t.Fatalf("check scans_hidden schema: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `DELETE FROM closures WHERE scope='scans'`); err != nil {
-		t.Fatalf("clear scan history: %v", err)
+	if hasScanFlag {
+		for _, table := range []string{"works", "chapters", "editions", "journals"} {
+			if _, err := pool.Exec(ctx, "UPDATE "+table+" SET scans_hidden=false WHERE scans_hidden"); err != nil {
+				t.Fatalf("clear scans_hidden %s: %v", table, err)
+			}
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM closures WHERE scope='scans'`); err != nil {
+			t.Fatalf("clear scan history: %v", err)
+		}
 	}
 	deleteAllEvents(ctx, t, pool)
 	deleteAllMarginNotes(ctx, t, pool)
