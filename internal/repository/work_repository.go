@@ -28,7 +28,8 @@ const workColumns = `id, title, author, publication_date, language, country,
 	file_path, status, edition_id, volume_number, volume_part, page_offset,
 	parent_work_id, role, numbering_style, precedes_volume, shelf_label, description,
 	owner_id, created_at, updated_at,
-	slug_edition, slug_volume, slug_part, edition_title, volume_order_only, closed, closed_by`
+	slug_edition, slug_volume, slug_part, edition_title, volume_order_only,
+	closed, closed_by, scans_hidden, scans_hidden_by`
 
 // workOrderOnlyExpr — истинно, если нумерация томов в собрании работы
 // условная (editions.volume_numbering = 'order', миграция 000039): номер тома
@@ -87,7 +88,8 @@ const workEditionTitleColumn = `
 // по-прежнему уходит внутрь.
 const worksWithSlug = `(SELECT works.*, ` + workSlugColumns + `,` + workEditionTitleColumn + `,
 	` + workOrderOnlyExpr + ` AS volume_order_only,
-	` + closedByCase + ` AS closed_by FROM works` + closedByJoins + `) works`
+	` + closedByCase + ` AS closed_by,
+	` + scansHiddenByCase + ` AS scans_hidden_by FROM works` + closedByJoins + `) works`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -105,7 +107,8 @@ func scanWork(row rowScanner) (*models.Work, error) {
 		&w.ParentWorkID, &w.Role, &w.NumberingStyle, &w.PrecedesVolume,
 		&w.ShelfLabel, &w.Description,
 		&w.OwnerID, &w.CreatedAt, &w.UpdatedAt,
-		&slugEdition, &slugVolume, &slugPart, &w.EditionTitle, &w.VolumeOrderOnly, &w.Closed, &w.ClosedBy,
+		&slugEdition, &slugVolume, &slugPart, &w.EditionTitle, &w.VolumeOrderOnly,
+		&w.Closed, &w.ClosedBy, &w.ScansHidden, &w.ScansHiddenBy,
 	)
 	if err != nil {
 		return nil, err

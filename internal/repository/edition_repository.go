@@ -40,7 +40,7 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition,
 // GetByID retrieves an edition by ID
 func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, scans_hidden, created_at, updated_at
 		FROM editions
 		WHERE id = $1
 	`
@@ -48,7 +48,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 	var edition models.Edition
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
+		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.ScansHidden, &edition.CreatedAt, &edition.UpdatedAt,
 	)
 
 	if err != nil {
@@ -64,7 +64,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 // List retrieves all editions
 func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, scans_hidden, created_at, updated_at
 		FROM editions
 		ORDER BY title
 	`
@@ -80,7 +80,7 @@ func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error)
 		var edition models.Edition
 		err := rows.Scan(
 			&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
+			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.ScansHidden, &edition.CreatedAt, &edition.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan edition: %w", err)

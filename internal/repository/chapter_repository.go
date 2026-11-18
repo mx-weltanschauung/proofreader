@@ -29,9 +29,15 @@ func NewChapterRepository(pool *pgxpool.Pool) *ChapterRepository {
 // не функцией на строку.
 const chapterColumns = `c.id, c.work_id, c.parent_id, c.title, c.type, c.order_number,
 	c.start_page, c.end_page, c.is_apparatus, c.article_kind, c.created_at, c.updated_at,
-	c.closed, CASE WHEN c.closed THEN 'chapter' WHEN cc.id IS NOT NULL THEN 'parent' ELSE '' END`
+	c.closed, CASE WHEN c.closed THEN 'chapter' WHEN cc.id IS NOT NULL THEN 'parent' ELSE '' END,
+	c.scans_hidden, CASE WHEN c.scans_hidden THEN 'chapter'
+	                     WHEN shc.id IS NOT NULL THEN 'parent'
+	                     WHEN shw.id IS NOT NULL THEN 'work' ELSE '' END`
 
-const chapterFrom = `FROM chapters c LEFT JOIN closed_chapters cc ON cc.id = c.id`
+const chapterFrom = `FROM chapters c
+	LEFT JOIN closed_chapters cc ON cc.id = c.id
+	LEFT JOIN scans_hidden_chapters shc ON shc.id = c.id
+	LEFT JOIN scans_hidden_works shw ON shw.id = c.work_id`
 
 // scanChapter — единственный разбор строки главы. Заведён вместо пяти копий
 // подряд: слаг считается здесь, и любая забытая копия оставила бы главу без
@@ -41,7 +47,7 @@ func scanChapter(row rowScanner) (*models.Chapter, error) {
 	err := row.Scan(
 		&c.ID, &c.WorkID, &c.ParentID, &c.Title, &c.Type, &c.OrderNumber,
 		&c.StartPage, &c.EndPage, &c.IsApparatus, &c.ArticleKind, &c.CreatedAt, &c.UpdatedAt,
-		&c.Closed, &c.ClosedBy,
+		&c.Closed, &c.ClosedBy, &c.ScansHidden, &c.ScansHiddenBy,
 	)
 	if err != nil {
 		return nil, err

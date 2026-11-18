@@ -47,9 +47,10 @@ type Journal struct {
 	Description string `json:"description"`
 	// Closed — журнал закрыт: его номера видят только сотрудники. Общий
 	// Update колонку не пишет, меняет её ClosedRepository.SetJournalClosed.
-	Closed    bool      `json:"closed"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Closed      bool      `json:"closed"`
+	ScansHidden bool      `json:"scans_hidden"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // JournalIssue — номер журнала; полосы и статьи — у работы WorkID.

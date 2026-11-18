@@ -56,6 +56,14 @@ const closedByCase = `CASE
 	    ELSE ''
 	END`
 
+const scansHiddenByCase = `CASE
+	    WHEN works.scans_hidden THEN 'work'
+	    WHEN cb_p.scans_hidden OR cb_pe.scans_hidden THEN 'parent'
+	    WHEN cb_e.scans_hidden THEN 'edition'
+	    WHEN cb_j.scans_hidden THEN 'journal'
+	    ELSE ''
+	END`
+
 var (
 	closedByJoinsW = strings.ReplaceAll(closedByJoins, "works.", "w.")
 	closedByCaseW  = strings.ReplaceAll(closedByCase, "works.", "w.")
@@ -72,6 +80,45 @@ func (r *ClosedRepository) ClosedBy(ctx context.Context, workID int64) (string, 
 		return "", nil
 	}
 	return *by, nil
+}
+
+// ScansHiddenBy — источник ограничения сканов работы; пусто — сканы открыты.
+func (r *ClosedRepository) ScansHiddenBy(ctx context.Context, workID int64) (string, error) {
+	var by *string
+	if err := r.pool.QueryRow(ctx, `SELECT work_scans_hidden_by($1)`, workID).Scan(&by); err != nil {
+		return "", fmt.Errorf("work_scans_hidden_by: %w", err)
+	}
+	if by == nil {
+		return "", nil
+	}
+	return *by, nil
+}
+
+// WorksWithHiddenScans — работы с ограничением на любом уровне, включая
+// диапазон главы: оригинал такой работы раскрывает закрытые изображения.
+func (r *ClosedRepository) WorksWithHiddenScans(ctx context.Context) (map[int64]bool, error) {
+	return r.idSet(ctx, `SELECT id FROM scans_hidden_works
+		UNION SELECT work_id FROM scans_hidden_chapters`)
+}
+
+// ScansHiddenSpans — диапазоны глав, чьи сканы скрыты по своему признаку
+// либо по признаку предка-главы.
+func (r *ClosedRepository) ScansHiddenSpans(ctx context.Context, workID int64) ([]models.PageSpan, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT start_page, end_page FROM scans_hidden_chapters WHERE work_id=$1 ORDER BY start_page, end_page`, workID)
+	if err != nil {
+		return nil, fmt.Errorf("scans hidden spans: %w", err)
+	}
+	defer rows.Close()
+	spans := []models.PageSpan{}
+	for rows.Next() {
+		var span models.PageSpan
+		if err := rows.Scan(&span.Start, &span.End); err != nil {
+			return nil, err
+		}
+		spans = append(spans, span)
+	}
+	return spans, rows.Err()
 }
 
 // ClosedIDs — все работы, закрытые действующе (любой из четырёх причин).

@@ -28,11 +28,11 @@ func NewJournalRepository(pool *pgxpool.Pool) *JournalRepository {
 	return &JournalRepository{pool: pool}
 }
 
-const journalColumns = `id, slug, title, subtitle, description, closed, created_at, updated_at`
+const journalColumns = `id, slug, title, subtitle, description, closed, scans_hidden, created_at, updated_at`
 
 func scanJournal(row pgx.Row) (*models.Journal, error) {
 	var j models.Journal
-	if err := row.Scan(&j.ID, &j.Slug, &j.Title, &j.Subtitle, &j.Description, &j.Closed, &j.CreatedAt, &j.UpdatedAt); err != nil {
+	if err := row.Scan(&j.ID, &j.Slug, &j.Title, &j.Subtitle, &j.Description, &j.Closed, &j.ScansHidden, &j.CreatedAt, &j.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrJournalNotFound
 		}
@@ -78,7 +78,7 @@ func (r *JournalRepository) GetByID(ctx context.Context, id int64) (*models.Jour
 // а номера закрытых работ не входят в счёт и годы.
 func (r *JournalRepository) List(ctx context.Context, includeClosed bool) ([]models.JournalSummary, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT j.id, j.slug, j.title, j.subtitle, j.description, j.closed, j.created_at, j.updated_at,
+		SELECT j.id, j.slug, j.title, j.subtitle, j.description, j.closed, j.scans_hidden, j.created_at, j.updated_at,
 		       count(ji.id), min(ji.year), max(ji.year)
 		FROM journals j
 		LEFT JOIN journal_issues ji ON ji.journal_id = j.id
@@ -92,7 +92,7 @@ func (r *JournalRepository) List(ctx context.Context, includeClosed bool) ([]mod
 	out := []models.JournalSummary{}
 	for rows.Next() {
 		var s models.JournalSummary
-		if err := rows.Scan(&s.ID, &s.Slug, &s.Title, &s.Subtitle, &s.Description, &s.Closed, &s.CreatedAt, &s.UpdatedAt,
+		if err := rows.Scan(&s.ID, &s.Slug, &s.Title, &s.Subtitle, &s.Description, &s.Closed, &s.ScansHidden, &s.CreatedAt, &s.UpdatedAt,
 			&s.IssuesTotal, &s.YearFrom, &s.YearTo); err != nil {
 			return nil, err
 		}
