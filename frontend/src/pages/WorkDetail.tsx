@@ -175,6 +175,33 @@ export const WorkDetail: React.FC = () => {
     }
   };
 
+  const handleToggleScansHidden = async (next: boolean, reason: string) => {
+    if (!work) return;
+    try {
+      await worksApi.setScansHidden(work.id, next, reason);
+      const { data } = await worksApi.get(work.id);
+      setWork(data);
+      toast.success(next ? 'Сканы тома скрыты' : 'Сканы тома открыты');
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, 'Не удалось изменить доступ к сканам'));
+    }
+  };
+
+  const handleToggleChapterScansHidden = async (
+    chapterId: number,
+    next: boolean,
+    reason: string,
+  ) => {
+    if (!work) return;
+    try {
+      await chaptersApi.setScansHidden(work.id, chapterId, next, reason);
+      await loadWorkDetail();
+      toast.success(next ? 'Сканы главы скрыты' : 'Сканы главы открыты');
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к сканам главы'));
+    }
+  };
+
   const handleToggleChapterClosed = async (chapterId: number, next: boolean, reason: string) => {
     if (!work) return;
     try {
@@ -375,7 +402,9 @@ export const WorkDetail: React.FC = () => {
           onCreatePages={handleCreatePages}
           onDeleteWork={handleDeleteWork}
           onToggleClosed={handleToggleClosed}
+          onToggleScansHidden={handleToggleScansHidden}
           onToggleChapterClosed={handleToggleChapterClosed}
+          onToggleChapterScansHidden={handleToggleChapterScansHidden}
           onDeleteChapter={handleDeleteChapter}
           onMoveChapter={handleMoveChapter}
           reordering={reordering}

@@ -15,6 +15,7 @@ import { EditionPrefaces } from '../components/EditionPrefaces';
 import { SearchTrigger } from '../components/SearchTrigger';
 import { ClosedBadge } from '../components/ClosedBadge';
 import { ClosedToggle } from '../components/ClosedToggle';
+import { ScansHiddenToggle } from '../components/ScansHiddenToggle';
 import { ShareButton } from '../components/ShareButton';
 import { VolumeShelf } from '../components/VolumeShelf';
 import { VolumeTable } from '../components/VolumeTable';
@@ -166,6 +167,22 @@ export const EditionDetail: React.FC = () => {
                 toast.success(next ? 'Собрание закрыто' : 'Собрание открыто');
               } catch (err: unknown) {
                 toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к собранию'));
+              }
+            }}
+          />
+        )}
+        {editable && (
+          <ScansHiddenToggle
+            kind="edition"
+            hidden={!!edition.scans_hidden}
+            onToggle={async (next, reason) => {
+              try {
+                await editionsApi.setScansHidden(edition.id, next, reason);
+                const { data } = await editionsApi.get(edition.id);
+                setEdition(data);
+                toast.success(next ? 'Сканы собрания скрыты' : 'Сканы собрания открыты');
+              } catch (err: unknown) {
+                toast.error(apiErrorMessage(err, 'Не удалось изменить доступ к сканам'));
               }
             }}
           />

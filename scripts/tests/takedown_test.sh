@@ -230,6 +230,57 @@ test_closed_body_has_reason_and_flag() {
   assert_eq "false" "$(jq -r .closed <<<"$b")" "признак открытия"
 }
 
+test_scans_only_body_and_routes() {
+  local b
+  b="$(visibility_body true 'письмо' 1)"
+  assert_eq true "$(jq -r .scans_hidden <<<"$b")" "флаг сканов"
+  assert_eq null "$(jq -r .closed <<<"$b")" "не трогает полное закрытие"
+  assert_eq 'письмо' "$(jq -r .reason <<<"$b")" "причина"
+  b="$(visibility_body false 'открыть' 1)"
+  assert_eq false "$(jq -r .scans_hidden <<<"$b")" "открытие сканов"
+  assert_eq '/api/works/145/scans-hidden' "$(visibility_path volume 145 '' 1)" "том"
+  assert_eq '/api/works/145/chapters/9923/scans-hidden' "$(visibility_path chapter 145 9923 1)" "глава"
+  assert_eq '/api/works/145/chapters/9923/scans-hidden' "$(visibility_path apparatus 145 9923 1)" "аппарат"
+  assert_eq '/api/works/45/closed' "$(visibility_path volume 45 '' 0)" "обычное снятие"
+}
+
+test_scans_only_probe_keeps_text_and_hides_image() {
+  local body='{"content_markdown":"Доступный текст","preview_path":"","scan_restricted":true}'
+  scan_page_ok "$body" true || fail "скрытый скан с текстом не принят"
+  body='{"content_markdown":"Доступный текст","preview_path":"works/1/pages/2.png","scan_restricted":false}'
+  scan_page_ok "$body" false || fail "открытый скан не принят"
+  scan_page_ok "$body" true && fail "выданный скан принят за скрытый"
+  body='{"content_markdown":"Доступный текст","scan_restricted":true}'
+  scan_page_ok "$body" false && fail "неожиданное ограничение принято за открытые сканы"
+  scan_page_ok "$body" true || fail "унаследованное ограничение не принято"
+  body='{"content_markdown":"Доступный текст","scan_restricted":false}'
+  scan_page_ok "$body" false || fail "полоса без готового превью должна считаться открытой"
+  return 0
+}
+
+test_scan_text_status_does_not_allow_disappearing_text() {
+  scan_text_status_unchanged 200 200 || fail "доступный текст отвергнут"
+  scan_text_status_unchanged 404 404 || fail "унаследованное полное закрытие отвергнуто"
+  scan_text_status_unchanged 200 404 && fail "доступный текст исчез после скрытия сканов"
+  scan_text_status_unchanged 404 200 && fail "полное закрытие снято скрытием сканов"
+  return 0
+}
+
+test_scan_expected_from_work_and_overlapping_chapters() {
+  local work='{"scans_hidden_by":""}' chapters='[{"start_page":2,"end_page":4,"scans_hidden_by":"chapter","children":[{"start_page":3,"end_page":3,"scans_hidden_by":"parent"}]}]'
+  assert_eq true "$(scan_expected_from_structure "$work" "$chapters" 3)" "скрытая глава и подглава"
+  assert_eq false "$(scan_expected_from_structure "$work" "$chapters" 5)" "вне диапазона"
+  work='{"scans_hidden_by":"edition"}'
+  assert_eq true "$(scan_expected_from_structure "$work" '[]' 5)" "скрытие изданием"
+}
+
+test_scans_only_keeps_text_archive() {
+  static_withdraw_needed --prod true 1 && fail "текстовый архив снимается при скрытии сканов"
+  static_withdraw_needed --prod true 0 || fail "полное закрытие не сняло архив"
+  static_withdraw_needed --prod false 0 && fail "открытие снимает архив"
+  return 0
+}
+
 test_closed_body_survives_quotes_and_newlines() {
   local reason=$'он сказал "снять"\nвторая строка \\ и слэш'
   local b

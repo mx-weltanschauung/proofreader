@@ -302,6 +302,22 @@ describe('PageView', () => {
     expect(screen.getByText('Статус:')).toBeInTheDocument();
   });
 
+  it('при ограничении показывает текст и объясняет отсутствие скана', async () => {
+    vi.spyOn(pagesApi, 'getByNumber').mockImplementation(() =>
+      ok({
+        ...PAGE_245,
+        scan_restricted: true,
+        preview_path: 'works/3/pages/leak.png',
+        preview_url: 'https://example.test/leak.png',
+      } as Page),
+    );
+    vi.spyOn(pagesApi, 'render').mockImplementation(() => ok({ html: `<p>${HTML_245}</p>` }));
+    renderAt('/works/3/pages/245');
+    expect(await screen.findByText(HTML_245)).toBeInTheDocument();
+    expect(screen.getByText('Скан доступен только администратору')).toBeInTheDocument();
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
   it('называет статус страницы, а не показывает пустую плашку', async () => {
     // Фикстуры файла все со статусом «вычитана» — именно на нём
     // readerStatusLabel молчит; карточка страницы обязана называть его,

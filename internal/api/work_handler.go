@@ -45,7 +45,10 @@ type WorkHandler struct {
 	// closedChapters — работы с закрытыми главами: их оригинал не-сотруднику
 	// не выдаётся. nil — закрытых глав нет.
 	closedChapters ClosedChapterWorks
+	scans          ScanVisibilityStore
 }
+
+func (h *WorkHandler) WithScans(s ScanVisibilityStore) *WorkHandler { h.scans = s; return h }
 
 // ClosedChapterWorks — работы, у которых есть хоть одна закрытая глава.
 // *repository.ClosedRepository удовлетворяет ему как есть.
@@ -65,15 +68,24 @@ func (h *WorkHandler) WithClosedChapterWorks(s ClosedChapterWorks) *WorkHandler 
 // чтения прячет все оригиналы, а не отдаёт их: карточка без файла хуже не
 // станет, а утечку не вернуть.
 func (h *WorkHandler) originalHidden(r *http.Request) func(workID int64) bool {
-	if h.closedChapters == nil || isStaffRequest(r) {
-		return func(int64) bool { return false }
+	var closedIDs, scanIDs map[int64]bool
+	if h.closedChapters != nil && !isStaffRequest(r) {
+		var err error
+		closedIDs, err = h.closedChapters.WorksWithClosedChapters(r.Context())
+		if err != nil {
+			log.Printf("работы с закрытыми главами: %v", err)
+			return func(int64) bool { return true }
+		}
 	}
-	ids, err := h.closedChapters.WorksWithClosedChapters(r.Context())
-	if err != nil {
-		log.Printf("работы с закрытыми главами: %v", err)
-		return func(int64) bool { return true }
+	if h.scans != nil && !scanAdministrator(r.Context()) {
+		var err error
+		scanIDs, err = h.scans.WorksWithHiddenScans(r.Context())
+		if err != nil {
+			log.Printf("работы со скрытыми сканами: %v", err)
+			return func(int64) bool { return true }
+		}
 	}
-	return func(workID int64) bool { return ids[workID] }
+	return func(workID int64) bool { return closedIDs[workID] || scanIDs[workID] }
 }
 
 // workResponseFor — ответ работы с оригиналом, если зрителю его можно. Без
@@ -81,9 +93,7 @@ func (h *WorkHandler) originalHidden(r *http.Request) func(workID int64) bool {
 // ни адресом в бакете.
 func (h *WorkHandler) workResponseFor(r *http.Request, wk *models.Work, hidden func(int64) bool) workResponse {
 	if hidden(wk.ID) {
-		cp := *wk
-		cp.FilePath = ""
-		return workResponse{Work: &cp}
+		return workResponse{Work: redactWorkOriginal(wk, true)}
 	}
 	return newWorkResponse(r.Context(), wk, h.store, h.presignTTL)
 }
@@ -139,7 +149,19 @@ type CreateWorkRequest struct {
 	// Update поле не читает: признак меняет только ClosedHandler.
 	Closed bool `json:"closed,omitempty"`
 	// ClosedReason — причина строки журнала при Closed; пусто — «закрыто при создании».
-	ClosedReason string `json:"closed_reason,omitempty"`
+	ClosedReason          string `json:"closed_reason,omitempty"`
+	ScansHidden           bool   `json:"scans_hidden,omitempty"`
+	ScansHiddenReason     string `json:"scans_hidden_reason,omitempty"`
+	RequireInheritedScans bool   `json:"require_inherited_scans,omitempty"`
+	// Coordinates and role can be supplied at creation so inherited scan
+	// restrictions are effective before the work is ever visible.
+	EditionID      *int64  `json:"edition_id,omitempty"`
+	VolumeNumber   *int    `json:"volume_number,omitempty"`
+	VolumePart     *string `json:"volume_part,omitempty"`
+	PageOffset     int     `json:"page_offset,omitempty"`
+	ParentWorkID   *int64  `json:"parent_work_id,omitempty"`
+	Role           string  `json:"role,omitempty"`
+	NumberingStyle string  `json:"numbering_style,omitempty"`
 }
 
 // UpdateWorkRequest represents a request to update a work.
@@ -227,27 +249,60 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "id must be positive", http.StatusBadRequest)
 		return
 	}
+	if req.Role == models.WorkRoleJournalIssue {
+		http.Error(w, "journal_issue is created only through the journal issue endpoint", http.StatusBadRequest)
+		return
+	}
 
 	closeReason, ok := requireAdminToClose(w, r, req.Closed, req.ClosedReason)
 	if !ok {
 		return
 	}
+	scanReason, ok := requireAdminToHideScans(w, r, req.ScansHidden, req.ScansHiddenReason)
+	if !ok {
+		return
+	}
+	if !req.Closed {
+		closeReason = scanReason
+	}
 
 	// Create work
 	work := &models.Work{
-		ID:       req.ID,
-		Title:    req.Title,
-		Author:   req.Author,
-		Language: req.Language,
-		Country:  req.Country,
-		FilePath: "", // Will be set during file upload
-		Status:   req.Status,
-		OwnerID:  claims.UserID,
-		Closed:   req.Closed,
+		ID:                    req.ID,
+		Title:                 req.Title,
+		Author:                req.Author,
+		Language:              req.Language,
+		Country:               req.Country,
+		FilePath:              "", // Will be set during file upload
+		Status:                req.Status,
+		OwnerID:               claims.UserID,
+		Closed:                req.Closed,
+		ScansHidden:           req.ScansHidden,
+		ScanClosureReason:     scanReason,
+		RequireInheritedScans: req.RequireInheritedScans,
+		EditionID:             req.EditionID,
+		VolumeNumber:          req.VolumeNumber,
+		VolumePart:            req.VolumePart,
+		PageOffset:            req.PageOffset,
+		ParentWorkID:          req.ParentWorkID,
+		Role:                  req.Role,
+		NumberingStyle:        req.NumberingStyle,
+	}
+	if err := applyVolumeFields(work, volumeUpdate{}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := applyWorkMeta(work, workMeta{}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	ctx := context.Background()
 	if err := h.workRepo.Create(ctx, work, closureActor(r), closeReason); err != nil {
+		if errors.Is(err, repository.ErrRequiredInheritedScans) {
+			http.Error(w, "inherited scan restriction is not active", http.StatusConflict)
+			return
+		}
 		if errors.Is(err, repository.ErrIDTaken) {
 			http.Error(w, fmt.Sprintf("work id %d is already taken", req.ID), http.StatusConflict)
 			return
@@ -258,7 +313,7 @@ func (h *WorkHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(work)
+	json.NewEncoder(w).Encode(h.workResponseFor(r, work, h.originalHidden(r)))
 }
 
 // Get retrieves a work by ID
@@ -276,7 +331,6 @@ func (h *WorkHandler) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Work not found", http.StatusNotFound)
 		return
 	}
-
 	hidden := h.originalHidden(r)
 	resp := h.workResponseFor(r, work, hidden)
 	// Служебные работы (передние листы) не показываются в каталоге, поэтому
@@ -346,6 +400,8 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Work not found", http.StatusNotFound)
 		return
 	}
+	previousEdition, previousParent := work.EditionID, work.ParentWorkID
+	previousScansHiddenBy := work.ScansHiddenBy
 
 	// Update fields
 	work.Title = req.Title
@@ -362,8 +418,16 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if previousScansHiddenBy != "" && !work.ScansHidden && (!sameOptionalID(previousEdition, work.EditionID) || !sameOptionalID(previousParent, work.ParentWorkID)) {
+		writeError(w, http.StatusConflict, "Сканы работы скрыты — сначала откройте их")
+		return
+	}
 
 	if err := h.workRepo.Update(ctx, work); err != nil {
+		if errors.Is(err, repository.ErrScansHiddenStructure) {
+			writeError(w, http.StatusConflict, "Сканы работы скрыты — сначала откройте их")
+			return
+		}
 		if isVolumeTakenError(err) {
 			http.Error(w, "volume already taken by another work in this edition", http.StatusConflict)
 			return
@@ -374,7 +438,7 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 	h.dropCacheIfClosednessMoved(ctx, work)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(work)
+	json.NewEncoder(w).Encode(h.workResponseFor(r, work, h.originalHidden(r)))
 }
 
 // dropCacheIfClosednessMoved — второй, после ClosedHandler, путь, которым
@@ -387,10 +451,12 @@ func (h *WorkHandler) Update(w http.ResponseWriter, r *http.Request) {
 // стоит пересборки, пропущенный — утечки закрытого.
 func (h *WorkHandler) dropCacheIfClosednessMoved(ctx context.Context, work *models.Work) {
 	before := work.ClosedBy
+	beforeScans := work.ScansHiddenBy
 	fresh, err := h.workRepo.GetByID(ctx, work.ID)
 	if err == nil {
 		work.ClosedBy = fresh.ClosedBy
-		if fresh.ClosedBy == before {
+		work.ScansHiddenBy = fresh.ScansHiddenBy
+		if fresh.ClosedBy == before && fresh.ScansHiddenBy == beforeScans {
 			return
 		}
 	}
@@ -403,6 +469,13 @@ func (h *WorkHandler) dropCacheIfClosednessMoved(ctx context.Context, work *mode
 		h.cache.DropWork(kid.ID)
 	}
 	h.cache.DropWork(work.ID)
+}
+
+func sameOptionalID(a, b *int64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // Delete deletes a work
@@ -648,6 +721,9 @@ func (h *WorkHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		"message":    "File uploaded successfully",
 		"file_key":   key,
 		"page_count": pageCount,
+	}
+	if h.originalHidden(r)(workID) {
+		response["file_key"] = ""
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { Chapter, Work } from '../types';
@@ -123,5 +123,18 @@ describe('VolumeManagePanel', () => {
     const { user } = setup({ work: { ...WORK, closed: true, closed_by: 'work' } });
     await user.click(screen.getByText('Управление томом'));
     expect(screen.getByRole('button', { name: 'Открыть' })).toBeInTheDocument();
+  });
+
+  it('скрывает сканы тома отдельной кнопкой, не закрывая текст', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.spyOn(window, 'prompt').mockReturnValue('письмо');
+    const onToggleScansHidden = vi.fn().mockResolvedValue(undefined);
+    const { user, onToggleClosed } = setup({ onToggleScansHidden });
+    await user.click(screen.getByText('Управление томом'));
+    const section = screen.getByRole('heading', { name: 'Том' }).closest('section');
+    if (!section) throw new Error('section missing');
+    await user.click(within(section).getByRole('button', { name: 'Скрыть сканы' }));
+    expect(onToggleScansHidden).toHaveBeenCalledWith(true, 'письмо');
+    expect(onToggleClosed).not.toHaveBeenCalled();
   });
 });

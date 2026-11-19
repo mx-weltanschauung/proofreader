@@ -43,6 +43,11 @@ func TestReaderCommentsMigrationDownRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	clearDownRefusals(ctx, t, pool)
+	// Проверяется шаг 000045 → 000044: после появления 000046 один Steps(-1)
+	// от актуальной версии сначала снимал бы только колонку сканов.
+	if err := m.Migrate(45); err != nil && err != migrate.ErrNoChange {
+		t.Fatalf("migrate to reader comments version: %v", err)
+	}
 	var uid, wid int64
 	if err := pool.QueryRow(ctx, `INSERT INTO users(email,password_hash,role) VALUES('migration-comments@example.invalid','x','administrator') RETURNING id`).Scan(&uid); err != nil {
 		t.Fatal(err)

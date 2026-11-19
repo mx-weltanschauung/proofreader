@@ -13,6 +13,7 @@ function ok<T>(data: T): Promise<AxiosResponse<T>> {
 const ROWS: ClosureEntry[] = [
   {
     kind: 'work',
+    scope: 'full',
     entity_id: 7,
     title: 'Том 7',
     closed: true,
@@ -22,12 +23,23 @@ const ROWS: ClosureEntry[] = [
   },
   {
     kind: 'chapter',
+    scope: 'full',
     entity_id: 9,
     title: 'Глава девятая',
     closed: false,
     reason: 'закрыли по ошибке',
     actor_name: 'admin',
     at: '2026-10-22T10:00:00Z',
+  },
+  {
+    kind: 'work',
+    scope: 'scans',
+    entity_id: 7,
+    title: 'Том 7',
+    closed: true,
+    reason: 'скрыть снимки',
+    actor_name: 'admin',
+    at: '2026-10-21T10:00:00Z',
   },
 ];
 
@@ -48,11 +60,13 @@ describe('ClosuresAdmin', () => {
     renderPage();
     await waitFor(() => expect(screen.getByText('письмо издателя о правах')).toBeInTheDocument());
     expect(screen.getByText('23.10.2026')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Том 7' })).toHaveAttribute('href', '/works/7');
+    expect(screen.getAllByRole('link', { name: 'Том 7' })[0]).toHaveAttribute('href', '/works/7');
     expect(screen.getByText('Глава девятая')).toBeInTheDocument();
     expect(screen.getByText('закрыто')).toBeInTheDocument();
     expect(screen.getByText('открыто')).toBeInTheDocument();
-    expect(screen.getAllByText('admin')).toHaveLength(2);
+    expect(screen.getByText('Сканы')).toBeInTheDocument();
+    expect(screen.getByText('скрыты')).toBeInTheDocument();
+    expect(screen.getAllByText('admin')).toHaveLength(3);
   });
 
   it('пустой журнал говорит об этом', async () => {

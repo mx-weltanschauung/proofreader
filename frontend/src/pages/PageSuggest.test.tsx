@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import { pagesApi, worksApi, suggestionsApi } from '../services/api';
+import type { Page } from '../types';
 import { ReadingPreferencesProvider } from '../contexts/ReadingPreferencesContext';
 // useAuth — это и есть zustand-стор (create<AuthState>()), поэтому у него
 // есть setState: статус входа в тестах подменяется прямо на нём, без vi.mock.
@@ -24,12 +25,12 @@ const PAGE = {
   status: 'вычитано_машиной',
   created_at: '',
   updated_at: '',
-};
+} as Page;
 
 const READER_USER = { id: 1, email: '', nickname: 'читатель', role: 'reader' as const };
 
-function renderSuggest() {
-  vi.spyOn(pagesApi, 'getByNumber').mockReturnValue(ok(PAGE) as never);
+function renderSuggest(page: Page = PAGE) {
+  vi.spyOn(pagesApi, 'getByNumber').mockReturnValue(ok(page) as never);
   vi.spyOn(worksApi, 'get').mockReturnValue(ok({ id: 7, title: 'Том 8', page_offset: 0 }) as never);
   // MarkdownEditor зовёт useReadingPrefs() — в приложении маршрут уже стоит
   // внутри ReadingPreferencesProvider (App.tsx), здесь оборачиваем локально,
@@ -54,6 +55,13 @@ beforeEach(() => {
 describe('PageSuggest', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('при скрытых сканах оставляет текст для предложения правки', async () => {
+    renderSuggest({ ...PAGE, scan_restricted: true, preview_url: 'https://example.test/leak.png' });
+    expect(await screen.findByDisplayValue('Текст полосы до правки')).toBeInTheDocument();
+    expect(screen.getByText('Скан доступен только администратору')).toBeInTheDocument();
+    expect(document.querySelector('img[src*="leak.png"]')).toBeNull();
   });
 
   it('зовёт записаться, если читатель не вошёл', async () => {

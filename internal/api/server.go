@@ -92,11 +92,11 @@ func NewServer(d ServerDeps) *mux.Router {
 	// закрытые главы.
 	viewPages := NewViewPages(pageRepo, closedRepo)
 	viewChapters := NewViewChapters(chapterRepo, closedRepo)
-	pageHandler := NewPageHandler(viewPages, pageVersionRepo, fragmentRepo, documentCutRepo, markdownRenderer, scans, cfg.S3.PresignTTL)
+	pageHandler := NewPageHandler(viewPages, pageVersionRepo, fragmentRepo, documentCutRepo, markdownRenderer, scans, cfg.S3.PresignTTL).WithScans(closedRepo)
 	chapterHandler := NewChapterHandler(chapterRepo, viewPages, markdownRenderer, rangeCache).
 		WithRecordings(audioRecordingRepo).
 		WithCredits(personRepo).
-		WithClosedChapters(closedRepo)
+		WithClosedChapters(closedRepo).WithScansHiddenChapters(closedRepo)
 	eventRepo := repository.NewEventRepository(pool)
 	readingHandler := NewReadingHandler(viewPages, markdownRenderer).WithClosedMarkers(viewChapters)
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же
@@ -170,7 +170,7 @@ func NewServer(d ServerDeps) *mux.Router {
 	workHandler := NewWorkHandler(
 		workRepo, viewPages, markdownRenderer, scans, cfg.S3.PresignTTL,
 		servingCache, apparatusRepo,
-	).WithAudioStore(audioStore).WithJournalIssues(journalRepo).WithClosedChapterWorks(closedRepo)
+	).WithAudioStore(audioStore).WithJournalIssues(journalRepo).WithClosedChapterWorks(closedRepo).WithScans(closedRepo)
 	// documentHandler/documentReviewHandler собираются здесь же, а не рядом с
 	// остальными обработчиками разбора выше: снятие с публикации и удаление
 	// обязаны сбросить краулерскую половину servingCache (см. DropCrawler), а

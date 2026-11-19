@@ -23,6 +23,10 @@ type ClosedWriter interface {
 	SetEditionClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error)
 	SetJournalClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error)
 	SetChapterClosed(ctx context.Context, id int64, closed bool, actor models.ClosureActor, reason string) ([]int64, error)
+	SetWorkScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error)
+	SetEditionScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error)
+	SetJournalScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error)
+	SetChapterScansHidden(ctx context.Context, id int64, hidden bool, actor models.ClosureActor, reason string) ([]int64, error)
 }
 
 // ClosedChapterSource — главы для проверки принадлежности и плана закрытия.
@@ -35,7 +39,7 @@ type ClosedChapterSource interface {
 // ClosureLog — чтение журнала закрытий. *repository.ClosedRepository
 // удовлетворяет ему как есть.
 type ClosureLog interface {
-	LatestClosure(ctx context.Context, kind string, id int64) (*models.Closure, error)
+	LatestClosure(ctx context.Context, kind string, id int64, scope string) (*models.Closure, error)
 	ListClosures(ctx context.Context, limit, offset int) ([]models.Closure, error)
 }
 
@@ -56,7 +60,8 @@ func NewClosedHandler(store ClosedWriter, cache *ServingCache) *ClosedHandler {
 }
 
 type closedBody struct {
-	Closed *bool `json:"closed"`
+	Closed      *bool `json:"closed"`
+	ScansHidden *bool `json:"scans_hidden"`
 	// Reason — причина закрытия или открытия; журнал закрытий хранит её
 	// обязательной (задача 2 отвечает на пустую 400 до похода в базу).
 	Reason string `json:"reason"`
@@ -83,6 +88,21 @@ func requireAdminToClose(w http.ResponseWriter, r *http.Request, closed bool, re
 // closedAtCreation — причина строки журнала, когда работа, издание или журнал
 // заведены сразу закрытыми и своей причины в запросе нет.
 const closedAtCreation = "закрыто при создании"
+
+func requireAdminToHideScans(w http.ResponseWriter, r *http.Request, hidden bool, reason string) (string, bool) {
+	if !hidden {
+		return "", true
+	}
+	claims, ok := middleware.GetUserFromContext(r.Context())
+	if !ok || claims.Role != models.RoleAdministrator {
+		writeError(w, http.StatusForbidden, "Скрывать сканы может только администратор")
+		return "", false
+	}
+	if reason = strings.TrimSpace(reason); reason == "" {
+		reason = "сканы скрыты при создании"
+	}
+	return reason, true
+}
 
 // closureActor — кто пишет в журнал закрытий: учётная запись из JWT. Подпись —
 // email сотрудника, у читателя — ник; без claims — «неизвестно», чтобы строка
@@ -122,13 +142,33 @@ func (h *ClosedHandler) Journal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ClosedHandler) Chapter(w http.ResponseWriter, r *http.Request) {
+	h.chapter(w, r, false)
+}
+
+func (h *ClosedHandler) ChapterScans(w http.ResponseWriter, r *http.Request) {
+	h.chapter(w, r, true)
+}
+
+func (h *ClosedHandler) WorkScans(w http.ResponseWriter, r *http.Request) {
+	h.setScans(w, r, h.store.SetWorkScansHidden)
+}
+
+func (h *ClosedHandler) EditionScans(w http.ResponseWriter, r *http.Request) {
+	h.setScans(w, r, h.store.SetEditionScansHidden)
+}
+
+func (h *ClosedHandler) JournalScans(w http.ResponseWriter, r *http.Request) {
+	h.setScans(w, r, h.store.SetJournalScansHidden)
+}
+
+func (h *ClosedHandler) chapter(w http.ResponseWriter, r *http.Request, scans bool) {
 	workID, err := strconv.ParseInt(mux.Vars(r)["workId"], 10, 64)
 	if err != nil || workID <= 0 {
 		writeError(w, http.StatusBadRequest, "Неверный номер")
 		return
 	}
 	// Причина и тело проверяются раньше похода в базу.
-	id, body, ok := parseClosedRequest(w, r)
+	id, body, ok := parseVisibilityRequest(w, r, scans)
 	if !ok {
 		return
 	}
@@ -141,20 +181,28 @@ func (h *ClosedHandler) Chapter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Не найдено")
 		return
 	}
-	h.write(w, r, id, body, h.store.SetChapterClosed)
+	if scans {
+		h.writeScans(w, r, id, body, h.store.SetChapterScansHidden)
+	} else {
+		h.write(w, r, id, body, h.store.SetChapterClosed)
+	}
 }
 
 // parseClosedRequest разбирает номер и тело запроса; пустая (в том числе
 // пробельная) причина — 400 до любого обращения к базе.
 func parseClosedRequest(w http.ResponseWriter, r *http.Request) (int64, closedBody, bool) {
+	return parseVisibilityRequest(w, r, false)
+}
+
+func parseVisibilityRequest(w http.ResponseWriter, r *http.Request, scans bool) (int64, closedBody, bool) {
 	var body closedBody
 	id, err := strconv.ParseInt(mux.Vars(r)["id"], 10, 64)
 	if err != nil || id <= 0 {
 		writeError(w, http.StatusBadRequest, "Неверный номер")
 		return 0, body, false
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Closed == nil {
-		writeError(w, http.StatusBadRequest, "Тело запроса — {\"closed\": true|false, \"reason\": \"…\"}")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (!scans && body.Closed == nil) || (scans && body.ScansHidden == nil) {
+		writeError(w, http.StatusBadRequest, "Укажите признак и причину")
 		return 0, body, false
 	}
 	body.Reason = strings.TrimSpace(body.Reason)
@@ -163,6 +211,45 @@ func parseClosedRequest(w http.ResponseWriter, r *http.Request) (int64, closedBo
 		return 0, body, false
 	}
 	return id, body, true
+}
+
+func (h *ClosedHandler) setScans(w http.ResponseWriter, r *http.Request,
+	write func(context.Context, int64, bool, models.ClosureActor, string) ([]int64, error)) {
+	id, body, ok := parseVisibilityRequest(w, r, true)
+	if ok {
+		h.writeScans(w, r, id, body, write)
+	}
+}
+
+func (h *ClosedHandler) writeScans(w http.ResponseWriter, r *http.Request, id int64, body closedBody,
+	write func(context.Context, int64, bool, models.ClosureActor, string) ([]int64, error)) {
+	copy := body
+	copy.Closed = body.ScansHidden
+	// Общий путь записи сбрасывает те же кэши, что полное закрытие.
+	// Ответ для сканов имеет собственное имя поля.
+	affected, err := write(r.Context(), id, *copy.Closed, closureActor(r), copy.Reason)
+	if errors.Is(err, repository.ErrClosedTargetNotFound) {
+		writeError(w, http.StatusNotFound, "Не найдено")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось сохранить признак")
+		return
+	}
+	if len(affected) == 0 {
+		h.cache.DropCrawler()
+	}
+	for _, wid := range affected {
+		h.cache.DropWork(wid)
+	}
+	if affected == nil {
+		affected = []int64{}
+	}
+	writeJSONStatus(w, http.StatusOK, struct {
+		ID          int64   `json:"id"`
+		ScansHidden bool    `json:"scans_hidden"`
+		Affected    []int64 `json:"affected"`
+	}{id, *body.ScansHidden, affected})
 }
 
 func (h *ClosedHandler) set(w http.ResponseWriter, r *http.Request,

@@ -181,7 +181,7 @@ type fakeClosureLog struct {
 	limit, offset int
 }
 
-func (f *fakeClosureLog) LatestClosure(context.Context, string, int64) (*models.Closure, error) {
+func (f *fakeClosureLog) LatestClosure(context.Context, string, int64, string) (*models.Closure, error) {
 	return f.latest, nil
 }
 func (f *fakeClosureLog) ListClosures(_ context.Context, limit, offset int) ([]models.Closure, error) {

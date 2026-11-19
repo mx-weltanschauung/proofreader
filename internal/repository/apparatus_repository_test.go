@@ -216,6 +216,18 @@ func TestApparatusRemoveRefusesClosedChapter(t *testing.T) {
 	if _, err := closed.SetChapterClosed(ctx, title.ID, false, actor, "проба"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := closed.SetChapterScansHidden(ctx, notes, true, actor, "сканы аппарата"); err != nil {
+		t.Fatal(err)
+	}
+	if plan, err := apparatus.Plan(ctx, vol.ID); err != nil || plan.ScansHiddenEntities == 0 {
+		t.Fatalf("план не показал скрытые сканы аппарата: %+v, %v", plan, err)
+	}
+	if _, err := apparatus.Remove(ctx, vol.ID); !errors.Is(err, ErrApparatusScansHidden) {
+		t.Fatalf("Remove со скрытыми сканами: %v, ждали ErrApparatusScansHidden", err)
+	}
+	if _, err := closed.SetChapterScansHidden(ctx, notes, false, actor, "открыть сканы"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := apparatus.Remove(ctx, vol.ID); err != nil {
 		t.Fatalf("Remove после открытия: %v", err)
 	}

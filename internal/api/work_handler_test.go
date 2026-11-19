@@ -331,6 +331,9 @@ type fakeWorkRepo struct {
 	createErr     error
 	role          string
 	closed        bool
+	scansHiddenBy string
+	editionID     *int64
+	updates       int
 	list          []*models.Work
 }
 
@@ -339,13 +342,13 @@ func (f *fakeWorkRepo) List(context.Context, int, int, *models.WorkStatus, *int6
 }
 
 func (f *fakeWorkRepo) GetByID(_ context.Context, id int64) (*models.Work, error) {
-	return &models.Work{ID: id, Role: f.role, Closed: f.closed}, nil
+	return &models.Work{ID: id, Role: f.role, Closed: f.closed, ScansHiddenBy: f.scansHiddenBy, EditionID: f.editionID}, nil
 }
 func (f *fakeWorkRepo) Create(_ context.Context, w *models.Work, _ models.ClosureActor, reason string) error {
 	f.created, f.createdReason = w, reason
 	return f.createErr
 }
-func (f *fakeWorkRepo) Update(context.Context, *models.Work) error { return nil }
+func (f *fakeWorkRepo) Update(context.Context, *models.Work) error { f.updates++; return nil }
 
 func (f *fakeWorkRepo) Delete(_ context.Context, id int64) error {
 	f.deleted = append(f.deleted, id)
@@ -755,6 +758,26 @@ func TestWorkHandler_Create_PassesExplicitID(t *testing.T) {
 	}
 	if repo.created == nil || repo.created.ID != 311 {
 		t.Fatalf("в репозиторий ушло %+v, ждали id 311", repo.created)
+	}
+}
+
+func TestWorkHandler_Create_AttachesInheritedScanSourceInInsert(t *testing.T) {
+	repo := &fakeWorkRepo{}
+	rec := createWorkAsEditor(t, repo, `{"id":312,"title":"Предисловие","status":"draft","edition_id":7,"parent_work_id":311,"role":"front_matter","page_offset":2}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("код %d, ждали 201: %s", rec.Code, rec.Body.String())
+	}
+	created := repo.created
+	if created == nil || created.EditionID == nil || *created.EditionID != 7 || created.ParentWorkID == nil || *created.ParentWorkID != 311 || created.Role != models.WorkRoleFrontMatter || created.PageOffset != 2 || created.ScansHidden {
+		t.Fatalf("работа должна быть вставлена с координатами без собственного скрытия: %+v", created)
+	}
+}
+
+func TestWorkHandler_Create_RejectsOrphanJournalIssue(t *testing.T) {
+	repo := &fakeWorkRepo{}
+	rec := createWorkAsEditor(t, repo, `{"title":"Выпуск","status":"draft","role":"journal_issue"}`)
+	if rec.Code != http.StatusBadRequest || repo.created != nil {
+		t.Fatalf("общий POST создал выпуск без journal_issues: %d %+v", rec.Code, repo.created)
 	}
 }
 

@@ -13,6 +13,7 @@
 #   ./scripts/takedown.sh volume 145 --plan                # только показать
 #   ./scripts/takedown.sh volume 145 --reason "..." --open # вернуть обратно
 #   ./scripts/takedown.sh chapter 145/9923 --reason "..." --prod
+#   ./scripts/takedown.sh volume 145 --scans-only --reason "..." # текст открыт
 #
 # Закрывать и открывать может только администратор; причина обязательна в
 # обе стороны и попадает в журнал закрытий (GET /api/admin/closures).
@@ -79,6 +80,55 @@ require_reason() {
 # подстановки в строку: кавычки и переводы строк в причине обязаны уцелеть.
 closed_body() {
   jq -n --argjson c "$1" --arg r "$2" '{closed:$c, reason:$r}'
+}
+
+visibility_body() {
+  if [[ "$3" == 1 ]]; then
+    jq -n --argjson c "$1" --arg r "$2" '{scans_hidden:$c, reason:$r}'
+  else
+    closed_body "$1" "$2"
+  fi
+}
+
+visibility_path() {
+  local kind="$1" id="$2" chapter="$3" scans_only="$4" suffix=closed
+  [[ "$scans_only" == 1 ]] && suffix=scans-hidden
+  if [[ "$kind" == volume ]]; then
+    printf '/api/works/%s/%s\n' "$id" "$suffix"
+  else
+    printf '/api/works/%s/chapters/%s/%s\n' "$id" "$chapter" "$suffix"
+  fi
+}
+
+scan_page_ok() {
+  local body="$1" expected_hidden="$2"
+  jq -e --argjson expected_hidden "$expected_hidden" '
+    has("content_markdown") and (.scan_restricted | type == "boolean") and
+    (.scan_restricted == $expected_hidden) and
+    (if .scan_restricted then (.preview_path // "") == "" and (.preview_url // "") == ""
+     else true end)
+  ' <<<"$body" >/dev/null
+}
+
+scan_text_status_unchanged() {
+  [[ "$1" == "$2" && ( "$2" == 200 || "$2" == 404 ) ]]
+}
+
+# Эффективное ограничение для анонимной полосы: работа (включая издание,
+# журнал и родителя) либо любая перекрывающая её глава. Администратор видит
+# сам скан, поэтому его page.scan_restricted всегда false и здесь непригоден.
+scan_expected_from_structure() { # JSON_РАБОТЫ JSON_ГЛАВ НОМЕР_ПОЛОСЫ
+  printf '%s\n%s\n' "$1" "$2" | jq -s -r --argjson page "$3" '
+    ((.[0].scans_hidden_by // "") != "") or
+    ([.[1] | .. | objects |
+      select((.start_page | type) == "number" and (.end_page | type) == "number" and
+             .start_page <= $page and .end_page >= $page and
+             (.scans_hidden_by // "") != "")] | length > 0)
+  '
+}
+
+static_withdraw_needed() {
+  [[ "$1" == --prod && "$2" == true && "$3" != 1 ]]
 }
 
 # probe_ok ОЖИДАНИЕ КОД — сходится ли код анонимной пробы. Ожидание: 410, 404
@@ -177,12 +227,13 @@ usage() {
 
   --reason T  причина (обязательна, и при открытии тоже)
   --open      обратный ход: открыть то же самое
+  --scans-only скрыть только изображения, оставив текст открытым
   --plan      только показать, что закроется; ничего не менять
   --prod      против боевой читальни (умолчание — локальный API)
   --yes       без подтверждения (для неинтерактивных прогонов)
 
-Закрытое видят только editor и administrator; администратор открывает
-обратно этой же командой. Журнал — GET /api/admin/closures.
+Полностью закрытое видят editor и administrator; скрытые сканы — только administrator.
+Администратор открывает обратно этой же командой. Журнал — GET /api/admin/closures.
 USAGE
   exit 2
 }
@@ -288,9 +339,17 @@ volume_plan() {
     "$(jq -r '.edition_id // "—"' <<<"$work")" "$(jq -r '.volume_number // "—"' <<<"$work")"
   printf '  полос:      %s\n' "$pages"
   printf '  глав:       %s\n' "$chapters"
-  printf '  служебных:  %s (закрываются вместе с томом)\n' "$(jq -r '(.children // []) | length' <<<"$apparatus")"
+  if (( ${SCANS_ONLY:-0} )); then
+    printf '  служебных:  %s (их сканы скрываются вместе с томом)\n' "$(jq -r '(.children // []) | length' <<<"$apparatus")"
+  else
+    printf '  служебных:  %s (закрываются вместе с томом)\n' "$(jq -r '(.children // []) | length' <<<"$apparatus")"
+  fi
   jq -r '(.children // [])[] | "    - \(.id): \(.title) (\(.pages) полос, \(.role))"' <<<"$apparatus"
-  printf '  Данные не удаляются: закрытое остаётся в базе и в хранилище.\n'
+  if (( ${SCANS_ONLY:-0} )); then
+    printf '  Текст остаётся доступным; сканы сохраняются в хранилище.\n'
+  else
+    printf '  Данные не удаляются: закрытое остаётся в базе и в хранилище.\n'
+  fi
 }
 
 # chapter_plan ТОМ ГЛАВА — план из closed-plan: сколько глав и полос закроется,
@@ -309,11 +368,19 @@ chapter_plan() {
   shared="$(jq -r '(.shared // []) | length' <<<"$CHAPTER_PLAN")"
   if [[ "$shared" != "0" ]] && (( ! REOPENING )); then
     printf '  общих полос: %s — их накрывает и открытая глава; полоса\n' "$shared"
-    printf '              закрывается целиком, соседи потеряют на ней кусок:\n'
+    if (( ${SCANS_ONLY:-0} )); then
+      printf '              сохраняет текст, но скан скрывается целиком:\n'
+    else
+      printf '              закрывается целиком, соседи потеряют на ней кусок:\n'
+    fi
     jq -r '(.shared // [])[] | "    - полоса \(.page_number): \((.neighbors // []) | join(", "))"' <<<"$CHAPTER_PLAN"
   fi
-  printf '  Родительские главы в списке соседей не названы: родитель теряет\n'
-  printf '  закрытую подглаву вместе с её полосами — так и задумано.\n'
+  if (( ${SCANS_ONLY:-0} )); then
+    printf '  Текст главы и соседей остаётся доступным.\n'
+  else
+    printf '  Родительские главы в списке соседей не названы: родитель теряет\n'
+    printf '  закрытую подглаву вместе с её полосами — так и задумано.\n'
+  fi
 }
 
 # apparatus_plan ID — что закроет закрытие аппарата. Печатает и возвращает JSON
@@ -349,15 +416,23 @@ apparatus_plan() {
       api GET "/api/works/$id/chapters/$root/closed-plan" || die "не удалось запросить план главы $root"
       api_ok || die "план главы $root не отдался (код $API_STATUS) — план неполон, отказ"
       if [[ "$(jq -r '(.shared // []) | length' <<<"$API_BODY")" != "0" ]]; then
-        printf '  общие полосы корня %s (закрываются целиком, соседи потеряют кусок):\n' "$root"
+        if (( ${SCANS_ONLY:-0} )); then
+          printf '  общие полосы корня %s (текст остаётся, скан скрывается целиком):\n' "$root"
+        else
+          printf '  общие полосы корня %s (закрываются целиком, соседи потеряют кусок):\n' "$root"
+        fi
         jq -r '(.shared // [])[] | "    - полоса \(.page_number): \((.neighbors // []) | join(", "))"' <<<"$API_BODY"
       fi
     done < <(jq -r '(.chapters // [])[] | .id' <<<"$APPARATUS_PLAN")
   fi
   printf '  служебных:  %s\n' "$(jq -r '(.children // []) | length' <<<"$APPARATUS_PLAN")"
   jq -r '(.children // [])[] | "    - \(.id): \(.title) (\(.pages) полос, \(.role))"' <<<"$APPARATUS_PLAN"
-  printf '  ТЕЛО ТОМА ОСТАЁТСЯ. Сноски и перевод внутри полос тела не отделимы\n'
-  printf '  и закрываются только закрытием тома целиком.\n'
+  if (( ${SCANS_ONLY:-0} )); then
+    printf '  Текст тела тома и аппарата остаётся доступным.\n'
+  else
+    printf '  ТЕЛО ТОМА ОСТАЁТСЯ. Сноски и перевод внутри полос тела не отделимы\n'
+    printf '  и закрываются только закрытием тома целиком.\n'
+  fi
 
   # Щель, найденная замером: закрытие идёт по главам, и полосы, не
   # накрытые ни одной главой, остаются — какими бы они ни были. У ленинского
@@ -366,7 +441,11 @@ apparatus_plan() {
   local outside
   outside="$(jq -r '.pages_outside_chapters // 0' <<<"$APPARATUS_PLAN")"
   if [[ "$outside" != "0" ]]; then
-    printf '  ВНИМАНИЕ: %s полос тома не накрыты НИ ОДНОЙ главой и останутся.\n' "$outside"
+    if (( ${SCANS_ONLY:-0} )); then
+      printf '  ВНИМАНИЕ: %s полос тома не накрыты НИ ОДНОЙ главой и останутся с открытыми сканами.\n' "$outside"
+    else
+      printf '  ВНИМАНИЕ: %s полос тома не накрыты НИ ОДНОЙ главой и останутся.\n' "$outside"
+    fi
     printf '  Обычно это «Содержание» и выходные данные в хвосте. Если их тоже\n'
     printf '  надо закрыть — размечай главу или закрывай том целиком.\n'
   fi
@@ -397,13 +476,14 @@ main() {
   read -r kind id chapter <<<"$parsed"
   shift 2
 
-  local plan_only=0 target=--local assume_yes=0 reopen=0 reason=""
+  local plan_only=0 target=--local assume_yes=0 reopen=0 scans_only=0 reason=""
   while (( $# )); do
     case "$1" in
       --plan) plan_only=1; shift ;;
       --prod) target=--prod; shift ;;
       --yes)  assume_yes=1; shift ;;
       --open) reopen=1; shift ;;
+      --scans-only) scans_only=1; shift ;;
       --reason)
         (( $# >= 2 )) || die "--reason требует текст"
         reason="$2"; shift 2 ;;
@@ -425,6 +505,10 @@ main() {
   if (( reopen )); then
     closed=false; want_seo=open; want_api=open; ACTION_TITLE="Открытие"; REOPENING=1
   fi
+  if (( scans_only )); then
+    if (( reopen )); then ACTION_TITLE="Открытие сканов"; else ACTION_TITLE="Скрытие сканов"; fi
+  fi
+  SCANS_ONLY="$scans_only"
 
   log "читальня: $API_BASE"
   TOKEN="$(login "$target" "$API_BASE")" || die "вход не удался"
@@ -465,33 +549,66 @@ main() {
   fi
 
   local body started took r c
-  body="$(closed_body "$closed" "$reason")"
+  local roots=() children=() scan_targets=()
+  local -A scan_before_status=() scan_sample_page=()
+  if [[ "$kind" == apparatus ]]; then
+    mapfile -t roots < <(jq -r '(.chapters // [])[] | .id' <<<"$APPARATUS_PLAN")
+    mapfile -t children < <(jq -r '(.children // [])[] | .id' <<<"$APPARATUS_PLAN")
+  fi
+  if (( scans_only )); then
+    case "$kind" in
+      volume) scan_targets+=("volume:$id:") ;;
+      chapter) scan_targets+=("chapter:$id:$chapter") ;;
+      apparatus)
+        for r in "${roots[@]}"; do [[ -n "$r" ]] && scan_targets+=("chapter:$id:$r"); done
+        for c in "${children[@]}"; do [[ -n "$c" ]] && scan_targets+=("volume:$c:"); done ;;
+    esac
+    # Текстовая доступность должна остаться той же. Запоминаем анонимный
+    # статус каждой проверяемой полосы до первого PUT.
+    local target_kind target_work target_chapter page out status
+    for r in "${scan_targets[@]}"; do
+      IFS=: read -r target_kind target_work target_chapter <<<"$r"
+      if [[ "$target_kind" == chapter ]]; then
+        api GET "/api/works/$target_work/chapters/$target_chapter" || die "не удалось прочитать главу $target_work/$target_chapter"
+        api_ok || die "глава $target_work/$target_chapter не отдалась"
+        page="$(jq -r '.start_page // empty' <<<"$API_BODY")"
+      else
+        api GET "/api/works/$target_work/page-map" || die "не удалось прочитать карту полос $target_work"
+        api_ok || die "карта полос $target_work не отдалась"
+        page="$(jq -r '.[0].page_number // empty' <<<"$API_BODY")"
+      fi
+      [[ -n "$page" ]] || die "нет полосы для проверки $r"
+      scan_sample_page["$r"]="$page"
+      out="$(curl -sS "$API_BASE/api/works/$target_work/pages/by-number/$page" -w $'\n%{http_code}')" || die "не удалось проверить анонимную полосу $target_work/$page"
+      status="${out##*$'\n'}"
+      [[ "$status" == 200 || "$status" == 404 ]] || die "анонимная полоса $target_work/$page до изменения ответила $status"
+      scan_before_status["$r"]="$status"
+    done
+  fi
+  body="$(visibility_body "$closed" "$reason" "$scans_only")"
   started="$(now_ms)"
   # put_closed ПУТЬ — один PUT .../closed с телом; любой не-2xx — отказ.
   put_closed() {
     api_put "$1" "$body" || die "запрос не прошёл: $1"
     api_ok || die "не удалось (код $API_STATUS) на $1: $API_BODY"
   }
-  local roots=() children=()
   case "$kind" in
     volume)
-      put_closed "/api/works/$id/closed"
-      log "том $id: closed=$closed" ;;
+      put_closed "$(visibility_path volume "$id" '' "$scans_only")"
+      log "том $id: ограничение=$closed" ;;
     chapter)
-      put_closed "/api/works/$id/chapters/$chapter/closed"
-      log "глава $id/$chapter: closed=$closed" ;;
+      put_closed "$(visibility_path chapter "$id" "$chapter" "$scans_only")"
+      log "глава $id/$chapter: ограничение=$closed" ;;
     apparatus)
-      mapfile -t roots < <(jq -r '(.chapters // [])[] | .id' <<<"$APPARATUS_PLAN")
-      mapfile -t children < <(jq -r '(.children // [])[] | .id' <<<"$APPARATUS_PLAN")
       for r in "${roots[@]}"; do
         [[ -n "$r" ]] || continue
-        put_closed "/api/works/$id/chapters/$r/closed"
-        log "глава аппарата $r: closed=$closed"
+        put_closed "$(visibility_path apparatus "$id" "$r" "$scans_only")"
+        log "глава аппарата $r: ограничение=$closed"
       done
       for c in "${children[@]}"; do
         [[ -n "$c" ]] || continue
-        put_closed "/api/works/$c/closed"
-        log "служебная работа $c: closed=$closed"
+        put_closed "$(visibility_path volume "$c" '' "$scans_only")"
+        log "служебная работа $c: ограничение=$closed"
       done ;;
   esac
   took=$(( $(now_ms) - started ))
@@ -513,27 +630,73 @@ main() {
       mismatches+=("$1 [$3]: $code вместо $2")
     fi
   }
-  case "$kind" in
-    volume)
-      probe "страница тома $id" "$want_seo" "$API_BASE$(crawler_path "$target" "$id")" ;;
-    chapter)
-      probe "страница главы $id/$chapter" "$want_seo" "$API_BASE$(crawler_chapter_path "$target" "$id" "$chapter")" ;;
-    apparatus)
-      for r in "${roots[@]}"; do
-        [[ -n "$r" ]] || continue
-        probe "глава аппарата $r" "$want_seo" "$API_BASE$(crawler_chapter_path "$target" "$id" "$r")"
-      done
-      for c in "${children[@]}"; do
-        [[ -n "$c" ]] || continue
-        probe "служебная работа $c (API анониму)" "$want_api" "$API_BASE/api/works/$c"
-      done ;;
-  esac
+  if (( scans_only )); then
+    scan_probe() { # ТОМ ПОЛОСА ИСХОДНЫЙ_СТАТУС
+      local work="$1" page="$2" before="$3" out status payload expected
+      api GET "/api/works/$work/pages/by-number/$page" || die "не удалось перечитать полосу $work/$page"
+      api_ok || die "у работы $work нет полосы $page для сверки"
+      api GET "/api/works/$work" || die "не удалось перечитать работу $work"
+      api_ok || die "работа $work не отдалась после изменения"
+      local work_body="$API_BODY"
+      api GET "/api/works/$work/chapters" || die "не удалось перечитать главы $work"
+      api_ok || die "главы $work не отдались после изменения"
+      expected="$(scan_expected_from_structure "$work_body" "$API_BODY" "$page")" || die "не удалось вычислить ограничение полосы $work/$page"
+      [[ "$expected" == true || "$expected" == false ]] || die "не удалось вычислить ограничение полосы $work/$page"
+      [[ "$closed" != true || "$expected" == true ]] || die "сканы полосы $work/$page не скрылись"
+      out="$(curl -sS "$API_BASE/api/works/$work/pages/by-number/$page" -w $'\n%{http_code}')" || out=""
+      status="${out##*$'\n'}"; payload="${out%$'\n'*}"
+      if [[ "$before" == 404 ]] && scan_text_status_unchanged "$before" "$status"; then
+        log "сверка: полоса $work/$page осталась закрыта полностью"
+      elif [[ "$before" == 200 ]] && scan_text_status_unchanged "$before" "$status" && scan_page_ok "$payload" "$expected"; then
+        log "сверка: текст полосы $work/$page доступен, сканы ограничены=$expected"
+      else
+        mismatches+=("полоса $work/$page: было $before, стало $status, ожидаемое ограничение скана=$expected")
+      fi
+    }
+    for r in "${scan_targets[@]}"; do
+      IFS=: read -r target_kind target_work target_chapter <<<"$r"
+      if [[ "$target_kind" == chapter ]]; then
+        api GET "/api/works/$target_work/chapters/$target_chapter" || die "не удалось перечитать главу $target_work/$target_chapter"
+      else
+        api GET "/api/works/$target_work" || die "не удалось перечитать работу $target_work"
+      fi
+      api_ok || die "цель $r не отдалась после изменения"
+      [[ "$(jq -r '.scans_hidden' <<<"$API_BODY")" == "$closed" ]] || die "цель $r: собственный признак сканов не сохранился"
+      scan_probe "$target_work" "${scan_sample_page[$r]}" "${scan_before_status[$r]}"
+    done
+  else
+    case "$kind" in
+      volume)
+        probe "страница тома $id" "$want_seo" "$API_BASE$(crawler_path "$target" "$id")" ;;
+      chapter)
+        probe "страница главы $id/$chapter" "$want_seo" "$API_BASE$(crawler_chapter_path "$target" "$id" "$chapter")" ;;
+      apparatus)
+        for r in "${roots[@]}"; do
+          [[ -n "$r" ]] || continue
+          probe "глава аппарата $r" "$want_seo" "$API_BASE$(crawler_chapter_path "$target" "$id" "$r")"
+        done
+        for c in "${children[@]}"; do
+          [[ -n "$c" ]] || continue
+          probe "служебная работа $c (API анониму)" "$want_api" "$API_BASE/api/works/$c"
+        done ;;
+    esac
+  fi
 
-  if [[ "$target" == "--prod" && "$closed" == true ]]; then
+  if static_withdraw_needed "$target" "$closed" "$scans_only"; then
     static_after_takedown "$id"
   fi
 
-  cat >&2 <<'TAIL'
+  if (( scans_only )); then
+    cat >&2 <<'TAIL_SCANS'
+
+Журнал ограничений доступа: GET /api/admin/closures (экран /admin/closures).
+Если текст был открыт, он остаётся доступным. Уже выданные ссылки на сканы
+действуют до истечения срока подписи, а скачанные файлы и ранее опубликованные
+архивы не отзываются.
+Обратный ход: та же команда с --scans-only --open и причиной.
+TAIL_SCANS
+  else
+    cat >&2 <<'TAIL'
 
 Журнал закрытий: GET /api/admin/closures (экран /admin/closures).
 Чего закрытие НЕ достало, и достать не может:
@@ -544,6 +707,7 @@ main() {
   - журнал публикации tools/ocr_ingest/published/*.json.
 Обратный ход: та же команда с --open и причиной.
 TAIL
+  fi
   if (( ${#mismatches[@]} )); then
     printf 'Сверка не сошлась, запись при этом уже прошла:\n' >&2
     printf '  - %s\n' "${mismatches[@]}" >&2

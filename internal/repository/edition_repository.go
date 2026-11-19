@@ -27,10 +27,10 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition,
 	if edition.VolumeNumbering == "" {
 		edition.VolumeNumbering = models.VolumeNumberingPrinted
 	}
-	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering", "shelf_group", "closed"}
+	cols := []string{"title", "slug", "url_slug", "description", "volumes_planned", "volume_numbering", "shelf_group", "closed", "scans_hidden"}
 	args := []any{edition.Title, edition.Slug, edition.URLSlug, edition.Description, edition.VolumesPlanned,
-		edition.VolumeNumbering, edition.ShelfGroup, edition.Closed}
-	if err := insertRowClosure(ctx, r.pool, "editions", ClosureEdition, edition.Title, edition.Closed, actor, reason,
+		edition.VolumeNumbering, edition.ShelfGroup, edition.Closed, edition.ScansHidden}
+	if err := insertRowClosure(ctx, r.pool, "editions", ClosureEdition, edition.Title, edition.Closed, edition.ScansHidden, actor, reason, edition.ScanClosureReason, false,
 		edition.ID, cols, args, &edition.ID, &edition.CreatedAt, &edition.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create edition: %w", err)
 	}
@@ -40,7 +40,7 @@ func (r *EditionRepository) Create(ctx context.Context, edition *models.Edition,
 // GetByID retrieves an edition by ID
 func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, scans_hidden, created_at, updated_at
 		FROM editions
 		WHERE id = $1
 	`
@@ -48,7 +48,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 	var edition models.Edition
 	err := r.pool.QueryRow(ctx, query, id).Scan(
 		&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
+		&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.ScansHidden, &edition.CreatedAt, &edition.UpdatedAt,
 	)
 
 	if err != nil {
@@ -64,7 +64,7 @@ func (r *EditionRepository) GetByID(ctx context.Context, id int64) (*models.Edit
 // List retrieves all editions
 func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error) {
 	query := `
-		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, created_at, updated_at
+		SELECT id, title, slug, url_slug, description, volumes_planned, volume_numbering, shelf_group, closed, scans_hidden, created_at, updated_at
 		FROM editions
 		ORDER BY title
 	`
@@ -80,7 +80,7 @@ func (r *EditionRepository) List(ctx context.Context) ([]*models.Edition, error)
 		var edition models.Edition
 		err := rows.Scan(
 			&edition.ID, &edition.Title, &edition.Slug, &edition.URLSlug, &edition.Description,
-			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.CreatedAt, &edition.UpdatedAt,
+			&edition.VolumesPlanned, &edition.VolumeNumbering, &edition.ShelfGroup, &edition.Closed, &edition.ScansHidden, &edition.CreatedAt, &edition.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan edition: %w", err)
@@ -119,18 +119,20 @@ func (r *EditionRepository) Update(ctx context.Context, edition *models.Edition)
 	return nil
 }
 
-// ErrEditionClosed — удаление закрытого издания отвергнуто: works.edition_id
-// стоит ON DELETE SET NULL, и снос строки молча открыл бы все его тома.
+// Deleting a restricted edition would clear works.edition_id (ON DELETE SET
+// NULL) and silently expose its volumes. The DELETE predicate checks both
+// independent restrictions atomically.
 var ErrEditionClosed = errors.New("edition is closed")
+var ErrEditionScansHidden = errors.New("edition scans are hidden")
 
 // Delete deletes an edition.
 //
-// Закрытое не удаляется: условие NOT closed стоит в самом DELETE, а не
+// Ограниченное издание не удаляется: условия стоят в самом DELETE, а не
 // проверкой до него, — закрытие, пришедшее между проверкой и удалением,
 // иначе открыло бы тома всё равно. Ноль удалённых строк различается
 // дочитыванием: издание есть и закрыто — ErrEditionClosed, нет — «не найдено».
 func (r *EditionRepository) Delete(ctx context.Context, id int64) error {
-	query := `DELETE FROM editions WHERE id = $1 AND NOT closed`
+	query := `DELETE FROM editions WHERE id = $1 AND NOT closed AND NOT scans_hidden`
 
 	result, err := r.pool.Exec(ctx, query, id)
 	if err != nil {
@@ -138,10 +140,15 @@ func (r *EditionRepository) Delete(ctx context.Context, id int64) error {
 	}
 
 	if result.RowsAffected() == 0 {
-		var closed bool
-		err := r.pool.QueryRow(ctx, `SELECT closed FROM editions WHERE id = $1`, id).Scan(&closed)
-		if err == nil && closed {
-			return ErrEditionClosed
+		var closed, scansHidden bool
+		err := r.pool.QueryRow(ctx, `SELECT closed, scans_hidden FROM editions WHERE id = $1`, id).Scan(&closed, &scansHidden)
+		if err == nil {
+			if closed {
+				return ErrEditionClosed
+			}
+			if scansHidden {
+				return ErrEditionScansHidden
+			}
 		}
 		return fmt.Errorf("edition not found")
 	}
@@ -255,12 +262,14 @@ const workSummariesQueryTemplate = `
 	    WHERE r.rn <= 4
 	    GROUP BY r.work_id
 	)
+	-- A shelf summary never needs the storage key. The work detail endpoint
+	-- decides whether the requester may receive it.
 	SELECT w.id, w.title, w.author, w.publication_date, w.language, w.country,
-	       w.file_path, w.status, w.edition_id, w.volume_number, w.volume_part,
+	       ''::text AS file_path, w.status, w.edition_id, w.volume_number, w.volume_part,
 	       w.page_offset, w.role, w.precedes_volume, w.shelf_label,
 	       w.owner_id, w.created_at, w.updated_at,
 	       %[3]s,
-	       w.closed, %[4]s,
+	       w.closed, %[4]s, w.scans_hidden, work_scans_hidden_by(w.id),
 	       COALESCE(ps.pages_total, 0),
 	       COALESCE(ps.by_status, '{}'::jsonb),
 	       COALESCE(cs.chapters_total, 0),
@@ -347,6 +356,7 @@ func (r *EditionRepository) scanSummaries(
 			&s.PageOffset, &s.Role, &s.PrecedesVolume, &s.ShelfLabel,
 			&s.OwnerID, &s.CreatedAt, &s.UpdatedAt,
 			&slugEdition, &slugVolume, &slugPart, &s.VolumeOrderOnly, &s.Closed, &s.ClosedBy,
+			&s.ScansHidden, &s.ScansHiddenBy,
 			&s.PagesTotal, &s.PagesByStatus, &s.ChaptersTotal, &s.TopChapters,
 		)
 		if err != nil {

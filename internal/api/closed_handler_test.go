@@ -47,6 +47,22 @@ func (f *fakeClosedWriter) SetEditionClosed(_ context.Context, id int64, c bool,
 func (f *fakeClosedWriter) SetJournalClosed(_ context.Context, id int64, c bool, _ models.ClosureActor, _ string) ([]int64, error) {
 	return f.do(f.journals, id, c)
 }
+func (f *fakeClosedWriter) SetWorkScansHidden(_ context.Context, id int64, hidden bool, _ models.ClosureActor, reason string) ([]int64, error) {
+	f.gotReason = reason
+	return f.do(f.works, id, hidden)
+}
+func (f *fakeClosedWriter) SetEditionScansHidden(_ context.Context, id int64, hidden bool, _ models.ClosureActor, reason string) ([]int64, error) {
+	f.gotReason = reason
+	return f.do(f.editions, id, hidden)
+}
+func (f *fakeClosedWriter) SetJournalScansHidden(_ context.Context, id int64, hidden bool, _ models.ClosureActor, reason string) ([]int64, error) {
+	f.gotReason = reason
+	return f.do(f.journals, id, hidden)
+}
+func (f *fakeClosedWriter) SetChapterScansHidden(_ context.Context, id int64, hidden bool, _ models.ClosureActor, reason string) ([]int64, error) {
+	f.gotReason = reason
+	return f.do(f.chapters, id, hidden)
+}
 
 func closedPut(h http.HandlerFunc, id, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPut, "/api/x/"+id+"/closed", bytes.NewBufferString(body))
@@ -186,6 +202,54 @@ func TestClosedRoutesAdminOnly(t *testing.T) {
 	}
 }
 
+func TestScansHiddenRoutesAdminOnlyAndReason(t *testing.T) {
+	rt := createTestRouter()
+	w := &fakeClosedWriter{works: map[int64][]int64{7: {7}}, editions: map[int64][]int64{7: {7}}, journals: map[int64][]int64{7: {7}}, chapters: map[int64][]int64{7: {7}}}
+	h := NewClosedHandler(w, NewServingCache(pagecache.New(t.TempDir()), &fakeCrawlerCaches{})).
+		WithChapters(fakeChapterSource{{ID: 7, WorkID: 7}})
+	r := NewRouter(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		rt.cacheHandler, nil, rt.authService).WithClosedWriter(h).Setup()
+	paths := []string{
+		"/api/works/7/scans-hidden", "/api/editions/7/scans-hidden",
+		"/api/journals/7/scans-hidden", "/api/works/7/chapters/7/scans-hidden",
+	}
+	for _, path := range paths {
+		for _, c := range []struct {
+			token string
+			want  int
+		}{{"", 401}, {readerToken(t), 403}, {editorToken(t), 403}, {adminToken(t), 200}} {
+			before := w.calls
+			req := httptest.NewRequest(http.MethodPut, path, bytes.NewBufferString(`{"scans_hidden":true,"reason":"письмо"}`))
+			if c.token != "" {
+				req.Header.Set("Authorization", "Bearer "+c.token)
+			}
+			rec := httptest.NewRecorder()
+			r.ServeHTTP(rec, req)
+			if rec.Code != c.want {
+				t.Fatalf("%s: code=%d want=%d body=%s", path, rec.Code, c.want, rec.Body.String())
+			}
+			if c.want != 200 && w.calls != before {
+				t.Fatalf("%s: rejected request called writer", path)
+			}
+			if c.want == 200 {
+				var body struct {
+					ScansHidden bool `json:"scans_hidden"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || !body.ScansHidden {
+					t.Fatalf("%s: response=%s err=%v", path, rec.Body.String(), err)
+				}
+			}
+		}
+	}
+	for _, body := range []string{`{"scans_hidden":true}`, `{"scans_hidden":false,"reason":" "}`} {
+		before := w.calls
+		rec := closedPut(h.WorkScans, "7", body)
+		if rec.Code != 400 || w.calls != before {
+			t.Fatalf("bad body %s: code=%d calls=%d", body, rec.Code, w.calls)
+		}
+	}
+}
+
 func TestCreateWorkWithClosed(t *testing.T) {
 	for _, c := range []struct {
 		body string
@@ -196,6 +260,57 @@ func TestCreateWorkWithClosed(t *testing.T) {
 		h.Create(httptest.NewRecorder(), asRole(journalRequest(http.MethodPost, "/api/works", c.body, nil), models.RoleAdministrator))
 		if repo.created == nil || repo.created.Closed != c.want {
 			t.Errorf("тело %s: Closed = %v, ждали %v", c.body, repo.created, c.want)
+		}
+	}
+}
+
+func TestCreateScansHiddenRequiresAdmin(t *testing.T) {
+	for _, role := range []models.UserRole{models.RoleEditor, models.RoleAdministrator} {
+		want := http.StatusForbidden
+		if role == models.RoleAdministrator {
+			want = http.StatusCreated
+		}
+		workRepo := &fakeWorkRepo{}
+		workRec := httptest.NewRecorder()
+		NewWorkHandler(workRepo, nil, nil, nil, 0, nil, nil).Create(workRec,
+			asRole(journalRequest(http.MethodPost, "/api/works", `{"title":"Т","scans_hidden":true}`, nil), role))
+		if workRec.Code != want || (workRepo.created != nil && !workRepo.created.ScansHidden) {
+			t.Errorf("work role=%s: code=%d created=%+v", role, workRec.Code, workRepo.created)
+		}
+
+		editionStore := &fakeEditionStore{}
+		editionRec := httptest.NewRecorder()
+		NewEditionHandler(editionStore).Create(editionRec,
+			asRole(journalRequest(http.MethodPost, "/api/editions", `{"title":"С","slug":"s","scans_hidden":true}`, nil), role))
+		if editionRec.Code != want || (editionStore.created != nil && !editionStore.created.ScansHidden) {
+			t.Errorf("edition role=%s: code=%d created=%+v", role, editionRec.Code, editionStore.created)
+		}
+
+		journalStore := &fakeJournalStore{}
+		journalRec := httptest.NewRecorder()
+		NewJournalHandler(journalStore).Create(journalRec,
+			asRole(journalRequest(http.MethodPost, "/api/journals", `{"title":"Ж","slug":"j","scans_hidden":true}`, nil), role))
+		if journalRec.Code != want || (journalStore.journal != nil && !journalStore.journal.ScansHidden) {
+			t.Errorf("journal role=%s: code=%d created=%+v", role, journalRec.Code, journalStore.journal)
+		}
+
+		journalStore = &fakeJournalStore{journal: &models.Journal{ID: 3, Title: "Ж"}}
+		issueRec := httptest.NewRecorder()
+		NewJournalHandler(journalStore).CreateIssue(issueRec,
+			asRole(journalRequest(http.MethodPost, "/api/journals/3/issues",
+				`{"year":1925,"number_from":5,"scans_hidden":true}`, map[string]string{"id": "3"}), role))
+		if issueRec.Code != want || (journalStore.createdWork != nil && !journalStore.createdWork.ScansHidden) {
+			t.Errorf("issue role=%s: code=%d created=%+v", role, issueRec.Code, journalStore.createdWork)
+		}
+
+		var created *models.Chapter
+		chapterStore := &fakeChapterStore{createFn: func(_ context.Context, ch *models.Chapter) error { created = ch; return nil }}
+		chapterRec := httptest.NewRecorder()
+		chapterReq := journalRequest(http.MethodPost, "/api/works/7/chapters",
+			`{"title":"Г","type":"chapter","start_page":1,"end_page":2,"scans_hidden":true}`, map[string]string{"workId": "7"})
+		NewChapterHandler(chapterStore, nil, nil, nil).Create(chapterRec, asRole(chapterReq, role))
+		if chapterRec.Code != want || (created != nil && !created.ScansHidden) {
+			t.Errorf("chapter role=%s: code=%d created=%+v", role, chapterRec.Code, created)
 		}
 	}
 }

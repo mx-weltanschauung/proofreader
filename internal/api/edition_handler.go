@@ -42,7 +42,9 @@ type EditionRequest struct {
 	// Closed — завести издание сразу закрытым; Update поле не читает.
 	Closed bool `json:"closed,omitempty"`
 	// ClosedReason — причина строки журнала при Closed.
-	ClosedReason string `json:"closed_reason,omitempty"`
+	ClosedReason      string `json:"closed_reason,omitempty"`
+	ScansHidden       bool   `json:"scans_hidden,omitempty"`
+	ScansHiddenReason string `json:"scans_hidden_reason,omitempty"`
 	// VolumeNumbering — "printed" или "order" (models.VolumeNumbering*).
 	// Указатель: поле не пришло — при создании печатная нумерация, при правке
 	// прежнее значение. Иначе форма или скрипт, не знающие о поле, молча
@@ -166,16 +168,25 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	scanReason, ok := requireAdminToHideScans(w, r, req.ScansHidden, req.ScansHiddenReason)
+	if !ok {
+		return
+	}
+	if !req.Closed {
+		closeReason = scanReason
+	}
 
 	edition := &models.Edition{
-		ID:              req.ID,
-		Title:           req.Title,
-		Slug:            req.Slug,
-		URLSlug:         req.URLSlug,
-		Description:     req.Description,
-		VolumesPlanned:  req.VolumesPlanned,
-		VolumeNumbering: numbering,
-		Closed:          req.Closed,
+		ID:                req.ID,
+		Title:             req.Title,
+		Slug:              req.Slug,
+		URLSlug:           req.URLSlug,
+		Description:       req.Description,
+		VolumesPlanned:    req.VolumesPlanned,
+		VolumeNumbering:   numbering,
+		Closed:            req.Closed,
+		ScansHidden:       req.ScansHidden,
+		ScanClosureReason: scanReason,
 	}
 	if shelfGroup != nil {
 		edition.ShelfGroup = *shelfGroup
@@ -272,6 +283,10 @@ func (h *EditionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		// ON DELETE SET NULL): отказ тем же голосом, что у шага вниз 000040.
 		if errors.Is(err, repository.ErrEditionClosed) {
 			writeError(w, http.StatusConflict, "Собрание закрыто: удаление открыло бы все его тома — сначала откройте его, потом удаляйте")
+			return
+		}
+		if errors.Is(err, repository.ErrEditionScansHidden) {
+			writeError(w, http.StatusConflict, "Сканы собрания скрыты: удаление открыло бы их в томах — сначала откройте сканы администратором")
 			return
 		}
 		http.Error(w, "Failed to delete edition", http.StatusInternalServerError)

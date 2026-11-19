@@ -192,7 +192,9 @@ export const PageView: React.FC = () => {
   }
 
   // Prefer the API-provided presigned URL; fall back to the legacy path helper.
-  const previewUrl = page.preview_url ?? getPreviewUrl(page.preview_path) ?? undefined;
+  const previewUrl = page.scan_restricted
+    ? undefined
+    : (page.preview_url ?? getPreviewUrl(page.preview_path) ?? undefined);
 
   // У тома offset нулевой, колонцифра совпадает с номером — дублировать её
   // незачем. Показываем только там, где печатный счёт расходится с адресным,
@@ -324,6 +326,12 @@ export const PageView: React.FC = () => {
         </div>
 
         <div className="page-view-right">
+          {page.scan_restricted && (
+            <div className="preview-section">
+              <h2>Скан страницы</h2>
+              <p>Скан доступен только администратору</p>
+            </div>
+          )}
           {previewUrl && (
             <div className="preview-section">
               <h2>Скан страницы</h2>

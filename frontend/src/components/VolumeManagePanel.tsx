@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { Chapter, Work } from '../types';
 import { ChapterTree } from './ChapterTree';
 import { ClosedToggle } from './ClosedToggle';
+import { ScansHiddenToggle } from './ScansHiddenToggle';
 import { workPath } from '../utils/paths';
 import './VolumeManagePanel.css';
 
@@ -18,7 +19,9 @@ interface Props {
   onDeleteChapter: (chapterId: number) => void;
   onMoveChapter: (chapterId: number, parentId: number | null, orderNumber: number) => Promise<void>;
   onToggleClosed: (next: boolean, reason: string) => Promise<void>;
+  onToggleScansHidden?: (next: boolean, reason: string) => Promise<void>;
   onToggleChapterClosed?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
+  onToggleChapterScansHidden?: (chapterId: number, next: boolean, reason: string) => Promise<void>;
   reordering: boolean;
   onReorderingChange: (on: boolean) => void;
 }
@@ -34,7 +37,9 @@ export const VolumeManagePanel: React.FC<Props> = ({
   onDeleteChapter,
   onMoveChapter,
   onToggleClosed,
+  onToggleScansHidden,
   onToggleChapterClosed,
+  onToggleChapterScansHidden,
   reordering,
   onReorderingChange,
 }) => {
@@ -55,7 +60,11 @@ export const VolumeManagePanel: React.FC<Props> = ({
         <section className="vol-manage-block">
           <h3>Файл</h3>
           <p className="vol-manage-status">
-            {work.file_path ? 'Файл загружен' : 'Файл не загружен'}
+            {work.file_path
+              ? 'Файл загружен'
+              : work.scans_hidden_by
+                ? 'Файл доступен только администратору'
+                : 'Файл не загружен'}
           </p>
           <input
             ref={fileInputRef}
@@ -116,6 +125,7 @@ export const VolumeManagePanel: React.FC<Props> = ({
               onMove={onMoveChapter}
               onDelete={onDeleteChapter}
               onToggleClosed={onToggleChapterClosed}
+              onToggleScansHidden={onToggleChapterScansHidden}
             />
           )}
         </section>
@@ -130,6 +140,14 @@ export const VolumeManagePanel: React.FC<Props> = ({
             closedBy={work.closed_by}
             onToggle={onToggleClosed}
           />
+          {onToggleScansHidden && (
+            <ScansHiddenToggle
+              kind="work"
+              hidden={!!work.scans_hidden}
+              hiddenBy={work.scans_hidden_by}
+              onToggle={onToggleScansHidden}
+            />
+          )}
           <button
             type="button"
             className="vol-manage-danger"

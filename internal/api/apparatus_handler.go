@@ -77,10 +77,18 @@ func (h *WorkHandler) DeleteApparatus(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, chapterClosedMessage)
 		return
 	}
+	if plan.ScansHiddenEntities > 0 {
+		writeError(w, http.StatusConflict, "Сканы аппарата скрыты: сначала откройте их администратором")
+		return
+	}
 
 	plan, err = h.apparatus.Remove(ctx, id)
 	if errors.Is(err, repository.ErrApparatusClosed) {
 		writeError(w, http.StatusConflict, chapterClosedMessage)
+		return
+	}
+	if errors.Is(err, repository.ErrApparatusScansHidden) {
+		writeError(w, http.StatusConflict, "Сканы аппарата скрыты: сначала откройте их администратором")
 		return
 	}
 	if err != nil {

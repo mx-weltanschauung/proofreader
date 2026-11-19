@@ -28,7 +28,8 @@ const workColumns = `id, title, author, publication_date, language, country,
 	file_path, status, edition_id, volume_number, volume_part, page_offset,
 	parent_work_id, role, numbering_style, precedes_volume, shelf_label, description,
 	owner_id, created_at, updated_at,
-	slug_edition, slug_volume, slug_part, edition_title, volume_order_only, closed, closed_by`
+	slug_edition, slug_volume, slug_part, edition_title, volume_order_only,
+	closed, closed_by, scans_hidden, scans_hidden_by`
 
 // workOrderOnlyExpr — истинно, если нумерация томов в собрании работы
 // условная (editions.volume_numbering = 'order', миграция 000039): номер тома
@@ -87,7 +88,8 @@ const workEditionTitleColumn = `
 // по-прежнему уходит внутрь.
 const worksWithSlug = `(SELECT works.*, ` + workSlugColumns + `,` + workEditionTitleColumn + `,
 	` + workOrderOnlyExpr + ` AS volume_order_only,
-	` + closedByCase + ` AS closed_by FROM works` + closedByJoins + `) works`
+	` + closedByCase + ` AS closed_by,
+	` + scansHiddenByCase + ` AS scans_hidden_by FROM works` + closedByJoins + `) works`
 
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -105,7 +107,8 @@ func scanWork(row rowScanner) (*models.Work, error) {
 		&w.ParentWorkID, &w.Role, &w.NumberingStyle, &w.PrecedesVolume,
 		&w.ShelfLabel, &w.Description,
 		&w.OwnerID, &w.CreatedAt, &w.UpdatedAt,
-		&slugEdition, &slugVolume, &slugPart, &w.EditionTitle, &w.VolumeOrderOnly, &w.Closed, &w.ClosedBy,
+		&slugEdition, &slugVolume, &slugPart, &w.EditionTitle, &w.VolumeOrderOnly,
+		&w.Closed, &w.ClosedBy, &w.ScansHidden, &w.ScansHiddenBy,
 	)
 	if err != nil {
 		return nil, err
@@ -124,7 +127,7 @@ func (r *WorkRepository) Create(ctx context.Context, work *models.Work, actor mo
 	// знающие о ролях (текущий POST /api/works), оставляют оба поля пустыми
 	// и должны получать том, как до этой миграции.
 	cols, args := prepareWorkInsert(work)
-	if err := insertRowClosure(ctx, r.pool, "works", ClosureWork, work.Title, work.Closed, actor, reason,
+	if err := insertRowClosure(ctx, r.pool, "works", ClosureWork, work.Title, work.Closed, work.ScansHidden, actor, reason, work.ScanClosureReason, work.RequireInheritedScans,
 		work.ID, cols, args, &work.ID, &work.CreatedAt, &work.UpdatedAt); err != nil {
 		return fmt.Errorf("failed to create work: %w", err)
 	}
@@ -142,14 +145,14 @@ func prepareWorkInsert(work *models.Work) ([]string, []any) {
 	}
 	cols := []string{"title", "author", "publication_date", "language", "country", "file_path",
 		"status", "edition_id", "volume_number", "volume_part", "page_offset", "parent_work_id",
-		"role", "numbering_style", "precedes_volume", "shelf_label", "description", "owner_id", "closed"}
+		"role", "numbering_style", "precedes_volume", "shelf_label", "description", "owner_id", "closed", "scans_hidden"}
 	args := []any{
 		work.Title, work.Author, work.PublicationDate, work.Language,
 		work.Country, work.FilePath, work.Status,
 		work.EditionID, work.VolumeNumber, work.VolumePart, work.PageOffset,
 		work.ParentWorkID, work.Role, work.NumberingStyle, work.PrecedesVolume,
 		work.ShelfLabel, work.Description,
-		work.OwnerID, work.Closed,
+		work.OwnerID, work.Closed, work.ScansHidden,
 	}
 	return cols, args
 }
@@ -273,6 +276,29 @@ func (r *WorkRepository) ListChildren(ctx context.Context, parentID int64) ([]*m
 
 // Update updates a work
 func (r *WorkRepository) Update(ctx context.Context, work *models.Work) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin work update: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockScanStructure(ctx, tx); err != nil {
+		return err
+	}
+	var moving, ownScansHidden bool
+	var scansHiddenBy string
+	err = tx.QueryRow(ctx, `SELECT edition_id IS DISTINCT FROM $2::bigint
+		OR parent_work_id IS DISTINCT FROM $3::bigint, scans_hidden,
+		work_scans_hidden_by(id) FROM works WHERE id = $1`,
+		work.ID, work.EditionID, work.ParentWorkID).Scan(&moving, &ownScansHidden, &scansHiddenBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("work not found")
+	}
+	if err != nil {
+		return fmt.Errorf("check work scan restriction: %w", err)
+	}
+	if moving && scansHiddenBy != "" && !ownScansHidden {
+		return ErrScansHiddenStructure
+	}
 	query := `
 		UPDATE works
 		SET title = $2, author = $3, publication_date = $4, language = $5,
@@ -284,7 +310,7 @@ func (r *WorkRepository) Update(ctx context.Context, work *models.Work) error {
 		RETURNING updated_at
 	`
 
-	err := r.pool.QueryRow(
+	err = tx.QueryRow(
 		ctx, query,
 		work.ID, work.Title, work.Author, work.PublicationDate,
 		work.Language, work.Country, work.FilePath, work.Status,
@@ -300,6 +326,9 @@ func (r *WorkRepository) Update(ctx context.Context, work *models.Work) error {
 		return fmt.Errorf("failed to update work: %w", err)
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit work update: %w", err)
+	}
 	return nil
 }
 

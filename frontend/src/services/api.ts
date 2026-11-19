@@ -231,6 +231,12 @@ export interface ClosedResult {
   affected: number[];
 }
 
+export interface ScansHiddenResult {
+  id: number;
+  scans_hidden: boolean;
+  affected: number[];
+}
+
 // Works API
 export const worksApi = {
   list: (params?: { limit?: number; offset?: number }) => api.get<Work[]>('/works', { params }),
@@ -249,6 +255,9 @@ export const worksApi = {
 
   setClosed: (id: number, closed: boolean, reason: string) =>
     api.put<ClosedResult>(`/works/${id}/closed`, { closed, reason }),
+
+  setScansHidden: (id: number, scansHidden: boolean, reason: string) =>
+    api.put<ScansHiddenResult>(`/works/${id}/scans-hidden`, { scans_hidden: scansHidden, reason }),
 
   uploadFile: (id: number, formData: FormData) =>
     api.post(`/works/${id}/upload`, formData, {
@@ -338,6 +347,12 @@ export const chaptersApi = {
   /** Закрыть/открыть главу — только администратор, причина обязательна. */
   setClosed: (workId: number, chapterId: number, closed: boolean, reason: string) =>
     api.put<ClosedResult>(`/works/${workId}/chapters/${chapterId}/closed`, { closed, reason }),
+
+  setScansHidden: (workId: number, chapterId: number, scansHidden: boolean, reason: string) =>
+    api.put<ScansHiddenResult>(`/works/${workId}/chapters/${chapterId}/scans-hidden`, {
+      scans_hidden: scansHidden,
+      reason,
+    }),
 
   /** Что закроется вместе с главой и у кого пропадут общие полосы. */
   closedPlan: (workId: number, chapterId: number) =>
@@ -513,6 +528,12 @@ export const editionsApi = {
 
   setClosed: (id: number, closed: boolean, reason: string) =>
     api.put<ClosedResult>(`/editions/${id}/closed`, { closed, reason }),
+
+  setScansHidden: (id: number, scansHidden: boolean, reason: string) =>
+    api.put<ScansHiddenResult>(`/editions/${id}/scans-hidden`, {
+      scans_hidden: scansHidden,
+      reason,
+    }),
 };
 
 // Главная целиком — собрания со своими томами и работы вне собраний.
@@ -522,6 +543,11 @@ export const journalsApi = {
   get: (slug: string) => api.get<JournalDetail>(`/journals/${encodeURIComponent(slug)}`),
   setClosed: (id: number, closed: boolean, reason: string) =>
     api.put<ClosedResult>(`/journals/${id}/closed`, { closed, reason }),
+  setScansHidden: (id: number, scansHidden: boolean, reason: string) =>
+    api.put<ScansHiddenResult>(`/journals/${id}/scans-hidden`, {
+      scans_hidden: scansHidden,
+      reason,
+    }),
 };
 
 export const eventsApi = {
@@ -851,8 +877,8 @@ export const readerCommentsApi = {
 // Журнал закрытий: последняя запись по записи (сотрудник) и весь журнал
 // (администратор).
 export const closuresApi = {
-  latest: (kind: ClosureKind, id: number) =>
-    api.get<ClosureLatest>('/closures/latest', { params: { kind, id } }),
+  latest: (kind: ClosureKind, id: number, scope: 'full' | 'scans' = 'full') =>
+    api.get<ClosureLatest>('/closures/latest', { params: { kind, id, scope } }),
 
   list: (params?: { limit?: number; offset?: number }) =>
     api.get<ClosureEntry[]>('/admin/closures', { params }),

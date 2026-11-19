@@ -57,6 +57,9 @@ type ApparatusPlan struct {
 	// но снимаются вместе с родителем и посчитаны в ChapterCount.
 	Chapters     []ApparatusChapter `json:"chapters"`
 	ChapterCount int                `json:"chapter_count"`
+	// ScansHiddenEntities counts scan-restricted chapters or works that removal
+	// would erase. A protected chapter must be reopened by an administrator.
+	ScansHiddenEntities int `json:"scans_hidden_entities"`
 	// PageCount — полосы, попадающие в диапазоны глав-аппарата. Вместе с
 	// полосой уходят её версии, вырезки указателя и предложения читателей —
 	// это каскады схемы.
