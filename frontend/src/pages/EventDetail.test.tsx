@@ -210,4 +210,73 @@ describe('EventDetail', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'I съезд' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Доклад' })).toBeInTheDocument();
   });
+
+  it('общий том указан один раз, а пункты без точной привязки не ведут на одну страницу', async () => {
+    const whole = target({
+      kind: 'work',
+      work_id: 8,
+      chapter_id: null,
+      title: 'Протоколы съезда',
+      work_title: 'Протоколы съезда',
+    });
+    const agenda: Detail = {
+      ...DETAIL,
+      sections: [
+        {
+          position: 0,
+          title: '1. Отчёт ЦК',
+          entries: [{ label: 'Пункт повестки', targets: [whole] }],
+        },
+        {
+          position: 1,
+          title: '2. Выборы',
+          entries: [{ label: 'Пункт повестки', targets: [whole] }],
+        },
+        {
+          position: 2,
+          title: '3. Открытие',
+          entries: [{ label: 'Заседание', targets: [target({})] }],
+        },
+      ],
+    };
+    vi.spyOn(eventsApi, 'event').mockImplementation(() => ok(agenda));
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'I съезд' });
+    expect(screen.getByText(/Нумерованные разделы — пункты повестки/)).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: 'Протоколы съезда' })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Протоколы съезда' })).toHaveAttribute(
+      'href',
+      '/works/8',
+    );
+    expect(screen.getAllByText('Точный фрагмент не размечен')).toHaveLength(2);
+    expect(screen.queryByRole('link', { name: 'Пункт повестки' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Заседание' })).toHaveAttribute(
+      'href',
+      '/works/7/chapters/70',
+    );
+  });
+
+  it('поясняет, когда одно заседание относится к нескольким пунктам', async () => {
+    const agenda: Detail = {
+      ...DETAIL,
+      sections: [
+        {
+          position: 0,
+          title: '1. Отчёт ЦК',
+          entries: [{ label: 'Доклад', targets: [target({})] }],
+        },
+        {
+          position: 1,
+          title: '2. Прения',
+          entries: [{ label: 'Выступления', targets: [target({})] }],
+        },
+      ],
+    };
+    vi.spyOn(eventsApi, 'event').mockImplementation(() => ok(agenda));
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'I съезд' });
+    expect(
+      screen.getByText(/Одно заседание может охватывать несколько разделов/),
+    ).toBeInTheDocument();
+  });
 });
