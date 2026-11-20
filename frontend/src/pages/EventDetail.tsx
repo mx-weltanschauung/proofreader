@@ -62,6 +62,13 @@ function SingleTarget({ label, t }: { label: string; t: EventTarget }) {
       </>
     );
   }
+  if (t.kind === 'work') {
+    return (
+      <>
+        {label} <small className="event-target-label">Точный фрагмент не размечен</small>
+      </>
+    );
+  }
   return (
     <>
       <Link to={targetPath(t)}>{label}</Link>
@@ -119,6 +126,22 @@ export function EventDetail() {
   }
   const where = [event.dates, event.place].filter(Boolean).join(', ');
   const staff = canEdit(user);
+  const fullWorks = new Map<number, EventTarget>();
+  const chapterCounts = new Map<string, number>();
+  for (const section of event.sections) {
+    for (const entry of section.entries) {
+      for (const target of entry.targets) {
+        if (target.broken || target.work_id == null) continue;
+        if (target.kind === 'work') {
+          if (!fullWorks.has(target.work_id)) fullWorks.set(target.work_id, target);
+        } else if (target.chapter_id != null) {
+          const key = `${target.work_id}/${target.chapter_id}`;
+          chapterCounts.set(key, (chapterCounts.get(key) ?? 0) + 1);
+        }
+      }
+    }
+  }
+  const sharedChapter = [...chapterCounts.values()].some((count) => count > 1);
   return (
     <div className="event-page">
       <Link to={organizationPath(event.organization)} className="event-back-link">
@@ -134,6 +157,26 @@ export function EventDetail() {
         {where && <p className="event-where">{where}</p>}
         {event.description && <p className="event-description">{event.description}</p>}
       </header>
+      {(fullWorks.size > 0 || sharedChapter) && (
+        <p className="event-material-note">
+          Нумерованные разделы — пункты повестки; под ними указаны связанные материалы.
+          {fullWorks.size > 0 && ' Для некоторых пунктов точный фрагмент тома не размечен.'}
+          {sharedChapter && ' Одно заседание может охватывать несколько разделов.'}
+        </p>
+      )}
+      {fullWorks.size > 0 && (
+        <aside className="event-full-works" aria-label="Полные издания">
+          <h2>Полные издания</h2>
+          <ul>
+            {[...fullWorks.values()].map((target) => (
+              <li key={target.work_id}>
+                <Link to={targetPath(target)}>{target.work_title || target.title}</Link>
+                {target.closed && <ClosedBadge />}
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
       {event.sections.map((section) => (
         <section key={section.position} className="event-section">
           <h2 id={`section-${section.position + 1}`} tabIndex={-1} className="event-section-title">
@@ -148,20 +191,25 @@ export function EventDetail() {
                 ) : (
                   <>
                     {entry.label}
-                    {entry.targets.length > 0 && ': '}
-                    {entry.targets.map((t, j) => (
-                      <span key={j}>
-                        {j > 0 && ' · '}
-                        {t.broken ? (
-                          <BrokenTarget t={t} />
-                        ) : (
-                          <>
-                            <Link to={targetPath(t)}>{t.label || t.title}</Link>
-                            {t.closed && <ClosedBadge />}
-                          </>
-                        )}
-                      </span>
-                    ))}
+                    {entry.targets.some((t) => t.kind === 'chapter' || t.broken) ? ': ' : ' '}
+                    {entry.targets
+                      .filter((t) => t.kind !== 'work' || t.broken)
+                      .map((t, j) => (
+                        <span key={j}>
+                          {j > 0 && ' · '}
+                          {t.broken ? (
+                            <BrokenTarget t={t} />
+                          ) : (
+                            <>
+                              <Link to={targetPath(t)}>{t.label || t.title}</Link>
+                              {t.closed && <ClosedBadge />}
+                            </>
+                          )}
+                        </span>
+                      ))}
+                    {entry.targets.some((t) => t.kind === 'work' && !t.broken) && (
+                      <small className="event-target-label">Точный фрагмент не размечен</small>
+                    )}
                   </>
                 )}
                 {staff && entryHiddenFromReaders(entry) && (
