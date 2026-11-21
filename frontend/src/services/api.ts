@@ -1017,7 +1017,8 @@ export const proofreadAPI = {
   async pair(id: number) {
     return (await api.post<{ code: string }>(`/proofread-runs/${id}/pair-code`)).data;
   },
-  async submit(id: number) {
-    return (await api.post<{ pages: SubmitResult[] }>(`/proofread-runs/${id}/submit`)).data;
+  async submit(id: number, pages: { page_id: number; accepted: Record<string, string> }[]) {
+    return (await api.post<{ pages: SubmitResult[] }>(`/proofread-runs/${id}/submit`, { pages }))
+      .data;
   },
 };

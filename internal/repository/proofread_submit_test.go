@@ -17,25 +17,31 @@ func TestSubmitReadyPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	findings := proofreadFindings(t, ctx, repo, run.ID).Findings
+	accepted := map[int64]string{}
 	decide := func(i int, d models.FindingDecision, s string) {
 		t.Helper()
+		if d == models.FindingAccepted {
+			accepted[findings[i].ID] = s
+		} else {
+			delete(accepted, findings[i].ID)
+		}
 		if err := repo.SetDecision(ctx, run.ID, findings[i].ID, owner, d, s); err != nil {
 			t.Fatal(err)
 		}
 	}
 	submit := func(limit int, want string) models.PageSubmitResult {
 		t.Helper()
-		r, err := repo.SubmitReadyPage(ctx, run.ID, owner, 30, "ip", limit, time.Now().Add(-time.Hour))
+		r, err := repo.SubmitReadyPage(ctx, run.ID, owner, 30, accepted, "ip", limit, time.Now().Add(-time.Hour))
 		if err != nil || r.Status != want {
 			t.Fatalf("%+v %v, want %s", r, err, want)
 		}
 		return r
 	}
-	if _, err := repo.SubmitReadyPage(ctx, run.ID, other, 30, "ip", 5, time.Now()); err == nil {
+	if _, err := repo.SubmitReadyPage(ctx, run.ID, other, 30, accepted, "ip", 5, time.Now()); err == nil {
 		t.Fatal("foreign owner")
 	}
 	decide(1, models.FindingAccepted, "кит")
-	submit(1, "pending")
+	submit(1, "refresh_required")
 	decide(0, models.FindingRejected, "")
 	for _, bad := range []string{"кот", "к\u200bит", strings.Repeat("я", 20001)} {
 		decide(1, models.FindingAccepted, bad)
@@ -92,7 +98,7 @@ func TestSubmitReadyConcurrentRetries(t *testing.T) {
 	for i := 0; i < retries; i++ {
 		go func() {
 			<-start
-			r, err := repo.SubmitReadyPage(ctx, run.ID, owner, p.PageID, "same", retries, time.Now().Add(-time.Hour))
+			r, err := repo.SubmitReadyPage(ctx, run.ID, owner, p.PageID, map[int64]string{f.ID: f.New}, "same", retries, time.Now().Add(-time.Hour))
 			results <- outcome{r, err}
 		}()
 	}
@@ -137,25 +143,53 @@ func TestSubmitReadyPartialLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	previews := map[int64]map[int64]string{}
 	for _, p := range snapshots {
 		f := p.Findings[0]
+		previews[p.PageID] = map[int64]string{f.ID: f.New}
 		if err := repo.SetDecision(ctx, run.ID, f.ID, owner, models.FindingAccepted, f.New); err != nil {
 			t.Fatal(err)
 		}
+	}
+	onlyPreviewed, err := repo.ListSubmissionPages(ctx, run.ID, []int64{31})
+	if err != nil || len(onlyPreviewed) != 1 || onlyPreviewed[0].PageID != 31 {
+		t.Fatalf("preview of one ready page returned %+v: %v", onlyPreviewed, err)
 	}
 	for _, attempt := range []struct {
 		limit int
 		want  []string
 	}{{1, []string{"submitted", "rate_limited"}}, {2, []string{"already_submitted", "submitted"}}} {
-		pages, err := repo.ListSubmissionPages(ctx, run.ID)
+		pages, err := repo.ListSubmissionPages(ctx, run.ID, []int64{30, 31})
 		if err != nil || len(pages) != 2 {
 			t.Fatal(pages, err)
 		}
 		for i, p := range pages {
-			res, err := repo.SubmitReadyPage(ctx, run.ID, owner, p.PageID, "same", attempt.limit, time.Now().Add(-time.Hour))
+			res, err := repo.SubmitReadyPage(ctx, run.ID, owner, p.PageID, previews[p.PageID], "same", attempt.limit, time.Now().Add(-time.Hour))
 			if err != nil || res.Status != attempt.want[i] {
 				t.Fatal(res, err)
 			}
 		}
+	}
+}
+
+func TestSubmitReadyChangedReplacementRequiresRefresh(t *testing.T) {
+	ctx, repo, run, owner, _ := proofreadFixture(t)
+	page := proofreadFindings(t, ctx, repo, run.ID)
+	if err := repo.PutFindings(ctx, run.ID, page.PageID, page.BaseSHA256, []models.ProofreadFinding{proofreadCandidate()}); err != nil {
+		t.Fatal(err)
+	}
+	f := proofreadFindings(t, ctx, repo, run.ID).Findings[0]
+	for _, replacement := range []string{"кит", "лис"} {
+		if err := repo.SetDecision(ctx, run.ID, f.ID, owner, models.FindingAccepted, replacement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := repo.SubmitReadyPage(ctx, run.ID, owner, page.PageID, map[int64]string{f.ID: "кит"}, "ip", 10, time.Now().Add(-time.Hour))
+	if err != nil || result.Status != "refresh_required" {
+		t.Fatal(result, err)
+	}
+	var count int
+	if err := repo.pool.QueryRow(ctx, "SELECT count(*) FROM page_suggestions WHERE page_id=$1", page.PageID).Scan(&count); err != nil || count != 0 {
+		t.Fatal(count, err)
 	}
 }

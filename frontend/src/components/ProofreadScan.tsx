@@ -6,11 +6,13 @@ export function ProofreadScan({
   number,
   box,
   refresh,
+  refreshDisabled = false,
 }: {
   url: string;
   number: number;
   box?: ScanBox;
   refresh: () => void;
+  refreshDisabled?: boolean;
 }) {
   const [zoom, setZoom] = useState(100);
   const [ratio, setRatio] = useState<number>();
@@ -36,6 +38,7 @@ export function ProofreadScan({
         <p role="alert">
           Не удалось загрузить скан.{' '}
           <button
+            disabled={refreshDisabled}
             onClick={() => {
               setFailed(false);
               refresh();

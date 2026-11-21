@@ -165,3 +165,54 @@ it('reconciles a lost submission response with saved server receipts', async () 
   expect((await screen.findAllByText('Предложение отправлено')).length).toBeGreaterThan(0);
   expect(screen.getByRole('button', { name: /отправить проверенные полосы/i })).toBeDisabled();
 });
+
+it('serializes scan retry with an acknowledged decision and sends the reviewed replacements', async () => {
+  await open();
+  let finish!: () => void;
+  vi.mocked(proofreadAPI.decide).mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      finish = resolve;
+    }),
+  );
+  fireEvent.error(screen.getByRole('img', { name: 'Скан полосы 126' }));
+  fireEvent.click(screen.getAllByRole('button', { name: 'Принять' })[0]);
+  const retry = screen.getByRole('button', { name: 'Обновить ссылку на скан' });
+  expect(retry).toBeDisabled();
+  fireEvent.click(retry);
+  expect(proofreadAPI.get).toHaveBeenCalledTimes(1);
+  finish();
+  await waitFor(() => expect(retry).toBeEnabled());
+  fireEvent.click(screen.getAllByRole('button', { name: 'Отклонить' })[1]);
+  const submit = screen.getByRole('button', { name: /отправить проверенные полосы/i });
+  await waitFor(() => expect(submit).toBeEnabled());
+  vi.mocked(proofreadAPI.submit).mockResolvedValue({
+    pages: [{ page_id: 1, status: 'refresh_required' }],
+  });
+  fireEvent.click(submit);
+  expect(proofreadAPI.submit).toHaveBeenCalledWith(7, [{ page_id: 1, accepted: { 1: 'б' } }]);
+  expect((await screen.findAllByText(/Решения изменились/)).length).toBeGreaterThan(0);
+});
+
+it('waits for a delayed scan refresh before enabling decisions', async () => {
+  await open();
+  const saved = await proofreadAPI.get(7);
+  let finish!: (run: typeof saved) => void;
+  vi.mocked(proofreadAPI.get).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  fireEvent.error(screen.getByRole('img', { name: 'Скан полосы 126' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Обновить ссылку на скан' }));
+  const accept = screen.getAllByRole('button', { name: 'Принять' })[0];
+  expect(accept).toBeDisabled();
+  fireEvent.click(accept);
+  expect(proofreadAPI.decide).not.toHaveBeenCalled();
+  finish(saved);
+  await waitFor(() => expect(accept).toBeEnabled());
+  fireEvent.click(accept);
+  await waitFor(() =>
+    expect(screen.getByLabelText('Предлагаемый Markdown')).toHaveTextContent('😀 б а'),
+  );
+});

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -287,10 +288,10 @@ func (r *ProofreadRunRepository) GetForWorker(ctx context.Context, runID int64, 
 
 // Для проверки доступа достаточно снимков полос. Решения читаются внутри
 // SubmitReadyPage после блокировки снимка.
-func (r *ProofreadRunRepository) ListSubmissionPages(ctx context.Context, runID int64) ([]models.ProofreadRunPage, error) {
+func (r *ProofreadRunRepository) ListSubmissionPages(ctx context.Context, runID int64, pageIDs []int64) ([]models.ProofreadRunPage, error) {
 	rows, err := r.pool.Query(ctx, `
 		SELECT page_id, page_number, base_markdown, submitted_at, suggestion_id
-		FROM proofread_run_pages WHERE run_id = $1 ORDER BY page_number, page_id`, runID)
+		FROM proofread_run_pages WHERE run_id = $1 AND page_id = ANY($2) ORDER BY page_number, page_id`, runID, pageIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +302,7 @@ func (r *ProofreadRunRepository) ListSubmissionPages(ctx context.Context, runID 
 	})
 }
 
-func (r *ProofreadRunRepository) SubmitReadyPage(ctx context.Context, runID, userID, pageID int64, ipHash string, limit int, since time.Time) (models.PageSubmitResult, error) {
+func (r *ProofreadRunRepository) SubmitReadyPage(ctx context.Context, runID, userID, pageID int64, preview map[int64]string, ipHash string, limit int, since time.Time) (models.PageSubmitResult, error) {
 	result := models.PageSubmitResult{PageID: pageID, Status: "failed"}
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		var page models.ProofreadRunPage
@@ -331,32 +332,35 @@ func (r *ProofreadRunRepository) SubmitReadyPage(ctx context.Context, runID, use
 			return nil
 		}
 		rows, err := tx.Query(ctx, `
-			SELECT decision, start_rune, end_rune, old, replacement
+			SELECT id, decision, start_rune, end_rune, old, replacement
 			FROM proofread_findings WHERE run_id = $1 AND page_id = $2`, runID, pageID)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
+		current := make(map[int64]string)
 		var edits []proofassist.Edit
 		for rows.Next() {
+			var findingID int64
 			var d models.FindingDecision
 			var e proofassist.Edit
-			if err := rows.Scan(&d, &e.StartRune, &e.EndRune, &e.Old, &e.New); err != nil {
+			if err := rows.Scan(&findingID, &d, &e.StartRune, &e.EndRune, &e.Old, &e.New); err != nil {
 				return err
 			}
 			if d == models.FindingPending {
-				result.Status = "pending"
+				result.Status = "refresh_required"
 				return nil
 			}
 			if d == models.FindingAccepted {
+				current[findingID] = e.New
 				edits = append(edits, e)
 			}
 		}
 		if err := rows.Err(); err != nil {
 			return err
 		}
-		if len(edits) == 0 {
-			result.Status = "pending"
+		if len(edits) == 0 || !maps.Equal(preview, current) {
+			result.Status = "refresh_required"
 			return nil
 		}
 		proposed, err := proofassist.Apply(page.BaseMarkdown, edits)

@@ -39,6 +39,7 @@ const outcomes: Record<string, string> = {
   submitted: 'Предложение отправлено',
   already_submitted: 'Предложение уже отправлено',
   rate_limited: 'Достигнут часовой лимит. Повторите отправку позже.',
+  refresh_required: 'Решения изменились. Проверьте обновлённые правки перед повторной отправкой.',
   stale: 'Исходный текст изменился. Нужна новая сверка.',
   failed: 'Не удалось отправить. Проверьте правки и повторите.',
 };
@@ -60,6 +61,7 @@ function Review({ id }: { id: number }) {
   const [active, setActive] = useState<number>();
   const [editing, setEditing] = useState<number>();
   const [draft, setDraft] = useState('');
+  const acting = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [code, setCode] = useState('');
@@ -96,6 +98,8 @@ function Review({ id }: { id: number }) {
     mark.current?.scrollIntoView?.({ block: 'nearest' });
   }, [active]);
   async function act(fn: () => Promise<void>) {
+    if (acting.current) return;
+    acting.current = true;
     setBusy(true);
     setError('');
     try {
@@ -107,12 +111,21 @@ function Review({ id }: { id: number }) {
           : 'Не удалось выполнить действие. Обновите работу и проверьте сохранённые решения.',
       );
     } finally {
+      acting.current = false;
       setBusy(false);
     }
   }
   async function submitReady() {
     try {
-      const response = await proofreadAPI.submit(id);
+      const pages = ready.map((p) => ({
+        page_id: p.page_id,
+        accepted: Object.fromEntries(
+          (p.findings ?? [])
+            .filter((f) => f.decision === 'accepted')
+            .map((f) => [f.id, f.replacement]),
+        ),
+      }));
+      const response = await proofreadAPI.submit(id, pages);
       setResults(Object.fromEntries(response.pages.map((p) => [p.page_id, p.status])));
     } catch (e) {
       if (!isAxiosError(e) || e.response) throw e;
@@ -169,7 +182,10 @@ function Review({ id }: { id: number }) {
         <Link to={chapterPath({ id: run.work_id }, { id: run.chapter_id })}>Вернуться к главе</Link>
       )}
       {error && <p role="alert">{error}</p>}
-      <button disabled={busy || editing !== undefined} onClick={() => act(reload)}>
+      <button
+        disabled={busy || (!run && !error) || editing !== undefined}
+        onClick={() => act(reload)}
+      >
         Обновить работу
       </button>
       {run && (
@@ -232,6 +248,7 @@ function Review({ id }: { id: number }) {
                       number={page.page_number}
                       url={page.scan_url}
                       box={selected?.scan_bbox}
+                      refreshDisabled={busy || editing !== undefined}
                       refresh={() => act(reload)}
                     />
                   )}

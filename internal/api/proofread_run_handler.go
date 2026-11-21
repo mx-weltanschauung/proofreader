@@ -155,16 +155,16 @@ func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPatch && !proofreadBody(w, r, &decision) {
 		return
 	}
+	if mux.CurrentRoute(r).GetName() == "proofread-submit" {
+		h.submit(w, r, run)
+		return
+	}
 	c, err := h.chapter(ctx, run)
 	if err != nil {
 		proofreadFailure(w, err)
 		return
 	}
 	if r.Method == "POST" {
-		if mux.CurrentRoute(r).GetName() == "proofread-submit" {
-			h.submit(w, r, run)
-			return
-		}
 		code, err := h.runs.IssuePairCode(ctx, id, claims.UserID)
 		if err != nil {
 			proofreadFailure(w, err)
