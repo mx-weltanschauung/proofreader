@@ -548,8 +548,9 @@ func (s *DownloadSource) renderRange(pages []*models.Page, from, to, offset int)
 			// глушили до пустого тела — рядом в файл едет markdown, и текст
 			// не терялся. Развилка уехала внутрь пакета, где ветка ошибки
 			// недостижима: источник разбора — строка.
-			HTML:     pageHTML[i],
-			Markdown: p.ContentMarkdown,
+			HTML:        pageHTML[i],
+			Markdown:    p.ContentMarkdown,
+			RawMarkdown: p.ContentMarkdown,
 		}
 	}
 	return renderedRange{pages: out, notesHTML: markdown.RenderNotes(notes)}

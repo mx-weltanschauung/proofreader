@@ -55,7 +55,7 @@ export const HINTS: Record<HintId, HintDef> = {
   download: {
     id: 'download',
     priority: 60,
-    text: 'Забрать текст в EPUB, FB2, Markdown или HTML.',
+    text: 'Забрать текст в EPUB, FB2, PDF, Markdown или HTML.',
   },
   'toc-drawer': {
     id: 'toc-drawer',
