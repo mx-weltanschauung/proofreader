@@ -337,6 +337,21 @@ type Closure struct {
 	At        time.Time `json:"at"`
 }
 
+// ActiveClosure — собственное действующее ограничение объекта; сведения о
+// последнем закрытии могут отсутствовать, если признак был записан вне журнала.
+type ActiveClosure struct {
+	Kind      string     `json:"kind"`
+	Scope     string     `json:"scope"`
+	EntityID  int64      `json:"entity_id"`
+	Title     string     `json:"title"`
+	WorkID    *int64     `json:"work_id"`
+	Slug      *string    `json:"slug"`
+	At        *time.Time `json:"at"`
+	Reason    string     `json:"reason"`
+	ActorName string     `json:"actor_name"`
+	Inherited bool       `json:"inherited"`
+}
+
 // Footnote represents a footnote in a page
 type Footnote struct {
 	ID              int64     `json:"id" db:"id"`

@@ -403,3 +403,87 @@ func (r *ClosedRepository) ListClosures(ctx context.Context, limit, offset int) 
 	}
 	return out, rows.Err()
 }
+
+// ListActiveClosures читает собственные признаки из объектов, не восстанавливая
+// состояние по журналу. Последнее закрытие служит лишь подписью строки.
+func (r *ClosedRepository) ListActiveClosures(ctx context.Context, limit, offset int) ([]models.ActiveClosure, error) {
+	const query = `WITH work_flags AS (
+		SELECT w.id, w.title, w.closed, w.scans_hidden,
+			(coalesce(work_closed_by(w.parent_work_id), '') <> ''
+			 OR coalesce(e.closed, false) OR coalesce(j.closed, false)) AS inherited_full,
+			(coalesce(work_scans_hidden_by(w.parent_work_id), '') <> ''
+			 OR coalesce(e.scans_hidden, false) OR coalesce(j.scans_hidden, false)) AS inherited_scans
+		FROM works w
+		LEFT JOIN editions e ON e.id = w.edition_id
+		LEFT JOIN journal_issues ji ON ji.work_id = w.id
+		LEFT JOIN journals j ON j.id = ji.journal_id
+		WHERE w.closed OR w.scans_hidden
+	), chapter_flags AS (
+		SELECT c.id, c.work_id, c.title, c.closed, c.scans_hidden,
+			(coalesce(a.closed, false) OR coalesce(work_closed_by(c.work_id), '') <> '') AS inherited_full,
+			(coalesce(a.scans_hidden, false) OR coalesce(work_scans_hidden_by(c.work_id), '') <> '') AS inherited_scans
+		FROM chapters c
+		LEFT JOIN LATERAL (
+			WITH RECURSIVE ancestors AS (
+				SELECT p.parent_id, p.closed, p.scans_hidden
+				FROM chapters p WHERE p.id = c.parent_id
+				UNION ALL
+				SELECT p.parent_id, p.closed, p.scans_hidden
+				FROM chapters p JOIN ancestors a ON p.id = a.parent_id
+			)
+			SELECT bool_or(closed) AS closed, bool_or(scans_hidden) AS scans_hidden FROM ancestors
+		) a ON true
+		WHERE c.closed OR c.scans_hidden
+	), flags AS (
+		SELECT 'work' AS kind, 'full' AS scope, id AS entity_id, title,
+			NULL::bigint AS work_id, NULL::text AS slug, inherited_full AS inherited
+		FROM work_flags WHERE closed
+		UNION ALL
+		SELECT 'work', 'scans', id, title, NULL::bigint, NULL::text, inherited_scans
+		FROM work_flags WHERE scans_hidden
+		UNION ALL
+		SELECT 'edition', 'full', id, title, NULL::bigint, NULL::text, false
+		FROM editions WHERE closed
+		UNION ALL
+		SELECT 'edition', 'scans', id, title, NULL::bigint, NULL::text, false
+		FROM editions WHERE scans_hidden
+		UNION ALL
+		SELECT 'journal', 'full', id, title, NULL::bigint, slug, false
+		FROM journals WHERE closed
+		UNION ALL
+		SELECT 'journal', 'scans', id, title, NULL::bigint, slug, false
+		FROM journals WHERE scans_hidden
+		UNION ALL
+		SELECT 'chapter', 'full', id, title, work_id, NULL::text, inherited_full
+		FROM chapter_flags WHERE closed
+		UNION ALL
+		SELECT 'chapter', 'scans', id, title, work_id, NULL::text, inherited_scans
+		FROM chapter_flags WHERE scans_hidden
+	)
+	SELECT f.kind, f.scope, f.entity_id, f.title, f.work_id, f.slug,
+		a.created_at, coalesce(a.reason, ''), coalesce(a.actor_name, ''), f.inherited
+	FROM flags f
+	LEFT JOIN LATERAL (
+		SELECT created_at, reason, actor_name FROM closures
+		WHERE entity_kind = f.kind AND entity_id = f.entity_id
+		  AND scope = f.scope AND closed
+		ORDER BY created_at DESC, id DESC LIMIT 1
+	) a ON true
+	ORDER BY a.created_at DESC NULLS LAST, f.kind, f.entity_id, f.scope
+	LIMIT $1 OFFSET $2`
+	rows, err := r.pool.Query(ctx, query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list active closures: %w", err)
+	}
+	defer rows.Close()
+	out := []models.ActiveClosure{}
+	for rows.Next() {
+		var c models.ActiveClosure
+		if err := rows.Scan(&c.Kind, &c.Scope, &c.EntityID, &c.Title, &c.WorkID,
+			&c.Slug, &c.At, &c.Reason, &c.ActorName, &c.Inherited); err != nil {
+			return nil, fmt.Errorf("scan active closure: %w", err)
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
