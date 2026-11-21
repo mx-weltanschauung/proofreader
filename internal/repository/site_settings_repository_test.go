@@ -8,10 +8,6 @@ import (
 func TestSiteSettingsSuggestionLimit(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
-	// resetDB isolates each integration test; restore the migration's singleton row.
-	if _, err := pool.Exec(ctx, `INSERT INTO site_settings (id, suggestions_per_hour) VALUES (1, 5)`); err != nil {
-		t.Fatal(err)
-	}
 	repo := NewSiteSettingsRepository(pool)
 	got, err := repo.SuggestionLimit(ctx)
 	if err != nil || got != 5 {
