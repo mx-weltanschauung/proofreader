@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { StatsAdmin } from './StatsAdmin';
@@ -78,6 +78,21 @@ vi.mock('../../services/api', () => ({
 }));
 
 describe('StatsAdmin', () => {
+  it('запрашивает 90 дней для графика, сохраняя верхние счётчики', async () => {
+    render(
+      <MemoryRouter>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    const chart = await screen.findByRole('region', { name: 'График посещаемости' });
+    const overview = screen.getByRole('region', { name: 'Обзор' });
+    const before = within(overview).getByText(/Читатели за 30 дней/).parentElement?.textContent;
+    fireEvent.click(within(chart).getByRole('button', { name: '90 дней' }));
+    await waitFor(() => expect(statsApi.traffic).toHaveBeenCalledWith(90));
+    expect(within(overview).getByText(/Читатели за 30 дней/).parentElement?.textContent).toBe(
+      before,
+    );
+  });
   it('открывает распределение из ссылки на главу', async () => {
     render(
       <MemoryRouter initialEntries={['/admin/stats?work=49&chapter=10125']}>

@@ -155,6 +155,7 @@
   --stats-download: #3c9a6b;
   --stats-seo: #b0873c;
   --stats-mcp: #b05c5c;
+  --stats-opds: #597d50;
 }
 [data-theme='dark'],
 [data-theme='oled'],
@@ -164,6 +165,7 @@
   --stats-download: #5cc794;
   --stats-seo: #d9b060;
   --stats-mcp: #d98a8a;
+  --stats-opds: #9ec58a;
 }
 
 /* Light Theme - Wikipedia-inspired, modernized */
