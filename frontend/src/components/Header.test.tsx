@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
@@ -181,7 +181,7 @@ describe('Header', () => {
     await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
   });
 
-  it('администратору показывает «Пользователи», роль по-русски и «Выйти»', async () => {
+  it('администратору показывает вход во все разделы, роль по-русски и «Выйти»', async () => {
     useAuth.setState({
       user: { id: 1, email: 'admin@proofreader.local', role: 'administrator' },
       token: 't',
@@ -189,10 +189,7 @@ describe('Header', () => {
       isLoading: false,
     });
     renderHeader();
-    expect(screen.getByRole('link', { name: 'Пользователи' })).toHaveAttribute(
-      'href',
-      '/admin/users',
-    );
+    expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute('href', '/staff');
     expect(screen.getByText('администратор')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Выйти' })).toHaveClass('btn');
     await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
@@ -239,7 +236,7 @@ describe('Header', () => {
     expect(screen.queryByText('0')).not.toBeInTheDocument();
   });
 
-  it('администратору с неразобранными письмами показывает счётчик', async () => {
+  it('администратору с неразобранными письмами отмечает все разделы без суммы', async () => {
     vi.mocked(feedbackApi.unreadCount).mockReturnValue(ok({ count: 3 }));
     useAuth.setState({
       user: { id: 1, email: 'admin@proofreader.local', role: 'administrator' },
@@ -249,12 +246,12 @@ describe('Header', () => {
     });
     renderHeader();
 
-    const link = await screen.findByRole('link', { name: /Обращения/ });
-    expect(link).toHaveAttribute('href', '/admin/feedback');
-    await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument());
+    const link = await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ });
+    expect(link).toHaveAttribute('href', '/staff');
+    expect(screen.queryByText('3')).toBeNull();
   });
 
-  it('при нуле неразобранных писем значок не рисуется, а ссылка остаётся', async () => {
+  it('при нуле неразобранных писем индикатора нет, а ссылка остаётся', async () => {
     vi.mocked(feedbackApi.unreadCount).mockReturnValue(ok({ count: 0 }));
     useAuth.setState({
       user: { id: 1, email: 'admin@proofreader.local', role: 'administrator' },
@@ -264,13 +261,30 @@ describe('Header', () => {
     });
     renderHeader();
 
-    const link = await screen.findByRole('link', { name: 'Обращения' });
-    expect(link).toHaveAttribute('href', '/admin/feedback');
+    const link = await screen.findByRole('link', { name: 'Все разделы' });
+    expect(link).toHaveAttribute('href', '/staff');
     await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalled());
     expect(screen.queryByText('0')).toBeNull();
   });
 
-  it('администратору показывает ссылку «Кэш»', async () => {
+  it('редактору показывает индикатор при новых комментариях', async () => {
+    vi.mocked(readerCommentsApi.pendingCount).mockResolvedValue(ok({ count: 2 }) as never);
+    useAuth.setState({
+      user: { id: 2, email: 'editor@proofreader.local', role: 'editor' },
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    renderHeader();
+    expect(
+      await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ }),
+    ).toHaveAttribute('href', '/staff');
+    expect(screen.queryByText('2')).toBeNull();
+  });
+
+  it('при ошибке счётчиков ссылка на все разделы остаётся без индикатора', async () => {
+    vi.mocked(readerCommentsApi.pendingCount).mockRejectedValue(new Error('нет сети'));
+    vi.mocked(feedbackApi.unreadCount).mockRejectedValue(new Error('нет сети'));
     useAuth.setState({
       user: { id: 1, email: 'admin@proofreader.local', role: 'administrator' },
       token: 't',
@@ -278,11 +292,42 @@ describe('Header', () => {
       isLoading: false,
     });
     renderHeader();
-    expect(screen.getByRole('link', { name: 'Кэш' })).toHaveAttribute('href', '/admin/cache');
-    expect(screen.getByRole('link', { name: 'Настройки' })).toHaveAttribute(
-      'href',
-      '/admin/settings',
+    await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalled());
+    expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute('href', '/staff');
+  });
+
+  it('после смены администратора не показывает чужой индикатор', async () => {
+    vi.mocked(feedbackApi.unreadCount)
+      .mockReturnValueOnce(ok({ count: 3 }))
+      .mockReturnValue(ok({ count: 0 }));
+    useAuth.setState({
+      user: { id: 1, email: 'first@proofreader.local', role: 'administrator' },
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    renderHeader();
+    await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ });
+    act(() =>
+      useAuth.setState({
+        user: { id: 2, email: 'second@proofreader.local', role: 'administrator' },
+      }),
     );
+    await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('link', { name: 'Все разделы' })).toBeInTheDocument();
+  });
+
+  it('редкие административные ссылки убирает из шапки', async () => {
+    useAuth.setState({
+      user: { id: 1, email: 'admin@proofreader.local', role: 'administrator' },
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    renderHeader();
+    expect(screen.queryByRole('link', { name: 'Кэш' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Настройки' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute('href', '/staff');
     expect(screen.getByRole('link', { name: 'Статистика' })).toHaveAttribute(
       'href',
       '/admin/stats',
@@ -358,7 +403,7 @@ describe('Header', () => {
       ).toEqual(['Указатель', 'Подборки', 'Разборы']);
     });
 
-    it('администратору выносит все служебные ссылки из основного ряда в полосу', async () => {
+    it('администратору оставляет три частые ссылки и все разделы', async () => {
       signIn(admin);
       renderHeader();
       const main = screen.getByRole('navigation', { name: 'Разделы' });
@@ -368,25 +413,11 @@ describe('Header', () => {
         within(staff)
           .getAllByRole('link')
           .map((a) => a.getAttribute('href')),
-      ).toEqual([
-        '/suggestions/queue',
-        '/documents/review',
-        '/reader-comments/review',
-        '/admin/audio',
-        '/mine/notes',
-        '/mine/comments',
-        '/admin/users',
-        '/admin/readers',
-        '/admin/feedback',
-        '/admin/cache',
-        '/admin/settings',
-        '/admin/closures',
-        '/admin/stats',
-      ]);
+      ).toEqual(['/suggestions/queue', '/admin/readers', '/admin/stats', '/staff']);
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
     });
 
-    it('редактору даёт только очередь, без управления', async () => {
+    it('редактору оставляет предложения и все разделы', async () => {
       signIn(editor);
       renderHeader();
       const staff = screen.getByRole('navigation', { name: 'Служебное' });
@@ -394,14 +425,7 @@ describe('Header', () => {
         within(staff)
           .getAllByRole('link')
           .map((a) => a.getAttribute('href')),
-      ).toEqual([
-        '/suggestions/queue',
-        '/documents/review',
-        '/reader-comments/review',
-        '/admin/audio',
-        '/mine/notes',
-        '/mine/comments',
-      ]);
+      ).toEqual(['/suggestions/queue', '/staff']);
       expect(within(staff).queryByText('Управление')).toBeNull();
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
     });
@@ -417,9 +441,7 @@ describe('Header', () => {
       expect(screen.getByRole('link', { name: 'Подборки' })).not.toHaveAttribute('aria-current');
     });
 
-    // /documents/review лежит внутри /documents: префиксное сравнение
-    // отметило бы обе ссылки разом.
-    it('на очереди разборов отмечает её одну, а не «Разборы» заодно', async () => {
+    it('на скрытом служебном маршруте отмечает все разделы, а не публичные разборы', async () => {
       useAuth.setState({
         user: { id: 2, email: 'editor@proofreader.local', role: 'editor' },
         token: 't',
@@ -427,11 +449,27 @@ describe('Header', () => {
         isLoading: false,
       });
       renderHeader('/documents/review');
-      expect(screen.getByRole('link', { name: 'Разборы на проверку' })).toHaveAttribute(
+      expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute(
         'aria-current',
         'page',
       );
       expect(screen.getByRole('link', { name: 'Разборы' })).not.toHaveAttribute('aria-current');
+      await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
+    });
+
+    it('на прямом административном маршруте отмечает его, а не все разделы', async () => {
+      useAuth.setState({
+        user: { id: 1, email: 'admin@proofreader.local', role: 'administrator' },
+        token: 't',
+        isAuthenticated: true,
+        isLoading: false,
+      });
+      renderHeader('/admin/readers');
+      expect(screen.getByRole('link', { name: 'Читатели' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      );
+      expect(screen.getByRole('link', { name: 'Все разделы' })).not.toHaveAttribute('aria-current');
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
     });
 
