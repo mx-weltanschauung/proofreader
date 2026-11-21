@@ -23,9 +23,9 @@ import (
 )
 
 func TestSettingsNewServerChangesLiveSuggestionLimit(t *testing.T) {
-	dsn := os.Getenv("PROOFREADER_TEST_DB_URL")
+	dsn := os.Getenv("PROOFREADER_SETTINGS_TEST_DB_URL")
 	if dsn == "" {
-		t.Skip("set PROOFREADER_TEST_DB_URL to a throwaway DB")
+		t.Skip("set PROOFREADER_SETTINGS_TEST_DB_URL to a separate throwaway DB")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)

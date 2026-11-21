@@ -15,6 +15,8 @@ type fakeLimitStore struct {
 	err         error
 	readStarted chan struct{}
 	releaseRead chan struct{}
+	afterRead   func()
+	afterSet    func()
 }
 
 func (s *fakeLimitStore) SuggestionLimit(context.Context) (int, error) {
@@ -22,12 +24,16 @@ func (s *fakeLimitStore) SuggestionLimit(context.Context) (int, error) {
 	value, err := s.value, s.err
 	s.reads++
 	started, release := s.readStarted, s.releaseRead
+	afterRead := s.afterRead
 	s.mu.Unlock()
 	if started != nil {
 		close(started)
 	}
 	if release != nil {
 		<-release
+	}
+	if afterRead != nil {
+		afterRead()
 	}
 	return value, err
 }
@@ -36,7 +42,41 @@ func (s *fakeLimitStore) SetSuggestionLimit(_ context.Context, value int) error 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.value = value
+	if s.afterSet != nil {
+		s.afterSet()
+	}
 	return nil
+}
+
+func TestSuggestionLimitExpiryStartsBeforeDatabaseRead(t *testing.T) {
+	start := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	now := start
+	store := &fakeLimitStore{value: 5, afterRead: func() { now = now.Add(30 * time.Second) }}
+	cache := NewSuggestionLimit(store, time.Minute)
+	cache.now = func() time.Time { return now }
+	if got, err := cache.Get(context.Background()); err != nil || got != 5 {
+		t.Fatalf("first Get = %d, %v", got, err)
+	}
+	store.value = 1
+	now = start.Add(time.Minute)
+	if got, err := cache.Get(context.Background()); err != nil || got != 1 {
+		t.Fatalf("at one minute Get = %d, %v; want fresh 1", got, err)
+	}
+}
+
+func TestSuggestionLimitExpiryStartsBeforeDatabaseWrite(t *testing.T) {
+	start := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	now := start
+	store := &fakeLimitStore{value: 5, afterSet: func() { now = now.Add(30 * time.Second) }}
+	cache := NewSuggestionLimit(store, time.Minute)
+	cache.now = func() time.Time { return now }
+	if err := cache.Set(context.Background(), 7); err != nil {
+		t.Fatal(err)
+	}
+	now = start.Add(time.Minute)
+	if got, err := cache.Get(context.Background()); err != nil || got != 7 || store.reads != 1 {
+		t.Fatalf("at one minute Get = %d, %v, reads %d; want DB refresh", got, err, store.reads)
+	}
 }
 
 func TestSuggestionLimitCachesForOneMinute(t *testing.T) {

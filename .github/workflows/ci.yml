@@ -30,6 +30,7 @@ jobs:
       DB_NAME: proofreader_test
       DB_SSLMODE: disable
       PROOFREADER_TEST_DB_URL: postgres://proofreader:proofreader@localhost:5432/proofreader_test?sslmode=disable
+      PROOFREADER_SETTINGS_TEST_DB_URL: postgres://proofreader:proofreader@localhost:5432/proofreader_settings_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -46,6 +47,8 @@ jobs:
           PGPASSWORD=proofreader psql -h localhost -U proofreader -d proofreader_test -v ON_ERROR_STOP=1 -c \
             "INSERT INTO users (id,email,password_hash,role) VALUES (1,'t@t','x','administrator');
              SELECT setval(pg_get_serial_sequence('users','id'), (SELECT max(id) FROM users));"
+          PGPASSWORD=proofreader createdb -h localhost -U proofreader proofreader_settings_test
+          DB_NAME=proofreader_settings_test go run cmd/migrate/main.go up
       - run: go test ./... -count=1
 
   # Линтер стережёт только новый код: в дереве около сотни старых находок

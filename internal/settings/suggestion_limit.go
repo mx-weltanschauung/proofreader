@@ -49,12 +49,13 @@ func (s *SuggestionLimit) Fresh(ctx context.Context) (int, error) {
 }
 
 func (s *SuggestionLimit) fresh(ctx context.Context) (int, error) {
+	started := s.now()
 	value, err := s.store.SuggestionLimit(ctx)
 	if err != nil {
 		return 0, err
 	}
 	s.value = value
-	s.expires = s.now().Add(s.ttl)
+	s.expires = started.Add(s.ttl)
 	return value, nil
 }
 
@@ -62,10 +63,11 @@ func (s *SuggestionLimit) fresh(ctx context.Context) (int, error) {
 func (s *SuggestionLimit) Set(ctx context.Context, value int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	started := s.now()
 	if err := s.store.SetSuggestionLimit(ctx, value); err != nil {
 		return err
 	}
 	s.value = value
-	s.expires = s.now().Add(s.ttl)
+	s.expires = started.Add(s.ttl)
 	return nil
 }
