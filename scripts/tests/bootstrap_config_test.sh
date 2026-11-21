@@ -90,6 +90,21 @@ test_caddyfile_gets_both_site_blocks() {
   [[ "$out" != *"__"* ]] || fail "в конфиге остались плейсхолдеры: $out"
 }
 
+test_caddyfile_imports_optional_monitoring_route() {
+  local out
+  out="$(render_caddyfile "$TESTS_DIR/../../docker/caddy/Caddyfile.tmpl" lib.example.org s3.lib.example.org admin@example.org)"
+  [[ "$out" == *'import /etc/caddy/monitoring/*.caddy'* ]] || fail 'нет необязательного импорта маршрута мониторинга'
+}
+
+test_caddyfile_uses_unique_frontend_name() {
+  local out
+  out="$(render_caddyfile "$TESTS_DIR/../../docker/caddy/Caddyfile.tmpl" lib.example.org "" "")"
+  [[ "$out" == *'reverse_proxy proofreader-frontend:80'* ]] ||
+    fail 'Caddy должен адресовать контейнер читальни по уникальному имени'
+  [[ "$out" != *'reverse_proxy frontend:80'* ]] ||
+    fail 'Общий алиас frontend может принадлежать другому приложению в той же сети'
+}
+
 test_caddyfile_without_an_email_drops_the_line() {
   local out
   out="$(render_caddyfile "$TESTS_DIR/../../docker/caddy/Caddyfile.tmpl" \

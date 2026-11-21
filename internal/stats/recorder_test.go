@@ -11,11 +11,19 @@ import (
 type fakeStore struct {
 	mu       sync.Mutex
 	rows     []Row
+	visible  []VisiblePageRow
 	salts    map[time.Time][]byte
 	failSalt bool
 	failIns  bool
 	rollups  int
 	prunes   int
+}
+
+func (f *fakeStore) InsertVisiblePages(_ context.Context, rows []VisiblePageRow) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.visible = append(f.visible, rows...)
+	return nil
 }
 
 func newFakeStore() *fakeStore { return &fakeStore{salts: map[time.Time][]byte{}} }
@@ -195,5 +203,29 @@ func TestRecorderHousekeepsAtStartup(t *testing.T) {
 	r.Run(ctx)
 	if rollups, prunes := store.housekeepCounts(); rollups < 1 || prunes < 1 {
 		t.Fatalf("уборки при старте не было: rollups=%d prunes=%d", rollups, prunes)
+	}
+}
+
+func TestRecorderVisiblePageSeparate(t *testing.T) {
+	store := newFakeStore()
+	r := NewRecorder(store)
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
+	reading := Event{Row: Row{TS: now, Channel: ChannelReading, WorkID: 49, EntityID: 3}, IP: "203.0.113.4", UA: "UA"}
+	runFor(t, r, ev(now, "203.0.113.4", "UA"), reading)
+	if len(store.rows) != 1 || len(store.visible) != 1 {
+		t.Fatalf("views=%d visible=%d", len(store.rows), len(store.visible))
+	}
+	if store.rows[0].Visitor != store.visible[0].Visitor || !store.rows[0].Day.Equal(store.visible[0].Day) || store.visible[0].PageNumber != 3 {
+		t.Fatalf("rows=%+v visible=%+v", store.rows, store.visible)
+	}
+}
+
+func TestRecorderVisiblePageFailureDoesNotBlock(t *testing.T) {
+	r := newRecorder(newFakeStore(), 1)
+	for i := 0; i < 3; i++ {
+		r.Record(Event{Row: Row{TS: time.Now(), Channel: ChannelReading, WorkID: 49, EntityID: 3}})
+	}
+	if r.Accepted() != 1 || r.Dropped() != 2 {
+		t.Fatalf("accepted=%d dropped=%d", r.Accepted(), r.Dropped())
 	}
 }

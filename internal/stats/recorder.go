@@ -23,6 +23,7 @@ const (
 // Store — хранилище посещаемости; *repository.StatsRepository.
 type Store interface {
 	InsertViews(ctx context.Context, rows []Row) error
+	InsertVisiblePages(ctx context.Context, rows []VisiblePageRow) error
 	DaySalt(ctx context.Context, day time.Time) ([]byte, error)
 	Rollup(ctx context.Context, today time.Time) error
 	Prune(ctx context.Context, rawBefore, saltBefore time.Time) error
@@ -120,6 +121,7 @@ func (r *Recorder) flush(ctx context.Context, batch []Event) {
 		return
 	}
 	rows := make([]Row, 0, len(batch))
+	visible := make([]VisiblePageRow, 0, len(batch))
 	for _, e := range batch {
 		row := e.Row
 		row.Day = Day(row.TS)
@@ -133,13 +135,22 @@ func (r *Recorder) flush(ctx context.Context, batch []Event) {
 			}
 			row.Visitor = v
 		}
-		rows = append(rows, row)
+		if row.Channel == ChannelReading {
+			visible = append(visible, VisiblePageRow{Day: row.Day, TS: row.TS,
+				WorkID: row.WorkID, PageNumber: int(row.EntityID), Visitor: row.Visitor})
+		} else {
+			rows = append(rows, row)
+		}
 	}
-	if len(rows) == 0 {
-		return
+	if len(rows) > 0 {
+		if err := r.store.InsertViews(ctx, rows); err != nil {
+			r.fail("запись просмотров", err)
+		}
 	}
-	if err := r.store.InsertViews(ctx, rows); err != nil {
-		r.fail("запись просмотров", err)
+	if len(visible) > 0 {
+		if err := r.store.InsertVisiblePages(ctx, visible); err != nil {
+			r.fail("запись видимых полос", err)
+		}
 	}
 }
 

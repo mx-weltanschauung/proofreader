@@ -41,6 +41,7 @@ x-prod-backend-env: &prod_backend_env
   SITE_CHANNEL_URL: ${SITE_CHANNEL_URL:-}
   SITE_AGE_RATING: ${SITE_AGE_RATING:-}
   SITE_TAGLINE: ${SITE_TAGLINE:-}
+  SITE_MONITORING_URL: ${SITE_MONITORING_URL:-}
   RESERVED_NICKNAMES: ${RESERVED_NICKNAMES:-}
 
 services:
@@ -93,6 +94,7 @@ services:
       - "443:443"
     volumes:
       - ${CONFIG_DIR:?}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CONFIG_DIR:?}/monitoring-caddy:/etc/caddy/monitoring:ro
       # Каталогом, а не файлами: на сервере без своего сертификата его нет,
       # и монтирование отсутствующего файла создало бы на его месте каталог,
       # от которого Caddy падает. Пустой каталог безвреден.

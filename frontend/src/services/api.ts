@@ -77,6 +77,8 @@ import type {
   CacheStats,
   SiteSettings,
   StatsTrafficRow,
+  VisiblePageStats,
+  StatsDownloads,
   StatsTopRow,
   StatsTopKind,
   StatsCountRow,
@@ -945,6 +947,12 @@ export const audioApi = {
 
 // Посещаемость и здоровье — только администратору.
 export const statsApi = {
+  downloads: (days: number) =>
+    api.get<StatsDownloads>('/admin/stats/downloads', { params: { days } }),
+  visiblePages: (workId: number, chapterId: number, days: number) =>
+    api.get<VisiblePageStats>('/admin/stats/visible-pages', {
+      params: { work_id: workId, chapter_id: chapterId, days },
+    }),
   traffic: (days: number) =>
     api.get<StatsTrafficRow[]>('/admin/stats/traffic', { params: { days } }),
   top: (kind: StatsTopKind, days: number) =>

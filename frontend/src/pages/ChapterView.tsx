@@ -56,6 +56,7 @@ import { ChapterEvents } from '../components/ChapterEvents';
 import { TargetNotes } from '../components/TargetNotes';
 import { useMarginNotes } from '../hooks/useMarginNotes';
 import { useReaderComments } from '../hooks/useReaderComments';
+import { useVisiblePageHit } from '../hooks/useVisiblePageHit';
 
 export const ChapterView: React.FC = () => {
   // workParam/chapterParam — сырые сегменты адреса (несут слаг); workId и
@@ -498,6 +499,11 @@ export const ChapterView: React.FC = () => {
     // упёрлось бы в его высоту.
     ready: !isLoading && pagesWithHtml.length > 0 && chapter?.id === chapterId,
   });
+  useVisiblePageHit(
+    workId,
+    visiblePage,
+    !isLoading && pagesWithHtml.length > 0 && chapter?.id === chapterId && work?.id === workId,
+  );
 
   // Цепочка получает признак сжатия панели: сжатую полоску полная цепочка
   // растянула бы обратно в две строки, ради чего её и сжимают.
@@ -647,6 +653,9 @@ export const ChapterView: React.FC = () => {
               {chapter.title}
               {chapterClosedInEffect && <ClosedBadge closure={closure} />}
             </h1>
+            {user?.role === 'administrator' && workId !== null && chapterId !== null && (
+              <Link to={`/admin/stats?work=${workId}&chapter=${chapterId}`}>Статистика полос</Link>
+            )}
             {workId != null && chapterId != null && (
               <ChapterEvents workId={workId} chapterId={chapterId} />
             )}

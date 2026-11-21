@@ -1,9 +1,13 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { StatsAdmin } from './StatsAdmin';
 import { calendarTotals } from '../../utils/statsTotals';
 import { statsApi } from '../../services/api';
+import { useSite } from '../../services/site';
+
+vi.mock('../../services/site', () => ({ useSite: vi.fn(() => ({ monitoringUrl: '' })) }));
+afterEach(() => vi.mocked(useSite).mockReturnValue({ monitoringUrl: '' } as never));
 
 vi.mock('../../services/api', () => ({
   statsApi: {
@@ -38,6 +42,8 @@ vi.mock('../../services/api', () => ({
         },
       ],
     }),
+    visiblePages: vi.fn().mockResolvedValue({ data: { collecting_since: null, pages: [] } }),
+    downloads: vi.fn().mockResolvedValue({ data: { summary: [], top: [] } }),
     referrers: vi.fn().mockResolvedValue({ data: [{ key: 'yandex.ru', views: 3, visitors: 3 }] }),
     searches: vi.fn().mockResolvedValue({
       data: {
@@ -76,6 +82,57 @@ vi.mock('../../services/api', () => ({
 }));
 
 describe('StatsAdmin', () => {
+  it('ссылку на VMUI показывает только для безопасного пути', () => {
+    vi.mocked(useSite).mockReturnValue({ monitoringUrl: '/monitoring/vmui/' } as never);
+    const view = render(
+      <MemoryRouter>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: 'Графики сервера' })).toHaveAttribute(
+      'href',
+      '/monitoring/vmui/',
+    );
+    view.unmount();
+    vi.mocked(useSite).mockReturnValue({ monitoringUrl: '//evil.example' } as never);
+    render(
+      <MemoryRouter>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('link', { name: 'Графики сервера' })).toBeNull();
+    vi.mocked(useSite).mockReturnValue({ monitoringUrl: 'javascript:alert(1)' } as never);
+    render(
+      <MemoryRouter>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('link', { name: 'Графики сервера' })).toBeNull();
+  });
+  it('запрашивает 90 дней для графика, сохраняя верхние счётчики', async () => {
+    render(
+      <MemoryRouter>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    const chart = await screen.findByRole('region', { name: 'График посещаемости' });
+    const overview = screen.getByRole('region', { name: 'Обзор' });
+    const before = within(overview).getByText(/Читатели за 30 дней/).parentElement?.textContent;
+    fireEvent.click(within(chart).getByRole('button', { name: '90 дней' }));
+    await waitFor(() => expect(statsApi.traffic).toHaveBeenCalledWith(90));
+    expect(within(overview).getByText(/Читатели за 30 дней/).parentElement?.textContent).toBe(
+      before,
+    );
+  });
+  it('открывает распределение из ссылки на главу', async () => {
+    render(
+      <MemoryRouter initialEntries={['/admin/stats?work=49&chapter=10125']}>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('region', { name: 'Видимые полосы' })).toBeInTheDocument();
+    expect(statsApi.visiblePages).toHaveBeenCalledWith(49, 10125, expect.any(Number));
+  });
   it('показывает итоги, топ со снятым, источники, нулевые запросы и здоровье', async () => {
     render(
       <MemoryRouter>

@@ -17,6 +17,7 @@ describe('сведения об экземпляре', () => {
           support_url: '',
           channel_url: 'https://example.org/news',
           age_rating: '',
+          monitoring_url: '/monitoring/vmui/',
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -24,6 +25,7 @@ describe('сведения об экземпляре', () => {
     const { result } = renderHook(() => useSite());
     await waitFor(() => expect(result.current.siteName).toBe('Тестовая'));
     expect(result.current.channelUrl).toBe('https://example.org/news');
+    expect(result.current.monitoringUrl).toBe('/monitoring/vmui/');
   });
 
   it('держат умолчание, если /api/site упал', async () => {

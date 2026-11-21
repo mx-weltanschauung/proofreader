@@ -24,6 +24,7 @@ type siteResponse struct {
 	ChannelURL      string `json:"channel_url"`
 	AgeRating       string `json:"age_rating"`
 	SiteTagline     string `json:"site_tagline"`
+	MonitoringURL   string `json:"monitoring_url"`
 }
 
 // Get допускает nil-получатель (обработчик не подключён — тесты роутера):
@@ -41,5 +42,6 @@ func (h *SiteHandler) Get(w http.ResponseWriter, r *http.Request) {
 		ChannelURL:      site.ChannelURL,
 		AgeRating:       site.AgeRating,
 		SiteTagline:     site.Tagline,
+		MonitoringURL:   site.MonitoringURL,
 	})
 }

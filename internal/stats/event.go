@@ -24,6 +24,7 @@ func CleanQuery(q string) string {
 // Каналы: откуда пришло событие.
 const (
 	ChannelSPA      = "spa"      // маячок из браузера
+	ChannelReading  = "reading"  // полоса в области чтения; отдельная таблица
 	ChannelMD       = "md"       // .md глав, томов, понятий и витрины указателя, llms.txt
 	ChannelMCP      = "mcp"      // вызов инструмента MCP
 	ChannelDownload = "download" // скачивание тома, главы, подборки
@@ -77,6 +78,15 @@ type Row struct {
 	Query    string
 	Hits     *int
 	Device   string // класс ширины окна (канал spa) или ""
+}
+
+// VisiblePageRow — полоса, появившаяся в области чтения, отдельно от просмотров.
+type VisiblePageRow struct {
+	Day        time.Time
+	TS         time.Time
+	WorkID     int64
+	PageNumber int
+	Visitor    string
 }
 
 // Event — то, что кладут в Recorder. IP и UA нужны только для отметки и в

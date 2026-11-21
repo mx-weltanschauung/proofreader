@@ -29,12 +29,69 @@
   height: 160px;
   display: block;
 }
+.stats-admin-axis-unit {
+  margin: 0.5rem 0 0.25rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+.stats-admin-chart {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.stats-admin-y-axis {
+  min-width: 2.5rem;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.stats-admin-plot {
+  min-width: 0;
+}
+.stats-admin-gridline {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.stats-admin-x-axis {
+  display: grid;
+  margin-top: 0.25rem;
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+.stats-admin-x-axis time {
+  text-align: center;
+  white-space: nowrap;
+}
 .stats-admin-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem 1rem;
   list-style: none;
   padding: 0;
+}
+.stats-admin-legend button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 0.35rem;
+  padding: 0.2rem 0.45rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.stats-admin-legend button[aria-pressed='false'] {
+  opacity: 0.45;
+}
+.stats-admin-legend button:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 .stats-swatch {
   display: inline-block;
@@ -113,4 +170,8 @@
 .stats-bar-mcp {
   fill: var(--stats-mcp);
   background: var(--stats-mcp);
+}
+.stats-bar-opds {
+  fill: var(--stats-opds);
+  background: var(--stats-opds);
 }

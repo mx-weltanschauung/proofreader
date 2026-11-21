@@ -190,7 +190,10 @@ describe('Header', () => {
       isLoading: false,
     });
     renderHeader();
-    expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute('href', '/staff');
+    expect(screen.getByRole('button', { name: 'Все разделы' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
     expect(screen.getByText('администратор')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Выйти' })).toHaveClass('btn');
     await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
@@ -247,8 +250,8 @@ describe('Header', () => {
     });
     renderHeader();
 
-    const link = await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ });
-    expect(link).toHaveAttribute('href', '/staff');
+    const link = await screen.findByRole('button', { name: /Все разделы.*Есть новые записи/ });
+    expect(link).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('3')).toBeNull();
   });
 
@@ -262,8 +265,8 @@ describe('Header', () => {
     });
     renderHeader();
 
-    const link = await screen.findByRole('link', { name: 'Все разделы' });
-    expect(link).toHaveAttribute('href', '/staff');
+    const link = await screen.findByRole('button', { name: 'Все разделы' });
+    expect(link).toHaveAttribute('aria-expanded', 'false');
     await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalled());
     expect(screen.queryByText('0')).toBeNull();
   });
@@ -278,8 +281,8 @@ describe('Header', () => {
     });
     renderHeader();
     expect(
-      await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ }),
-    ).toHaveAttribute('href', '/staff');
+      await screen.findByRole('button', { name: /Все разделы.*Есть новые записи/ }),
+    ).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('2')).toBeNull();
   });
 
@@ -294,7 +297,10 @@ describe('Header', () => {
     });
     renderHeader();
     await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalled());
-    expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute('href', '/staff');
+    expect(screen.getByRole('button', { name: 'Все разделы' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it('снимает индикатор после ошибки обновления комментариев', async () => {
@@ -308,13 +314,13 @@ describe('Header', () => {
       isLoading: false,
     });
     renderHeader();
-    await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ });
+    await screen.findByRole('button', { name: /Все разделы.*Есть новые записи/ });
     await act(async () => {
       window.dispatchEvent(new Event('reader-comments-changed'));
     });
     await waitFor(() => expect(readerCommentsApi.pendingCount).toHaveBeenCalledTimes(2));
     await waitFor(() =>
-      expect(screen.getByRole('link', { name: 'Все разделы' })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Все разделы' })).toBeInTheDocument(),
     );
   });
 
@@ -329,13 +335,13 @@ describe('Header', () => {
       isLoading: false,
     });
     renderHeader();
-    await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ });
+    await screen.findByRole('button', { name: /Все разделы.*Есть новые записи/ });
     await act(async () => {
       window.dispatchEvent(new Event('feedback-changed'));
     });
     await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalledTimes(2));
     await waitFor(() =>
-      expect(screen.getByRole('link', { name: 'Все разделы' })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Все разделы' })).toBeInTheDocument(),
     );
   });
 
@@ -350,14 +356,14 @@ describe('Header', () => {
       isLoading: false,
     });
     renderHeader();
-    await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ });
+    await screen.findByRole('button', { name: /Все разделы.*Есть новые записи/ });
     act(() =>
       useAuth.setState({
         user: { id: 2, email: 'second@proofreader.local', role: 'administrator' },
       }),
     );
     await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole('link', { name: 'Все разделы' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Все разделы' })).toBeInTheDocument();
   });
 
   it('редкие административные ссылки убирает из шапки', async () => {
@@ -370,7 +376,10 @@ describe('Header', () => {
     renderHeader();
     expect(screen.queryByRole('link', { name: 'Кэш' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Настройки' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute('href', '/staff');
+    expect(screen.getByRole('button', { name: 'Все разделы' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
     expect(screen.getByRole('link', { name: 'Статистика' })).toHaveAttribute(
       'href',
       '/admin/stats',
@@ -456,7 +465,7 @@ describe('Header', () => {
         within(staff)
           .getAllByRole('link')
           .map((a) => a.getAttribute('href')),
-      ).toEqual(['/suggestions/queue', '/admin/readers', '/admin/stats', '/staff']);
+      ).toEqual(['/suggestions/queue', '/admin/readers', '/admin/stats']);
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
     });
 
@@ -468,9 +477,101 @@ describe('Header', () => {
         within(staff)
           .getAllByRole('link')
           .map((a) => a.getAttribute('href')),
-      ).toEqual(['/suggestions/queue', '/staff']);
+      ).toEqual(['/suggestions/queue']);
       expect(within(staff).queryByText('Управление')).toBeNull();
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
+    });
+
+    it('показывает сгруппированные ссылки при наведении и скрывает после ухода указателя', async () => {
+      signIn(admin);
+      renderHeader();
+      const trigger = screen.getByRole('button', { name: /Все разделы/ });
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByRole('group', { name: 'Все служебные разделы' })).toBeNull();
+
+      await userEvent.hover(trigger);
+      const menu = screen.getByRole('group', { name: 'Все служебные разделы' });
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      expect(within(menu).getByRole('link', { name: 'Закрытия' })).toHaveAttribute(
+        'href',
+        '/admin/closures',
+      );
+      expect(within(menu).getByRole('link', { name: 'Обращения' })).toHaveAttribute(
+        'href',
+        '/admin/feedback',
+      );
+      expect(
+        within(menu).getByRole('link', { name: 'Открыть страницу всех разделов' }),
+      ).toHaveAttribute('href', '/staff');
+
+      await userEvent.unhover(trigger);
+      await waitFor(() =>
+        expect(screen.queryByRole('group', { name: 'Все служебные разделы' })).toBeNull(),
+      );
+    });
+
+    it('не закрывает меню, пока указатель переходит через зазор к панели', async () => {
+      signIn(admin);
+      renderHeader();
+      const trigger = screen.getByRole('button', { name: /Все разделы/ });
+      await userEvent.hover(trigger);
+      const menu = screen.getByRole('group', { name: 'Все служебные разделы' });
+      await userEvent.unhover(trigger);
+      expect(menu).toBeInTheDocument();
+      await userEvent.hover(menu);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(menu).toBeInTheDocument();
+    });
+
+    it('открывает меню нажатием и клавиатурой, Escape закрывает его', async () => {
+      signIn(admin);
+      renderHeader();
+      const trigger = screen.getByRole('button', { name: /Все разделы/ });
+      await userEvent.click(trigger);
+      expect(screen.getByRole('group', { name: 'Все служебные разделы' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      await act(async () => {
+        trigger.blur();
+        trigger.focus();
+      });
+      expect(screen.getByRole('group', { name: 'Все служебные разделы' })).toBeInTheDocument();
+    });
+
+    it('повторное нажатие на телефоне закрывает меню', async () => {
+      signIn(admin);
+      renderHeader();
+      const trigger = screen.getByRole('button', { name: /Все разделы/ });
+      await userEvent.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      await userEvent.click(trigger);
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.queryByRole('group', { name: 'Все служебные разделы' })).toBeNull();
+    });
+
+    it('закрывает меню при смене сотрудника', async () => {
+      signIn(admin);
+      renderHeader();
+      await userEvent.click(screen.getByRole('button', { name: /Все разделы/ }));
+      act(() => useAuth.setState({ user: editor }));
+      expect(screen.getByRole('button', { name: /Все разделы/ })).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      expect(screen.queryByRole('group', { name: 'Все служебные разделы' })).toBeNull();
+    });
+
+    it('редактору показывает только разрешённые ссылки', async () => {
+      signIn(editor);
+      renderHeader();
+      await userEvent.hover(screen.getByRole('button', { name: /Все разделы/ }));
+      const menu = screen.getByRole('group', { name: 'Все служебные разделы' });
+      expect(within(menu).getByRole('link', { name: 'Комментарии' })).toHaveAttribute(
+        'href',
+        '/reader-comments/review',
+      );
+      expect(within(menu).queryByRole('link', { name: 'Закрытия' })).toBeNull();
+      expect(within(menu).queryByRole('link', { name: 'Читатели' })).toBeNull();
     });
   });
 
@@ -492,7 +593,7 @@ describe('Header', () => {
         isLoading: false,
       });
       renderHeader('/documents/review');
-      expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute(
+      expect(screen.getByRole('button', { name: 'Все разделы' })).toHaveAttribute(
         'aria-current',
         'page',
       );
@@ -512,7 +613,9 @@ describe('Header', () => {
         'aria-current',
         'page',
       );
-      expect(screen.getByRole('link', { name: 'Все разделы' })).not.toHaveAttribute('aria-current');
+      expect(screen.getByRole('button', { name: 'Все разделы' })).not.toHaveAttribute(
+        'aria-current',
+      );
       await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
     });
 

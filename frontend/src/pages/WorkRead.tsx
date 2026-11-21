@@ -9,6 +9,7 @@ import { useMarginNotes } from '../hooks/useMarginNotes';
 import { ReadingStreamBar } from '../components/ReadingStreamBar';
 import { useReadingStream } from '../hooks/useReadingStream';
 import { useVisiblePage } from '../hooks/useVisiblePage';
+import { useVisiblePageHit } from '../hooks/useVisiblePageHit';
 import { useInfiniteSentinel } from '../hooks/useInfiniteSentinel';
 import { chapterLevelsForPage } from '../hooks/useChaptersForPage';
 import { citationPlace } from '../utils/citationPlace';
@@ -240,6 +241,14 @@ export const WorkRead: React.FC = () => {
   const loadedPages = useMemo(
     () => stream.windows.flatMap((w) => w.pages.map((p) => p.page_number)),
     [stream.windows],
+  );
+  useVisiblePageHit(
+    valid ? numericWorkId : null,
+    visiblePage,
+    valid &&
+      work?.id === numericWorkId &&
+      visiblePage !== null &&
+      loadedPages.includes(visiblePage),
   );
 
   useInfiniteSentinel(sentinelRef, hasMore, loadMore, `0px 0px ${PREFETCH_MARGIN_PX}px 0px`);
