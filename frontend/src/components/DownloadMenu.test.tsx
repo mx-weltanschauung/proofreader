@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DownloadMenu } from './DownloadMenu';
 
@@ -48,6 +48,66 @@ describe('DownloadMenu', () => {
   it('downloads through a plain link, not a script', async () => {
     await open();
     expect(screen.getByRole('menuitem', { name: /EPUB/ })).toHaveAttribute('download');
+  });
+
+  it('shows progress while preparing PDF, then saves it with the server filename', async () => {
+    let finishRequest!: (response: Response) => void;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          finishRequest = resolve;
+        }),
+    );
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:pdf'), revokeObjectURL: vi.fn() });
+    const saved: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      saved.push(this.download);
+    });
+
+    try {
+      const user = await open();
+      await user.click(screen.getByRole('menuitem', { name: /PDF/ }));
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/works/47/download?format=pdf',
+        expect.anything(),
+      );
+      expect(screen.getByRole('status')).toHaveTextContent('Готовим PDF');
+      expect(screen.getByRole('button', { name: 'Скачать' })).toBeDisabled();
+      expect(saved).toEqual([]);
+
+      await act(async () => {
+        finishRequest(
+          new Response('%PDF', {
+            headers: { 'Content-Disposition': 'attachment; filename="volume-47.pdf"' },
+          }),
+        );
+      });
+      await vi.waitFor(() => expect(saved).toEqual(['volume-47.pdf']));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Скачать' })).toBeEnabled();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('clears PDF progress and reports a server error', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Не удалось', { status: 500 }));
+    try {
+      const user = await open();
+      await user.click(screen.getByRole('menuitem', { name: /PDF/ }));
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось скачать');
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Скачать' })).toBeEnabled();
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it('explains what each format is for', async () => {

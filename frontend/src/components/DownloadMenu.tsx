@@ -56,6 +56,7 @@ export function DownloadMenu({
 }: DownloadMenuProps) {
   const [open, setOpen] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [loadingFormat, setLoadingFormat] = useState<string | null>(null);
   const [lastFormat, setLastFormat] = useState<string | null>(readRememberedFormat);
   const root = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLUListElement>(null);
@@ -110,15 +111,18 @@ export function DownloadMenu({
     setOpen(false);
   };
 
-  /** Скачивание с заголовком Authorization: ссылка `download` его не несёт. */
-  const downloadWithToken = async (url: string, fallbackName: string) => {
+  /** PDF готовится на сервере; закрытым работам также нужен заголовок Authorization. */
+  const downloadPrepared = async (url: string, fallbackName: string, format: string) => {
     setFailed(false);
+    setLoadingFormat(format);
     try {
       let token: string | null = null;
-      try {
-        token = localStorage.getItem('token');
-      } catch {
-        // без токена сервер ответит отказом — это и покажем
+      if (withToken) {
+        try {
+          token = localStorage.getItem('token');
+        } catch {
+          // без токена сервер ответит отказом — это и покажем
+        }
       }
       const response = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -136,13 +140,15 @@ export function DownloadMenu({
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     } catch {
       setFailed(true);
+    } finally {
+      setLoadingFormat(null);
     }
   };
 
-  const onItemClick = (event: React.MouseEvent, url: string, name: string) => {
-    if (!withToken) return;
+  const onItemClick = (event: React.MouseEvent, url: string, name: string, format: string) => {
+    if (!withToken && format !== 'pdf') return;
     event.preventDefault();
-    void downloadWithToken(url, name);
+    void downloadPrepared(url, name, format);
   };
 
   return (
@@ -153,6 +159,7 @@ export function DownloadMenu({
         className="download-menu__toggle"
         aria-expanded={open}
         aria-haspopup="menu"
+        disabled={loadingFormat !== null}
         onClick={() => setOpen((v) => !v)}
       >
         {label}
@@ -168,6 +175,12 @@ export function DownloadMenu({
         </svg>
       </button>
       <FeatureHint id="download" anchorRef={toggle} />
+      {loadingFormat && (
+        <span role="status" className="download-menu__progress">
+          <span className="download-menu__spinner" aria-hidden="true" />
+          {loadingFormat === 'pdf' ? 'Готовим PDF…' : 'Скачиваем…'}
+        </span>
+      )}
 
       {open && (
         <ul className="download-menu__list" role="menu" ref={list}>
@@ -190,6 +203,7 @@ export function DownloadMenu({
                       e,
                       `${API_BASE_URL}${href}?format=${format.id}`,
                       `book.${format.id}`,
+                      format.id,
                     );
                     remember(format.id);
                   }}
@@ -208,7 +222,7 @@ export function DownloadMenu({
                 href={`${API_BASE_URL}${href}?format=m3u`}
                 download
                 onClick={(e) => {
-                  onItemClick(e, `${API_BASE_URL}${href}?format=m3u`, 'playlist.m3u');
+                  onItemClick(e, `${API_BASE_URL}${href}?format=m3u`, 'playlist.m3u', 'm3u');
                   setOpen(false);
                 }}
               >
