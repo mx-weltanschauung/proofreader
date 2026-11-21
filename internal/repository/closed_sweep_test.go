@@ -727,6 +727,7 @@ func closedSweepSilent() map[string]string {
 		"/api/admin/settings":                                     admin,
 		"/api/cache/stats":                                        admin,
 		"/api/admin/closures":                                     admin,
+		"/api/admin/closures/active":                              admin,
 		"/api/works/{workId}/chapters/{id}/closed-plan":           admin,
 		"/api/export":                                             admin,
 		"/api/feedback":                                           admin,

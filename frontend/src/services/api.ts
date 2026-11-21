@@ -35,6 +35,7 @@ import type {
   DocumentCut,
   Chapter,
   ChapterClosedPlan,
+  ActiveClosure,
   ClosureEntry,
   ClosureKind,
   ClosureLatest,
@@ -875,14 +876,16 @@ export const readerCommentsApi = {
   toNote: (id: number) => api.post<MarginNote>(`/reader-comments/${id}/to-note`, {}, KEEP_PAGE),
 };
 
-// Журнал закрытий: последняя запись по записи (сотрудник) и весь журнал
-// (администратор).
+// Журнал и собственные действующие ограничения.
 export const closuresApi = {
   latest: (kind: ClosureKind, id: number, scope: 'full' | 'scans' = 'full') =>
     api.get<ClosureLatest>('/closures/latest', { params: { kind, id, scope } }),
 
   list: (params?: { limit?: number; offset?: number }) =>
     api.get<ClosureEntry[]>('/admin/closures', { params }),
+
+  active: (params?: { limit?: number; offset?: number }) =>
+    api.get<ActiveClosure[]>('/admin/closures/active', { params }),
 };
 
 // Файловый кэш готовых глав. Сброс главы доступен редактору, сводка и

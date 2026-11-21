@@ -3,13 +3,203 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"proofreader/internal/models"
 )
+
+func TestListActiveClosuresDirectFlags(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	closed := NewClosedRepository(pool)
+	works := NewWorkRepository(pool)
+	editions := NewEditionRepository(pool)
+	journalRepo := NewJournalRepository(pool)
+	chapters := NewChapterRepository(pool)
+	actor := models.ClosureActor{Name: "Проверяющий"}
+
+	edition := &models.Edition{Title: "Закрытое собрание", Slug: "closed-edition"}
+	if err := editions.Create(ctx, edition, models.ClosureActor{}, ""); err != nil {
+		t.Fatal(err)
+	}
+	work := newVolume(t, works, "Дважды ограниченный том")
+	if _, err := pool.Exec(ctx, `UPDATE works SET edition_id = $2 WHERE id = $1`, work.ID, edition.ID); err != nil {
+		t.Fatal(err)
+	}
+	childWork := newChild(t, works, work, "Служебная работа без собственного ограничения")
+	journal := newJournal(t, journalRepo, "test-journal")
+	_, issueWork := newIssue(t, journalRepo, journal, 1925, 1, 1)
+	root := newChapter(t, chapters, work.ID, nil, "Корневая глава", 1, 10, 1)
+	childChapter := newChapter(t, chapters, work.ID, &root.ID, "Подглава", 2, 3, 1)
+	missingLog := newVolume(t, works, "Флаг без истории")
+
+	for _, op := range []struct {
+		name string
+		call func() error
+	}{
+		{"edition", func() error {
+			_, err := closed.SetEditionClosed(ctx, edition.ID, true, actor, "издание")
+			return err
+		}},
+		{"work", func() error { _, err := closed.SetWorkClosed(ctx, work.ID, true, actor, "том"); return err }},
+		{"work scans", func() error {
+			_, err := closed.SetWorkScansHidden(ctx, work.ID, true, actor, "сканы тома")
+			return err
+		}},
+		{"journal", func() error {
+			_, err := closed.SetJournalClosed(ctx, journal.ID, true, actor, "журнал")
+			return err
+		}},
+		{"chapter", func() error { _, err := closed.SetChapterClosed(ctx, root.ID, true, actor, "глава"); return err }},
+		{"chapter scans", func() error {
+			_, err := closed.SetChapterScansHidden(ctx, root.ID, true, actor, "сканы главы")
+			return err
+		}},
+		{"child chapter", func() error {
+			_, err := closed.SetChapterClosed(ctx, childChapter.ID, true, actor, "подглава")
+			return err
+		}},
+	} {
+		if err := op.call(); err != nil {
+			t.Fatalf("%s: %v", op.name, err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE works SET closed = true WHERE id = $1`, missingLog.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := closed.ListActiveClosures(ctx, 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey := make(map[string]models.ActiveClosure)
+	for _, row := range rows {
+		byKey[fmt.Sprintf("%s:%d:%s", row.Kind, row.EntityID, row.Scope)] = row
+	}
+	if len(rows) != 8 || len(byKey) != 8 {
+		t.Fatalf("ожидали 8 собственных ограничений, получили %+v", rows)
+	}
+	if _, ok := byKey[fmt.Sprintf("work:%d:full", childWork.ID)]; ok {
+		t.Fatal("унаследованная работа попала в список")
+	}
+	if _, ok := byKey[fmt.Sprintf("work:%d:full", issueWork.ID)]; ok {
+		t.Fatal("номер закрытого журнала попал в список")
+	}
+	if got := byKey[fmt.Sprintf("work:%d:full", work.ID)]; !got.Inherited || got.Reason != "том" || got.ActorName != actor.Name || got.At == nil {
+		t.Fatalf("собственное и унаследованное закрытие тома: %+v", got)
+	}
+	if got := byKey[fmt.Sprintf("work:%d:scans", work.ID)]; got.Inherited || got.Reason != "сканы тома" {
+		t.Fatalf("сканы независимы от полного закрытия издания: %+v", got)
+	}
+	if got := byKey[fmt.Sprintf("journal:%d:full", journal.ID)]; got.Slug == nil || *got.Slug != journal.Slug {
+		t.Fatalf("журнал без адресного slug: %+v", got)
+	}
+	if got := byKey[fmt.Sprintf("chapter:%d:full", childChapter.ID)]; !got.Inherited || got.WorkID == nil || *got.WorkID != work.ID {
+		t.Fatalf("закрытая подглава: %+v", got)
+	}
+	if got := byKey[fmt.Sprintf("work:%d:full", missingLog.ID)]; got.At != nil || got.Reason != "" || got.ActorName != "" {
+		t.Fatalf("флаг без записи в журнале потерян или дополнен чужой записью: %+v", got)
+	}
+}
+
+func TestListActiveClosuresStablePaging(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	closed := NewClosedRepository(pool)
+	works := NewWorkRepository(pool)
+	for i := 0; i < 5; i++ {
+		work := newVolume(t, works, fmt.Sprintf("Том %d", i))
+		if _, err := closed.SetWorkClosed(ctx, work.ID, true, models.ClosureActor{Name: "тест"}, "одна дата"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE closures SET created_at = '2026-11-21T12:00:00Z'`); err != nil {
+		t.Fatal(err)
+	}
+	first, err := closed.ListActiveClosures(ctx, 2, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := closed.ListActiveClosures(ctx, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := closed.ListActiveClosures(ctx, 2, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[int64]bool{}
+	for _, row := range append(append(first, second...), third...) {
+		if ids[row.EntityID] {
+			t.Fatalf("повторная строка на границе страниц: %d", row.EntityID)
+		}
+		ids[row.EntityID] = true
+	}
+	if len(first) != 2 || len(second) != 2 || len(third) != 1 || len(ids) != 5 {
+		t.Fatalf("страницы 2/2/1: %d/%d/%d, id=%v", len(first), len(second), len(third), ids)
+	}
+}
+
+func TestListActiveClosuresDoesNotInheritJournalThroughParentWork(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	closed := NewClosedRepository(pool)
+	works := NewWorkRepository(pool)
+	journalRepo := NewJournalRepository(pool)
+	journal := newJournal(t, journalRepo, "closed-parent-journal")
+	_, issue := newIssue(t, journalRepo, journal, 1925, 1, 1)
+	child := newChild(t, works, issue, "Вступление")
+	actor := models.ClosureActor{Name: "test"}
+	if _, err := closed.SetJournalClosed(ctx, journal.ID, true, actor, "журнал"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetWorkClosed(ctx, child.ID, true, actor, "работа"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := closed.ListActiveClosures(ctx, 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.Kind == "work" && row.EntityID == child.ID && row.Scope == "full" {
+			if row.Inherited {
+				t.Fatalf("закрытый журнал родителя не наследуется служебной работой: %+v", row)
+			}
+			return
+		}
+	}
+	t.Fatal("собственное закрытие дочерней работы отсутствует")
+}
+
+func TestListActiveClosuresHandlesChapterCycle(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	closed := NewClosedRepository(pool)
+	chapters := NewChapterRepository(pool)
+	work := newVolume(t, NewWorkRepository(pool), "Том с циклом глав")
+	a := newChapter(t, chapters, work.ID, nil, "Глава A", 1, 10, 1)
+	b := newChapter(t, chapters, work.ID, &a.ID, "Глава B", 2, 3, 1)
+	if _, err := pool.Exec(ctx, `UPDATE chapters SET parent_id = $2 WHERE id = $1`, a.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetChapterClosed(ctx, a.ID, true, models.ClosureActor{Name: "test"}, "тест"); err != nil {
+		t.Fatal(err)
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	rows, err := closed.ListActiveClosures(queryCtx, 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Inherited {
+		t.Fatalf("собственный флаг не должен наследоваться через цикл: %+v", rows)
+	}
+}
 
 // closedFixture — работы всех путей закрытости разом: имена говорят, что
 // ждёт от них work_closed_by.

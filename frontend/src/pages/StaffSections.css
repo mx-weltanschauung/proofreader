@@ -1,0 +1,49 @@
+.staff-sections {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 2.5rem;
+}
+
+.staff-sections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1.5rem;
+}
+
+.staff-sections section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.8rem;
+}
+
+.staff-sections h2 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+}
+
+.staff-sections section a {
+  width: fit-content;
+}
+
+.staff-sections section a:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: 3px;
+}
+
+.staff-sections-count {
+  display: inline-block;
+  padding: 0 0.35rem;
+  border-radius: 0.6rem;
+  background: var(--color-accent);
+  color: var(--color-accent-on);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 520px) {
+  .staff-sections-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

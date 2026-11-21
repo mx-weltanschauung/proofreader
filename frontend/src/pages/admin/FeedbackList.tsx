@@ -63,6 +63,7 @@ export const FeedbackList: React.FC = () => {
     const handled = letter.handled_at === null;
     try {
       await feedbackApi.setHandled(letter.id, handled);
+      window.dispatchEvent(new Event('feedback-changed'));
       toast.success(handled ? 'Помечено разобранным' : 'Возвращено в новые');
       await load();
     } catch (err: unknown) {
@@ -75,6 +76,7 @@ export const FeedbackList: React.FC = () => {
 
     try {
       await feedbackApi.remove(letter.id);
+      window.dispatchEvent(new Event('feedback-changed'));
       toast.success('Обращение удалено');
       await load();
     } catch (err: unknown) {

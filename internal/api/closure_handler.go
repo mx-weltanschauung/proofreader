@@ -84,23 +84,9 @@ func (h *ClosedHandler) Latest(w http.ResponseWriter, r *http.Request) {
 
 // List — журнал закрытий целиком, новые сверху (администратор).
 func (h *ClosedHandler) List(w http.ResponseWriter, r *http.Request) {
-	limit, offset := defaultClosuresLimit, 0
-	q := r.URL.Query()
-	if v := q.Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 {
-			writeError(w, http.StatusBadRequest, "Неверный limit")
-			return
-		}
-		limit = min(n, maxClosuresLimit)
-	}
-	if v := q.Get("offset"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 {
-			writeError(w, http.StatusBadRequest, "Неверный offset")
-			return
-		}
-		offset = n
+	limit, offset, ok := closurePage(w, r)
+	if !ok {
+		return
 	}
 	if h.log == nil {
 		writeError(w, http.StatusInternalServerError, "Журнал не подключён")
@@ -115,6 +101,49 @@ func (h *ClosedHandler) List(w http.ResponseWriter, r *http.Request) {
 		rows = []models.Closure{}
 	}
 	writeJSONStatus(w, http.StatusOK, rows)
+}
+
+// Active — собственные действующие ограничения, включая скрытие сканов.
+func (h *ClosedHandler) Active(w http.ResponseWriter, r *http.Request) {
+	limit, offset, ok := closurePage(w, r)
+	if !ok {
+		return
+	}
+	if h.log == nil {
+		writeError(w, http.StatusInternalServerError, "Журнал не подключён")
+		return
+	}
+	rows, err := h.log.ListActiveClosures(r.Context(), limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось прочитать действующие закрытия")
+		return
+	}
+	if rows == nil {
+		rows = []models.ActiveClosure{}
+	}
+	writeJSONStatus(w, http.StatusOK, rows)
+}
+
+func closurePage(w http.ResponseWriter, r *http.Request) (int, int, bool) {
+	limit, offset := defaultClosuresLimit, 0
+	q := r.URL.Query()
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			writeError(w, http.StatusBadRequest, "Неверный limit")
+			return 0, 0, false
+		}
+		limit = min(n, maxClosuresLimit)
+	}
+	if v := q.Get("offset"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "Неверный offset")
+			return 0, 0, false
+		}
+		offset = n
+	}
+	return limit, offset, true
 }
 
 type sharedPage struct {

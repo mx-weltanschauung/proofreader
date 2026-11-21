@@ -11,30 +11,37 @@ import { SearchTrigger } from './SearchTrigger';
 import { useSite } from '../services/site';
 import './Header.css';
 
-// Самый длинный адрес шапки, накрывающий текущий путь: «Разборы на проверку»
-// (/documents/review) лежат внутри «Разборов» (/documents), и префиксное
-// сравнение NavLink подсветило бы обе ссылки разом.
-const HEADER_PATHS = [
+const DIRECT_PATHS = [
   '/concepts',
   '/collections',
   '/documents',
   '/suggestions/queue',
+  '/admin/readers',
+  '/admin/stats',
+  '/staff',
+];
+
+// Служебные страницы, чьи ссылки находятся за «Все разделы». Скрытые
+// /documents/review должны перекрыть публичный /documents.
+const STAFF_SECTION_PATHS = [
   '/documents/review',
   '/reader-comments/review',
+  '/mine/notes',
   '/mine/comments',
   '/admin/audio',
   '/admin/users',
-  '/admin/readers',
   '/admin/feedback',
   '/admin/cache',
   '/admin/settings',
   '/admin/closures',
-  '/admin/stats',
 ];
 
 function currentHeaderPath(pathname: string): string | null {
+  if (STAFF_SECTION_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
+    return '/staff';
+  }
   let best: string | null = null;
-  for (const path of HEADER_PATHS) {
+  for (const path of DIRECT_PATHS) {
     const covers = pathname === path || pathname.startsWith(`${path}/`);
     if (covers && (best === null || path.length > best.length)) best = path;
   }
@@ -68,13 +75,17 @@ export const Header: React.FC = () => {
   useEffect(() => {
     if (!staff) return;
     let alive = true;
+    let request = 0;
     const load = () => {
+      const current = ++request;
       void readerCommentsApi
         .pendingCount()
         .then((r) => {
-          if (alive) setCommentCount(r.data.count);
+          if (alive && current === request) setCommentCount(r.data.count);
         })
-        .catch(() => {});
+        .catch(() => {
+          if (alive && current === request) setCommentCount(0);
+        });
     };
     load();
     window.addEventListener('reader-comments-changed', load);
@@ -82,19 +93,34 @@ export const Header: React.FC = () => {
       alive = false;
       window.removeEventListener('reader-comments-changed', load);
     };
-  }, [staff]);
+  }, [staff, user?.id]);
 
   useEffect(() => {
     if (!admin) {
       return;
     }
+    let alive = true;
+    let request = 0;
     // Счётчик — украшение: молчаливый отказ лучше сообщения об ошибке в шапке
     // на каждой странице.
-    void feedbackApi
-      .unreadCount()
-      .then((response) => setUnreadFeedback(response.data.count))
-      .catch(() => setUnreadFeedback(0));
-  }, [admin]);
+    const load = () => {
+      const current = ++request;
+      void feedbackApi
+        .unreadCount()
+        .then((response) => {
+          if (alive && current === request) setUnreadFeedback(response.data.count);
+        })
+        .catch(() => {
+          if (alive && current === request) setUnreadFeedback(0);
+        });
+    };
+    load();
+    window.addEventListener('feedback-changed', load);
+    return () => {
+      alive = false;
+      window.removeEventListener('feedback-changed', load);
+    };
+  }, [admin, user?.id]);
 
   // Значок очереди — только у того, кто её вообще может разобрать. Счётчик
   // читает total из того же запроса, которым открывается сама очередь
@@ -104,6 +130,8 @@ export const Header: React.FC = () => {
   if (prevUserId !== (user?.id ?? null)) {
     setPrevUserId(user?.id ?? null);
     setPendingCount(null);
+    setCommentCount(0);
+    setUnreadFeedback(0);
   }
 
   useEffect(() => {
@@ -194,65 +222,35 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Служебная полоса — вторым рядом той же липкой шапки, а не выпадающим
-          меню: в читальне ничего скрытого за иконками нет. Основной ряд у
-          сотрудника тот же, что у читателя, — десять ссылок в одном ряду
-          переносились на вторую строку и выдавливали поиск под «Aa». */}
+      {/* Частые служебные разделы остаются в шапке; остальные — на странице
+          «Все разделы». Публичная навигация у сотрудника та же, что у читателя. */}
       {canEdit(user) && (
         <nav className="header-staff" aria-label="Служебное">
           <div className="header-staff-content">
-            <div className="header-staff-group">
-              <span className="header-staff-label">Очередь</span>
-              <HeaderLink to="/suggestions/queue" pathname={location.pathname}>
-                Предложения
-                {pendingCount !== null && pendingCount > 0 && (
-                  <span className="header-badge">{pendingCount}</span>
-                )}
-              </HeaderLink>
-              <HeaderLink to="/documents/review" pathname={location.pathname}>
-                Разборы на проверку
-              </HeaderLink>
-              <HeaderLink to="/reader-comments/review" pathname={location.pathname}>
-                Комментарии{' '}
-                {commentCount > 0 && <span className="header-badge">{commentCount}</span>}
-              </HeaderLink>
-              <HeaderLink to="/admin/audio" pathname={location.pathname}>
-                Озвучка
-              </HeaderLink>
-              <HeaderLink to="/mine/notes" pathname={location.pathname}>
-                Заметки
-              </HeaderLink>
-              <HeaderLink to="/mine/comments" pathname={location.pathname}>
-                Мои комментарии
-              </HeaderLink>
-            </div>
+            <HeaderLink to="/suggestions/queue" pathname={location.pathname}>
+              Предложения
+              {pendingCount !== null && pendingCount > 0 && (
+                <span className="header-badge">{pendingCount}</span>
+              )}
+            </HeaderLink>
             {admin && (
-              <div className="header-staff-group">
-                <span className="header-staff-label">Управление</span>
-                <HeaderLink to="/admin/users" pathname={location.pathname}>
-                  Пользователи
-                </HeaderLink>
+              <>
                 <HeaderLink to="/admin/readers" pathname={location.pathname}>
                   Читатели
-                </HeaderLink>
-                <HeaderLink to="/admin/feedback" pathname={location.pathname}>
-                  Обращения
-                  {unreadFeedback > 0 && <span className="header-badge">{unreadFeedback}</span>}
-                </HeaderLink>
-                <HeaderLink to="/admin/cache" pathname={location.pathname}>
-                  Кэш
-                </HeaderLink>
-                <HeaderLink to="/admin/settings" pathname={location.pathname}>
-                  Настройки
-                </HeaderLink>
-                <HeaderLink to="/admin/closures" pathname={location.pathname}>
-                  Закрытия
                 </HeaderLink>
                 <HeaderLink to="/admin/stats" pathname={location.pathname}>
                   Статистика
                 </HeaderLink>
-              </div>
+              </>
             )}
+            <HeaderLink to="/staff" pathname={location.pathname}>
+              Все разделы
+              {(commentCount > 0 || (admin && unreadFeedback > 0)) && (
+                <span className="header-staff-dot">
+                  <span className="visually-hidden">Есть новые записи</span>
+                </span>
+              )}
+            </HeaderLink>
           </div>
         </nav>
       )}
