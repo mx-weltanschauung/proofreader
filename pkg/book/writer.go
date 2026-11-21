@@ -22,6 +22,7 @@ var writers = map[string]Writer{
 	"html": HTMLWriter{},
 	"epub": EPUBWriter{},
 	"fb2":  FB2Writer{},
+	"pdf":  PDFWriter{},
 }
 
 // ForFormat отдаёт писателя по имени формата из запроса.

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { DownloadMenu } from './DownloadMenu';
 
@@ -18,10 +18,10 @@ describe('DownloadMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  it('offers all four formats', async () => {
+  it('offers all five formats', async () => {
     await open();
     const menu = screen.getByRole('menu');
-    for (const name of [/EPUB/, /FB2/, /Markdown/, /HTML/]) {
+    for (const name of [/EPUB/, /FB2/, /PDF/, /Markdown/, /HTML/]) {
       expect(screen.getByRole('menuitem', { name })).toBeInTheDocument();
     }
     expect(menu).toBeInTheDocument();
@@ -37,6 +37,10 @@ describe('DownloadMenu', () => {
       'href',
       '/api/works/47/download?format=fb2',
     );
+    expect(screen.getByRole('menuitem', { name: /PDF/ })).toHaveAttribute(
+      'href',
+      '/api/works/47/download?format=pdf',
+    );
   });
 
   // Скачивание идёт обычной ссылкой: браузер сам покажет прогресс и возьмёт
@@ -44,6 +48,66 @@ describe('DownloadMenu', () => {
   it('downloads through a plain link, not a script', async () => {
     await open();
     expect(screen.getByRole('menuitem', { name: /EPUB/ })).toHaveAttribute('download');
+  });
+
+  it('shows progress while preparing PDF, then saves it with the server filename', async () => {
+    let finishRequest!: (response: Response) => void;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          finishRequest = resolve;
+        }),
+    );
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:pdf'), revokeObjectURL: vi.fn() });
+    const saved: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      saved.push(this.download);
+    });
+
+    try {
+      const user = await open();
+      await user.click(screen.getByRole('menuitem', { name: /PDF/ }));
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/works/47/download?format=pdf',
+        expect.anything(),
+      );
+      expect(screen.getByRole('status')).toHaveTextContent('Готовим PDF');
+      expect(screen.getByRole('button', { name: 'Скачать' })).toBeDisabled();
+      expect(saved).toEqual([]);
+
+      await act(async () => {
+        finishRequest(
+          new Response('%PDF', {
+            headers: { 'Content-Disposition': 'attachment; filename="volume-47.pdf"' },
+          }),
+        );
+      });
+      await vi.waitFor(() => expect(saved).toEqual(['volume-47.pdf']));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Скачать' })).toBeEnabled();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('clears PDF progress and reports a server error', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Не удалось', { status: 500 }));
+    try {
+      const user = await open();
+      await user.click(screen.getByRole('menuitem', { name: /PDF/ }));
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось скачать');
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Скачать' })).toBeEnabled();
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it('explains what each format is for', async () => {
@@ -92,13 +156,13 @@ describe('DownloadMenu', () => {
   });
 
   describe('звук', () => {
-    it('с audio даёт пятый пункт — плейлист .m3u', async () => {
+    it('с audio даёт шестой пункт — плейлист .m3u', async () => {
       render(<DownloadMenu href="/api/works/4/download" audio />);
       await userEvent.click(screen.getByRole('button', { name: /Скачать/ }));
       const m3u = screen.getByRole('menuitem', { name: /Аудио — плейлист \.m3u/ });
       expect(m3u).toHaveAttribute('href', '/api/works/4/download?format=m3u');
       expect(m3u).toHaveTextContent('для VLC и других плееров');
-      expect(screen.getAllByRole('menuitem')).toHaveLength(5);
+      expect(screen.getAllByRole('menuitem')).toHaveLength(6);
     });
 
     // Спека: запоминание формата на плейлист не распространяется — иначе

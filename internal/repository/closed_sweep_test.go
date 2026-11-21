@@ -688,7 +688,7 @@ func closedSweepQueries(f *closedSweep) map[string][]string {
 		searchPages = append(searchPages, "q="+q+"&work_id="+itoa(w))
 	}
 	all := strings.Join([]string{itoa(f.open), itoa(f.self), itoa(f.front), itoa(f.edVol), itoa(f.issue), itoa(f.ch.work)}, ",")
-	downloads := []string{"format=md", "format=html", "format=fb2", "format=m3u"}
+	downloads := []string{"format=md", "format=html", "format=fb2", "format=pdf", "format=m3u"}
 	return map[string][]string{
 		"/api/search": {"q=" + q, "q=" + url.QueryEscape("сокровенном"), "q=" + q + "&terms_only=1",
 			"q=" + q + "&editions=" + itoa(f.openEd) + "," + itoa(f.closedEd), "q=" + q + "&works=" + all},

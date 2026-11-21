@@ -121,7 +121,7 @@ internal/models/     → доменные структуры и констант
 internal/database/   → пул pgx и migrations/
 internal/seo, opds, mcp, staticsite → краулеры, каталог OPDS, MCP-сервер, статическая копия
 pkg/markdown/        → markdown→HTML, сноски
-pkg/book/            → выгрузки EPUB/FB2/MD/HTML
+pkg/book/            → выгрузки EPUB/FB2/PDF/MD/HTML
 pkg/fileprocessor/   → PDF/DJVU → изображения полос и текст
 ```
 

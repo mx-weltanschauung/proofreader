@@ -111,6 +111,37 @@
   color: var(--color-text-secondary);
 }
 
+.download-menu__progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.6rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.download-menu__spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: download-menu-spin 0.8s linear infinite;
+}
+
+@keyframes download-menu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .download-menu__spinner {
+    animation: none;
+  }
+}
+
 .download-menu__error {
   margin: 0.25rem 0 0;
   color: var(--color-error-ink);

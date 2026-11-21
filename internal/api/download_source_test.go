@@ -1014,6 +1014,22 @@ func TestDownloadCollectionDisambiguatesFootnoteAnchorsAcrossSections(t *testing
 	}
 }
 
+func TestDownloadCollectionKeepsOriginalMarkdownForPDF(t *testing.T) {
+	b, err := footnoteCollisionSource().Collection(context.Background(), "", "collide", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, section := range b.Sections {
+		page := section.Blocks[0].Pages[0]
+		if !strings.Contains(page.RawMarkdown, "[^1]") || strings.Contains(page.RawMarkdown, "[^s") {
+			t.Errorf("секция %d: исходная сноска потеряна: %q", i, page.RawMarkdown)
+		}
+		if !strings.Contains(page.Markdown, "[^s") {
+			t.Errorf("секция %d: MD-префикс не найден: %q", i, page.Markdown)
+		}
+	}
+}
+
 // Тот же дефект уровнем ниже, в сыром Markdown: пандок сворачивает два
 // одинаковых определения "[^…]:" в одно, теряя второе примечание молча
 // (предупреждение "Duplicate note reference" в лог не попадает в файл).
