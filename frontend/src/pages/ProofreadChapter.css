@@ -1,0 +1,142 @@
+.proof-review {
+  max-width: 100rem;
+  margin: auto;
+  padding: 1.5rem;
+}
+.proof-review h1,
+.proof-review h2,
+.proof-review h3 {
+  margin: 0.6em 0;
+}
+.proof-review button {
+  cursor: pointer;
+  font: inherit;
+}
+.proof-review button:not(.btn) {
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.55rem;
+}
+.proof-review button:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.proof-review > button {
+  margin-inline-start: 0.75rem;
+}
+.proof-helper,
+.proof-batch,
+.proof-layout > nav,
+.proof-text,
+.proof-scan {
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  min-width: 0;
+}
+.proof-helper,
+.proof-batch {
+  margin: 1rem 0;
+}
+.proof-layout {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.38fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.proof-layout > nav {
+  max-height: 80vh;
+  overflow: auto;
+}
+.proof-layout > nav button {
+  display: grid;
+  width: 100%;
+  text-align: start;
+  gap: 0.25rem;
+  padding: 0.55rem;
+  background: transparent;
+  color: inherit;
+  border: 1px solid transparent;
+}
+.proof-layout button[aria-current='page'],
+.proof-review button[aria-pressed='true'] {
+  border: 1px solid currentColor;
+}
+.proof-scan-scroll {
+  overflow: auto;
+  max-height: 75vh;
+  cursor: grab;
+}
+.proof-scan-scroll:active {
+  cursor: grabbing;
+}
+.proof-tools,
+.proof-review fieldset {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+.proof-review fieldset {
+  border: 0;
+  padding: 0;
+}
+.proof-image {
+  margin-inline: auto;
+  position: relative;
+}
+.proof-image img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.proof-marker {
+  position: absolute;
+  background: transparent;
+  outline: 2px solid var(--color-warning-ink);
+  pointer-events: none;
+}
+.proof-review pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 45vh;
+  overflow: auto;
+}
+.proof-text article {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--color-border);
+}
+.proof-text textarea {
+  display: block;
+  width: 100%;
+}
+.proof-batch details {
+  margin: 0.6rem 0;
+}
+@media (max-width: 850px) {
+  .proof-layout {
+    grid-template-columns: 1fr 1fr;
+  }
+  .proof-layout > nav {
+    grid-column: 1/-1;
+    display: flex;
+    overflow: auto;
+  }
+  .proof-layout > nav button {
+    min-width: 9rem;
+  }
+  .proof-layout > nav h2 {
+    align-self: center;
+  }
+}
+@media (max-width: 600px) {
+  .proof-layout {
+    grid-template-columns: 1fr;
+  }
+  .proof-review {
+    padding: 0.75rem;
+  }
+}

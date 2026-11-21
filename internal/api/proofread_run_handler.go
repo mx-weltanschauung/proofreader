@@ -85,6 +85,7 @@ type proofreadPage struct {
 	models.ProofreadRunPage
 	SkipReason string `json:"skip_reason,omitempty"`
 	ScanURL    string `json:"scan_url,omitempty"`
+	Stale      bool   `json:"stale,omitempty"`
 }
 
 func (h *ProofreadHandler) page(ctx context.Context, c *models.Chapter, s models.ProofreadRunPage) (proofreadPage, error) {
@@ -121,7 +122,7 @@ func (h *ProofreadHandler) page(ctx context.Context, c *models.Chapter, s models
 	if url == "" {
 		return skipped, nil
 	}
-	return proofreadPage{ProofreadRunPage: s, ScanURL: url}, nil
+	return proofreadPage{ProofreadRunPage: s, ScanURL: url, Stale: s.BaseMarkdown != p.ContentMarkdown}, nil
 }
 
 func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +139,10 @@ func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
 	}
 	id := proofreadID(r, "id")
 	if mux.Vars(r)["id"] == "" {
+		if r.Method == http.MethodGet {
+			h.latest(w, r, claims.UserID)
+			return
+		}
 		h.create(w, r, claims.UserID)
 		return
 	}
@@ -199,6 +204,30 @@ func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
 		models.ProofreadRun
 		Pages []proofreadPage `json:"pages"`
 	}{run, out})
+}
+
+func (h *ProofreadHandler) latest(w http.ResponseWriter, r *http.Request, userID int64) {
+	ctx := r.Context()
+	workID, errWork := strconv.ParseInt(r.URL.Query().Get("work_id"), 10, 64)
+	chapterID, errChapter := strconv.ParseInt(r.URL.Query().Get("chapter_id"), 10, 64)
+	if errWork != nil || errChapter != nil || workID <= 0 || chapterID <= 0 {
+		writeError(w, 400, "Нужны том и глава")
+		return
+	}
+	if _, err := h.chapter(ctx, models.ProofreadRun{WorkID: workID, ChapterID: chapterID}); err != nil {
+		proofreadFailure(w, err)
+		return
+	}
+	run, err := h.runs.LatestForUser(ctx, userID, workID, chapterID)
+	if errors.Is(err, repository.ErrProofreadRunNotFound) {
+		writeJSON(w, nil)
+		return
+	}
+	if err != nil {
+		proofreadFailure(w, err)
+		return
+	}
+	writeJSON(w, run)
 }
 
 func (h *ProofreadHandler) create(w http.ResponseWriter, r *http.Request, userID int64) {

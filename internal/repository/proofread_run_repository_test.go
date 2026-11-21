@@ -260,3 +260,21 @@ func TestProofreadPairCredentialsExpireAndAreHashed(t *testing.T) {
 		t.Fatalf("expired token accepted: %v", err)
 	}
 }
+
+func TestLatestProofreadRunForUser(t *testing.T) {
+	ctx, repo, first, ownerID, otherID := proofreadFixture(t)
+	if _, err := repo.LatestForUser(ctx, otherID, first.WorkID, first.ChapterID); !errors.Is(err, ErrProofreadRunNotFound) {
+		t.Fatalf("foreign run: %v", err)
+	}
+	newest, err := repo.Create(ctx, ownerID, first.WorkID, first.ChapterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.Create(ctx, otherID, first.WorkID, first.ChapterID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.LatestForUser(ctx, ownerID, first.WorkID, first.ChapterID)
+	if err != nil || got.ID != newest.ID {
+		t.Fatalf("latest = %+v, %v", got, err)
+	}
+}

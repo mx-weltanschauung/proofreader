@@ -707,6 +707,7 @@ func closedSweepQueries(f *closedSweep) map[string][]string {
 	all := strings.Join([]string{itoa(f.open), itoa(f.self), itoa(f.front), itoa(f.edVol), itoa(f.issue), itoa(f.ch.work)}, ",")
 	downloads := []string{"format=md", "format=html", "format=fb2", "format=pdf", "format=m3u"}
 	return map[string][]string{
+		"/api/proofread-runs": {"work_id=" + itoa(f.ch.work) + "&chapter_id=" + itoa(f.ch.parent), "work_id=" + itoa(f.ch.work) + "&chapter_id=" + itoa(f.ch.closed)},
 		"/api/search": {"q=" + q, "q=" + url.QueryEscape("сокровенном"), "q=" + q + "&terms_only=1",
 			"q=" + q + "&editions=" + itoa(f.openEd) + "," + itoa(f.closedEd), "q=" + q + "&works=" + all},
 		"/api/search/pages":        append(searchPages, "q="+url.QueryEscape("сокровенном")+"&work_id="+itoa(f.ch.work)),
@@ -1048,6 +1049,13 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 	}
 
 	closeSweepChapter(t, router, f, cache)
+	latestPath := "/api/proofread-runs?work_id=" + itoa(f.ch.work) + "&chapter_id="
+	if res := sweepDo(t, router, latestPath+itoa(f.ch.closed), f.readerTok); res.code != http.StatusNotFound {
+		t.Fatalf("закрытая глава раскрыла черновик: %d", res.code)
+	}
+	if res := sweepDo(t, router, latestPath+itoa(f.ch.parent), f.readerTok); res.code != http.StatusOK || !strings.Contains(res.text, `"id":`+itoa(f.proofreadOpen)) {
+		t.Fatalf("открытая глава: %d %s", res.code, res.text)
+	}
 	checkClosedChapter(t, router, f, cache, pool)
 
 	// Сотрудник видит закрытое — и заодно прогревает кэш главы, который

@@ -47,6 +47,7 @@ const (
 // router.go (public/authRequired/staff/reader/admin), а не по догадке о
 // смысле маршрута.
 var routeAccess = map[string]access{
+	"GET /api/proofread-runs":                                     accessReader,
 	"POST /api/proofread-runs":                                    accessReader,
 	"GET /api/proofread-runs/{id}":                                accessReader,
 	"PATCH /api/proofread-runs/{id}/findings/{findingId}":         accessReader,

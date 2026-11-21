@@ -347,6 +347,7 @@ type MarginNoteStore interface {
 }
 
 type ProofreadRunStore interface {
+	LatestForUser(ctx context.Context, userID, workID, chapterID int64) (models.ProofreadRun, error)
 	ListSubmissionPages(ctx context.Context, runID int64) ([]models.ProofreadRunPage, error)
 	SubmitReadyPage(ctx context.Context, runID, userID, pageID int64, ipHash string, limit int, since time.Time) (models.PageSubmitResult, error)
 	Create(ctx context.Context, userID, workID, chapterID int64) (models.ProofreadRun, error)

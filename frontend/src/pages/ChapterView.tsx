@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { chaptersApi, worksApi, cacheApi, closuresApi } from '../services/api';
+import { chaptersApi, worksApi, cacheApi, closuresApi, proofreadAPI } from '../services/api';
 import { useAuth, canEdit } from '../hooks/useAuth';
 import { ClosedBadge, type BadgeClosure } from '../components/ClosedBadge';
 import { ClosedToggle } from '../components/ClosedToggle';
@@ -27,6 +27,7 @@ import {
   siblingNeighbours,
 } from '../utils/chapterTree';
 import './ChapterView.css';
+import { joinPathFor } from '../utils/returnUrl';
 import {
   chapterPath as chapterAddress,
   pagePath,
@@ -298,6 +299,22 @@ export const ChapterView: React.FC = () => {
   const crumbLevels = useMemo(() => ancestors.map((c) => [c]), [ancestors]);
 
   const navigate = useNavigate();
+  const location = useLocation();
+  const [openingRun, setOpeningRun] = useState(false);
+  async function openRun() {
+    if (workId == null || chapterId == null) return;
+    setOpeningRun(true);
+    try {
+      const run =
+        (await proofreadAPI.latest(workId, chapterId)) ??
+        (await proofreadAPI.create(workId, chapterId));
+      navigate(`/proofread/runs/${run.id}`);
+    } catch {
+      toast.error('Не удалось открыть проверку главы');
+    } finally {
+      setOpeningRun(false);
+    }
+  }
 
   // Стабильный адрес маркера страницы: по нему мемоизирована склейка полос в
   // ReadingSurface, а ChapterView перерисовывается на каждый кадр прокрутки
@@ -651,6 +668,21 @@ export const ChapterView: React.FC = () => {
               <span>{plural(pagesWithHtml.length, ['страница', 'страницы', 'страниц'])}</span>
             </div>
             <div className="chapter-header-actions">
+              {!chapterClosedInEffect &&
+                (user?.role === 'reader' ? (
+                  <button className="btn btn-secondary" disabled={openingRun} onClick={openRun}>
+                    Помочь с вычиткой
+                  </button>
+                ) : (
+                  !user && (
+                    <Link
+                      className="btn btn-secondary"
+                      to={joinPathFor(location.pathname, location.search)}
+                    >
+                      Помочь с вычиткой
+                    </Link>
+                  )
+                ))}
               <Link to={readPath(work, chapter.start_page)} className="btn btn-secondary">
                 Читать потоком
               </Link>

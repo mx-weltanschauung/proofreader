@@ -499,7 +499,7 @@ func (rt *Router) Setup() *mux.Router {
 	// Предложение исправления от читателя. Под входом: маршрут стоит на
 	// reader, а не на public — правку подаёт учётная запись, а не
 	// предъявительский билет.
-	reader.HandleFunc("/proofread-runs", rt.proofread.reader).Methods("POST")
+	reader.HandleFunc("/proofread-runs", rt.proofread.reader).Methods("GET", "POST")
 	reader.HandleFunc("/proofread-runs/{id}", rt.proofread.reader).Methods("GET")
 	reader.HandleFunc("/proofread-runs/{id}/findings/{findingId}", rt.proofread.reader).Methods("PATCH")
 	reader.HandleFunc("/proofread-runs/{id}/pair-code", rt.proofread.reader).Methods("POST")

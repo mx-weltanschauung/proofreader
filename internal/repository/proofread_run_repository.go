@@ -73,6 +73,14 @@ func (r *ProofreadRunRepository) Create(ctx context.Context, userID, workID, cha
 	return run, err
 }
 
+func (r *ProofreadRunRepository) LatestForUser(ctx context.Context, userID, workID, chapterID int64) (models.ProofreadRun, error) {
+	run, err := scanProofreadRun(r.pool.QueryRow(ctx, `SELECT `+proofreadRunColumns+` FROM proofread_runs WHERE user_id=$1 AND work_id=$2 AND chapter_id=$3 ORDER BY created_at DESC,id DESC LIMIT 1`, userID, workID, chapterID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return run, ErrProofreadRunNotFound
+	}
+	return run, err
+}
+
 func (r *ProofreadRunRepository) GetForUser(ctx context.Context, runID, userID int64) (models.ProofreadRun, error) {
 	run, err := scanProofreadRun(r.pool.QueryRow(ctx, `
 		SELECT `+proofreadRunColumns+` FROM proofread_runs WHERE id = $1 AND user_id = $2`, runID, userID))

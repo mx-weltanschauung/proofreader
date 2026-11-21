@@ -299,3 +299,49 @@ func TestProofreadAccessAfterReadingBody(t *testing.T) {
 		})
 	}
 }
+
+func (s *proofreadFixtureStore) LatestForUser(_ context.Context, userID, workID, chapterID int64) (models.ProofreadRun, error) {
+	if s.run.UserID != userID || s.run.WorkID != workID || s.run.ChapterID != chapterID {
+		return models.ProofreadRun{}, repository.ErrProofreadRunNotFound
+	}
+	return s.run, nil
+}
+
+func TestProofreadLatestRun(t *testing.T) {
+	f := newRunHTTPFixture(t)
+	path := "proofread-runs?work_id=1&chapter_id=1"
+	if w := f.call("GET", path, f.reader, ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"id":7`) {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	f.runs.run.UserID++
+	if w := f.call("GET", path, f.reader, ""); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "null" {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if w := f.call("GET", "proofread-runs?work_id=99&chapter_id=1", f.reader, ""); w.Code != 404 {
+		t.Fatal(w.Code)
+	}
+}
+
+func TestProofreadRunMarksStaleOnlyOnVisiblePage(t *testing.T) {
+	f := newRunHTTPFixture(t)
+	f.page.ContentMarkdown = f.runs.snapshots[0].BaseMarkdown
+	for _, test := range []struct {
+		change bool
+		hidden bool
+		want   bool
+	}{{false, false, false}, {true, false, true}, {true, true, false}} {
+		if test.change {
+			f.page.ContentMarkdown = "новая версия"
+		}
+		if test.hidden {
+			f.visibility.spans = []models.PageSpan{{Start: 1, End: 1}}
+		}
+		w := f.call("GET", "proofread-runs/7", f.reader, "")
+		if w.Code != 200 || strings.Contains(w.Body.String(), `"stale":true`) != test.want {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		if test.hidden && (strings.Contains(w.Body.String(), "секретный текст") || strings.Contains(w.Body.String(), `"base_sha256":"hash"`)) {
+			t.Fatal("скрытый снимок доступен")
+		}
+	}
+}
