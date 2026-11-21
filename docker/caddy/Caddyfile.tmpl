@@ -43,6 +43,8 @@ __TLS_LINE__
 		output stdout
 		format console
 	}
+	# Пустой каталог допустим: приватный маршрут мониторинга ставится отдельно.
+	import /etc/caddy/monitoring/*.caddy
 	# Внутри фронта nginx сам проксирует /api на backend:8080.
 	reverse_proxy frontend:80
 }

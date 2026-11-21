@@ -93,6 +93,7 @@ services:
       - "443:443"
     volumes:
       - ${CONFIG_DIR:?}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CONFIG_DIR:?}/monitoring-caddy:/etc/caddy/monitoring:ro
       # Каталогом, а не файлами: на сервере без своего сертификата его нет,
       # и монтирование отсутствующего файла создало бы на его месте каталог,
       # от которого Caddy падает. Пустой каталог безвреден.

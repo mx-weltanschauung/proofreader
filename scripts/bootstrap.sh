@@ -376,6 +376,7 @@ phase_config() {
   fi
   mkdir -p "$CONFIG_DIR"
   chmod 700 "$CONFIG_DIR"
+  mkdir -p "$CONFIG_DIR/monitoring-caddy"
   write_env "$APP_DIR/.env"
 
   umask 077

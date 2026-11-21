@@ -104,6 +104,14 @@ test_frontend_mounts_instance_dir() {
     fail "frontend не монтирует ./instance в /usr/share/nginx/html/instance:ro: $(jq -c '.services.frontend.volumes' <<<"$json")"
 }
 
+test_caddy_mounts_optional_monitoring_directory() {
+  prod_project external
+  local json; json="$(prod config --format json)"
+  jq -e --arg src "$TMPROOT/config/monitoring-caddy" \
+    '.services.caddy.volumes | any(.source == $src and .target == "/etc/caddy/monitoring" and .read_only == true)' \
+    <<<"$json" >/dev/null || fail 'Caddy не монтирует необязательный каталог мониторинга'
+}
+
 # Переменные экземпляра (имя, описание, ссылки, подпись, ники) доходят до
 # бэкенда из .env — список environment у сервиса явный, и пропущенная в нём
 # переменная молча не существует внутри контейнера.
