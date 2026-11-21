@@ -503,6 +503,7 @@ func (rt *Router) Setup() *mux.Router {
 	reader.HandleFunc("/proofread-runs/{id}", rt.proofread.reader).Methods("GET")
 	reader.HandleFunc("/proofread-runs/{id}/findings/{findingId}", rt.proofread.reader).Methods("PATCH")
 	reader.HandleFunc("/proofread-runs/{id}/pair-code", rt.proofread.reader).Methods("POST")
+	reader.HandleFunc("/proofread-runs/{id}/submit", rt.proofread.reader).Methods("POST").Name("proofread-submit")
 	worker.HandleFunc("/proofread-worker/pair", rt.proofread.pair).Methods("POST")
 	worker.HandleFunc("/proofread-worker/runs/{id}/pages", rt.proofread.worker).Methods("GET")
 	worker.HandleFunc("/proofread-worker/runs/{id}/pages/{pageId}/findings", rt.proofread.worker).Methods("PUT")

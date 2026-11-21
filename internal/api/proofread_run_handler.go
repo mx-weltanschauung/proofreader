@@ -14,17 +14,21 @@ import (
 	"proofreader/internal/middleware"
 	"proofreader/internal/models"
 	"proofreader/internal/repository"
+	"proofreader/internal/settings"
 	"proofreader/pkg/storage"
 )
 
 type ProofreadHandler struct {
-	runs     ProofreadRunStore
-	chapters ChapterGetter
-	pages    PageStore
-	closed   ClosedStore
-	scans    ScanVisibilityStore
-	storage  storage.Storage
-	ttl      time.Duration
+	limit      settings.LimitReader
+	jwtSecret  string
+	trustProxy bool
+	runs       ProofreadRunStore
+	chapters   ChapterGetter
+	pages      PageStore
+	closed     ClosedStore
+	scans      ScanVisibilityStore
+	storage    storage.Storage
+	ttl        time.Duration
 }
 
 func (rt *Router) WithProofread(h *ProofreadHandler) *Router { rt.proofread = h; return rt }
@@ -152,6 +156,10 @@ func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == "POST" {
+		if mux.CurrentRoute(r).GetName() == "proofread-submit" {
+			h.submit(w, r, run)
+			return
+		}
 		code, err := h.runs.IssuePairCode(ctx, id, claims.UserID)
 		if err != nil {
 			proofreadFailure(w, err)

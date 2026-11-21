@@ -54,3 +54,9 @@ type ProofreadFinding struct {
 	Decision     FindingDecision `json:"decision"`
 	Replacement  string          `json:"replacement"`
 }
+
+type PageSubmitResult struct {
+	PageID       int64  `json:"page_id"`
+	Status       string `json:"status"`
+	SuggestionID *int64 `json:"suggestion_id,omitempty"`
+}

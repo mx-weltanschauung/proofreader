@@ -51,6 +51,7 @@ var routeAccess = map[string]access{
 	"GET /api/proofread-runs/{id}":                                accessReader,
 	"PATCH /api/proofread-runs/{id}/findings/{findingId}":         accessReader,
 	"POST /api/proofread-runs/{id}/pair-code":                     accessReader,
+	"POST /api/proofread-runs/{id}/submit":                        accessReader,
 	"POST /api/proofread-worker/pair":                             accessPublic,
 	"GET /api/proofread-worker/runs/{id}/pages":                   accessWorker,
 	"PUT /api/proofread-worker/runs/{id}/pages/{pageId}/findings": accessWorker,

@@ -307,7 +307,7 @@ func TestSuggestionAbsoluteCapRejectsEvenWithinRelativeCap(t *testing.T) {
 	// невозможно отличить «сработал абсолютный предел» от «сработал
 	// относительный»: с крошечной testPageText относительный потолок
 	// (2 088 или, после пола, 20 000) всегда меньше абсолютного и срабатывает
-	// первым, оставляя suggestionMaxChars ничем не проверенным.
+	// первым, оставляя models.SuggestionMaxChars ничем не проверенным.
 	base := strings.Repeat("о", 60000) // относительный потолок 242 000 > 200 000
 	store := &fakeSuggestionStore{recentIPs: map[string]int{}}
 	pages := pageStoreWith(&models.Page{
@@ -323,7 +323,7 @@ func TestSuggestionAbsoluteCapRejectsEvenWithinRelativeCap(t *testing.T) {
 	body["base_sha256"] = pageSHA256(base)
 	// Между абсолютным пределом (200 000) и относительным потолком (242 000)
 	// на этой основе: годится только для проверки абсолютного.
-	body["proposed_markdown"] = strings.Repeat("м", suggestionMaxChars+1)
+	body["proposed_markdown"] = strings.Repeat("м", models.SuggestionMaxChars+1)
 
 	rec := postSuggestion(t, r, body)
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -332,9 +332,9 @@ func TestSuggestionAbsoluteCapRejectsEvenWithinRelativeCap(t *testing.T) {
 	if len(store.created) != 0 {
 		t.Fatal("запись создана при превышении абсолютного предела")
 	}
-	if !strings.Contains(rec.Body.String(), fmt.Sprint(suggestionMaxChars)) {
+	if !strings.Contains(rec.Body.String(), fmt.Sprint(models.SuggestionMaxChars)) {
 		t.Fatalf("в отказе нет числа абсолютного предела (%d): %s",
-			suggestionMaxChars, rec.Body.String())
+			models.SuggestionMaxChars, rec.Body.String())
 	}
 }
 
@@ -382,7 +382,7 @@ func TestSuggestionRelativeCapFloorStillRejectsOnEmptyBase(t *testing.T) {
 
 	body := validBody()
 	body["base_sha256"] = pageSHA256("")
-	body["proposed_markdown"] = strings.Repeat("м", suggestionRelativeCapFloor+1)
+	body["proposed_markdown"] = strings.Repeat("м", models.SuggestionRelativeCapFloor+1)
 
 	rec := postSuggestion(t, r, body)
 	if rec.Code != http.StatusUnprocessableEntity {
@@ -392,8 +392,8 @@ func TestSuggestionRelativeCapFloorStillRejectsOnEmptyBase(t *testing.T) {
 	if len(store.created) != 0 {
 		t.Fatal("запись создана при превышении пола на пустой основе")
 	}
-	if !strings.Contains(rec.Body.String(), fmt.Sprint(suggestionRelativeCapFloor)) {
-		t.Fatalf("в отказе нет числа пола (%d): %s", suggestionRelativeCapFloor, rec.Body.String())
+	if !strings.Contains(rec.Body.String(), fmt.Sprint(models.SuggestionRelativeCapFloor)) {
+		t.Fatalf("в отказе нет числа пола (%d): %s", models.SuggestionRelativeCapFloor, rec.Body.String())
 	}
 }
 

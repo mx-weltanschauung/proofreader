@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"proofreader/internal/models"
+	"proofreader/internal/proofassist"
 )
 
 var (
@@ -274,4 +275,111 @@ func (r *ProofreadRunRepository) GetForWorker(ctx context.Context, runID int64, 
 		return run, ErrProofreadCredential
 	}
 	return run, err
+}
+
+// Для проверки доступа достаточно снимков полос. Решения читаются внутри
+// SubmitReadyPage после блокировки снимка.
+func (r *ProofreadRunRepository) ListSubmissionPages(ctx context.Context, runID int64) ([]models.ProofreadRunPage, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT page_id, page_number, base_markdown, submitted_at, suggestion_id
+		FROM proofread_run_pages WHERE run_id = $1 ORDER BY page_number, page_id`, runID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (models.ProofreadRunPage, error) {
+		var p models.ProofreadRunPage
+		err := row.Scan(&p.PageID, &p.PageNumber, &p.BaseMarkdown, &p.SubmittedAt, &p.SuggestionID)
+		return p, err
+	})
+}
+
+func (r *ProofreadRunRepository) SubmitReadyPage(ctx context.Context, runID, userID, pageID int64, ipHash string, limit int, since time.Time) (models.PageSubmitResult, error) {
+	result := models.PageSubmitResult{PageID: pageID, Status: "failed"}
+	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var page models.ProofreadRunPage
+		var liveHash string
+		err := tx.QueryRow(ctx, `
+			SELECT rp.base_markdown, rp.base_sha256, rp.submitted_at, rp.suggestion_id,
+			       encode(sha256(convert_to(COALESCE(p.content_markdown, ''), 'UTF8')), 'hex')
+			FROM proofread_run_pages rp
+			JOIN proofread_runs r ON r.id = rp.run_id
+			JOIN users u ON u.id = r.user_id AND u.role = 'reader'
+			JOIN pages p ON p.id = rp.page_id
+			WHERE rp.run_id = $1 AND r.user_id = $2 AND rp.page_id = $3
+			FOR UPDATE OF rp FOR SHARE OF p`, runID, userID, pageID).Scan(&page.BaseMarkdown, &page.BaseSHA256, &page.SubmittedAt, &page.SuggestionID, &liveHash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrProofreadRunNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if page.SubmittedAt != nil {
+			result.Status = "already_submitted"
+			result.SuggestionID = page.SuggestionID
+			return nil
+		}
+		if page.BaseSHA256 != liveHash {
+			result.Status = "stale"
+			return nil
+		}
+		rows, err := tx.Query(ctx, `
+			SELECT decision, start_rune, end_rune, old, replacement
+			FROM proofread_findings WHERE run_id = $1 AND page_id = $2`, runID, pageID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		var edits []proofassist.Edit
+		for rows.Next() {
+			var d models.FindingDecision
+			var e proofassist.Edit
+			if err := rows.Scan(&d, &e.StartRune, &e.EndRune, &e.Old, &e.New); err != nil {
+				return err
+			}
+			if d == models.FindingPending {
+				result.Status = "pending"
+				return nil
+			}
+			if d == models.FindingAccepted {
+				edits = append(edits, e)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		if len(edits) == 0 {
+			result.Status = "pending"
+			return nil
+		}
+		proposed, err := proofassist.Apply(page.BaseMarkdown, edits)
+		if err != nil {
+			return nil
+		}
+		const note = "Указанные фрагменты сверены со сканом."
+		if models.ValidateSuggestion(page.BaseMarkdown, proposed, note) != nil {
+			return nil
+		}
+		s := models.PageSuggestion{PageID: pageID, UserID: &userID, BaseMarkdown: page.BaseMarkdown, ProposedMarkdown: proposed, Note: note, IPHash: ipHash}
+		accepted, err := createSuggestionWithinLimit(ctx, tx, &s, limit, since)
+		if err != nil {
+			return err
+		}
+		if !accepted {
+			result.Status = "rate_limited"
+			return nil
+		}
+		_, err = tx.Exec(ctx, `
+			UPDATE proofread_run_pages SET submitted_at = clock_timestamp(), suggestion_id = $3
+			WHERE run_id = $1 AND page_id = $2`, runID, pageID, s.ID)
+		if err != nil {
+			return err
+		}
+		result.Status = "submitted"
+		result.SuggestionID = &s.ID
+		return nil
+	})
+	if err != nil {
+		return models.PageSubmitResult{PageID: pageID, Status: "failed"}, err
+	}
+	return result, nil
 }

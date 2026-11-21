@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"proofreader/internal/models"
@@ -126,6 +127,17 @@ func (r *PageSuggestionRepository) CreateWithinLimit(
 	}
 	defer tx.Rollback(ctx) // откат после успешного Commit безвреден
 
+	accepted, err := createSuggestionWithinLimit(ctx, tx, s, limit, since)
+	if err != nil || !accepted {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return true, nil
+}
+
+func createSuggestionWithinLimit(ctx context.Context, tx pgx.Tx, s *models.PageSuggestion, limit int, since time.Time) (bool, error) {
 	// Ключ блокировки считаем в Go, не в SQL: hashtext() в Postgres —
 	// внутренняя недокументированная функция.
 	//
@@ -166,9 +178,6 @@ func (r *PageSuggestionRepository) CreateWithinLimit(
 		return false, fmt.Errorf("failed to create page suggestion: %w", err)
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return false, fmt.Errorf("failed to commit transaction: %w", err)
-	}
 	return true, nil
 }
 
