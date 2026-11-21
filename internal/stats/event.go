@@ -79,6 +79,15 @@ type Row struct {
 	Device   string // класс ширины окна (канал spa) или ""
 }
 
+// VisiblePageRow — полоса, появившаяся в области чтения, отдельно от просмотров.
+type VisiblePageRow struct {
+	Day        time.Time
+	TS         time.Time
+	WorkID     int64
+	PageNumber int
+	Visitor    string
+}
+
 // Event — то, что кладут в Recorder. IP и UA нужны только для отметки и в
 // базу не попадают никогда.
 type Event struct {

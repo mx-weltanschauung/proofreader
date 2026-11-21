@@ -109,6 +109,9 @@ func (r *StatsRepository) Rollup(ctx context.Context, today time.Time) error {
 		today); err != nil {
 		return fmt.Errorf("свёртка итогов: %w", err)
 	}
+	if err := rollupVisiblePages(ctx, tx, today); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -116,6 +119,9 @@ func (r *StatsRepository) Rollup(ctx context.Context, today time.Time) error {
 func (r *StatsRepository) Prune(ctx context.Context, rawBefore, saltBefore time.Time) error {
 	if _, err := r.pool.Exec(ctx, `DELETE FROM page_views WHERE day < $1`, rawBefore); err != nil {
 		return fmt.Errorf("чистка просмотров: %w", err)
+	}
+	if _, err := r.pool.Exec(ctx, `DELETE FROM visible_page_views WHERE day < $1`, rawBefore); err != nil {
+		return fmt.Errorf("чистка видимых полос: %w", err)
 	}
 	if _, err := r.pool.Exec(ctx, `DELETE FROM visit_salts WHERE day < $1`, saltBefore); err != nil {
 		return fmt.Errorf("чистка солей: %w", err)
@@ -188,7 +194,7 @@ const dailyUnion = `
 		SELECT day, channel, kind, work_id, entity_id, slug_key, agent, ref_host, query,
 		       count(*)::int, (count(DISTINCT visitor) FILTER (WHERE visitor <> ''))::int,
 		       (count(*) FILTER (WHERE hits = 0))::int
-		  FROM page_views WHERE day >= $1 AND day > `+rolledDay+` AND day <= $2
+		  FROM page_views WHERE day >= $1 AND day > ` + rolledDay + ` AND day <= $2
 		 GROUP BY day, channel, kind, work_id, entity_id, slug_key, agent, ref_host, query
 	)`
 
