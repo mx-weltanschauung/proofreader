@@ -8,7 +8,7 @@ import sys
 import tempfile
 from urllib.error import HTTPError
 
-from .client import endpoint, read_scan, request_json
+from .client import endpoint, origin, read_scan, request_json
 from .model import analyze
 from .ocr import ocr_candidates
 
@@ -47,6 +47,9 @@ def run(args):
     token = config["token"]
     model_url = endpoint(args.model_url)
     key = os.getenv("OPENAI_API_KEY")
+    if key and origin(model_url) == origin(config["site"]):
+        print("Для модели с ключом укажите адрес с другим origin, чем у сайта.", file=sys.stderr)
+        return 1
     after = 0
     failed = False
     while True:

@@ -52,3 +52,26 @@ def test_retries_one_failed_page(serve, monkeypatch, tmp_path):
     assert len(model_inputs) == 3
     stored = "".join(f.read_text() for f in tmp_path.iterdir())
     assert "once" not in stored and "MODEL_KEY" not in stored and "scoped" in stored
+
+
+def test_keyed_model_cannot_use_site_origin(serve, monkeypatch, tmp_path):
+    monkeypatch.setenv("PROOFREAD_ASSIST_HOME", str(tmp_path))
+    monkeypatch.setenv("OPENAI_API_KEY", "MODEL_KEY")
+    requests = []
+
+    def respond(method, path, headers, body):
+        requests.append((path, headers.get("Authorization")))
+        if path.endswith("/pair"):
+            return 200, {"run_id": 7, "token": "scoped"}
+        if path.endswith("after=0"):
+            return 200, dict(page_id=10, page_number=1, analysis_status="pending",
+                             base_markdown="полоса", base_sha256="hash")
+        if path.endswith("/chat/completions"):
+            return 200, {"choices": [{"message": {"content": "[]"}}]}
+        return 204, None
+
+    url = serve(respond)
+    assert main(["pair", "once", "--site-url", url + "/library"]) == 0
+    status = main(["run", "7", "--model-url", url + "/model/v1", "--model", "local"])
+    assert requests == [("/library/api/proofread-worker/pair", None)]
+    assert status == 1

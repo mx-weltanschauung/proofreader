@@ -23,3 +23,12 @@ def test_key_never_sent_to_site(serve):
             request_json("POST", f"http://127.0.0.1:{redirect.server_port}", {}, "MODEL_KEY")
         worker.join()
     assert calls == []
+
+
+def test_origin_uses_default_port_and_normalizes_hostname():
+    from proofread_assist.client import origin
+
+    assert origin("HTTP://EXAMPLE.org/site") == origin("http://example.org:80/v1")
+    assert origin("https://example.org") == origin("https://EXAMPLE.org:443/v1")
+    assert origin("https://example.org") != origin("https://example.org:444")
+    assert origin("http://example.org:443") != origin("https://example.org:443")

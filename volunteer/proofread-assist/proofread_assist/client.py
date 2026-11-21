@@ -16,6 +16,14 @@ def endpoint(url):
     return url.rstrip("/")
 
 
+def origin(url):
+    parts = urlsplit(endpoint(url))
+    port = parts.port
+    if port is None:
+        port = 443 if parts.scheme == "https" else 80
+    return parts.scheme, parts.hostname, port
+
+
 def fetch(request, limit):
     endpoint(request.full_url)
     with build_opener(NoRedirect()).open(request, timeout=120) as response:
