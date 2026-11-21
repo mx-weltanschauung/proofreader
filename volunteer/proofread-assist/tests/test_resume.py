@@ -1,4 +1,6 @@
 import json
+import os
+import subprocess
 
 from proofread_assist.cli import main
 
@@ -41,12 +43,18 @@ def test_retries_one_failed_page(serve, monkeypatch, tmp_path):
             return 503, {"error": "MODEL_KEY"}
         return 200, {"choices": [{"message": {"content": json.dumps([])}}]}
 
-    assert main(["pair", "once", "--site-url", serve(site)]) == 0
+    def invoke(argv):
+        binary = os.getenv("PROOFREAD_ASSIST_BINARY")
+        if binary:
+            return subprocess.run([binary, *argv], timeout=60).returncode
+        return main(argv)
+
+    assert invoke(["pair", "once", "--site-url", serve(site)]) == 0
     args = ["run", "7", "--model-url", serve(model) + "/v1", "--model", "volunteer-model"]
-    assert main(args) == 1
+    assert invoke(args) == 1
     assert states == ["analyzed", "pending", "failed", "analyzed"]
-    assert main(args) == 0
-    assert main(args) == 0
+    assert invoke(args) == 0
+    assert invoke(args) == 0
     assert [i for i, body in uploads] == [2, 3, 2]
     assert uploads[-1][1]["findings"] == []
     assert len(model_inputs) == 3
@@ -75,3 +83,40 @@ def test_keyed_model_cannot_use_site_origin(serve, monkeypatch, tmp_path):
     status = main(["run", "7", "--model-url", url + "/model/v1", "--model", "local"])
     assert requests == [("/library/api/proofread-worker/pair", None)]
     assert status == 1
+
+
+def test_configure_probes_before_saving_and_keeps_key_local(serve, monkeypatch, tmp_path):
+    monkeypatch.setenv("PROOFREAD_ASSIST_HOME", str(tmp_path))
+    monkeypatch.setenv("OPENAI_API_KEY", "MODEL_KEY")
+    site_requests, model_inputs = [], []
+    ready = False
+
+    def site(method, path, headers, body):
+        assert "MODEL_KEY" not in str((path, headers, body))
+        site_requests.append(path)
+        if path.endswith("/pair"):
+            return 200, {"run_id": 7, "token": "worker"}
+        return 204, None
+
+    def model(method, path, headers, body):
+        assert headers["Authorization"] == "Bearer MODEL_KEY"
+        model_inputs.append(body["messages"][-1]["content"])
+        if not ready:
+            return 503, {}
+        return 200, {"choices": [{"message": {"content": "[]"}}]}
+
+    site_url, model_url = serve(site), serve(model)
+    assert main(["pair", "once", "--site-url", site_url]) == 0
+    args = ["configure", "7", "--model", "reader-model", "--model-url"]
+    assert main(args + [site_url]) == 1
+    assert main(args + [model_url]) == 1
+    assert main(["run", "7"]) == 1
+    assert site_requests == ["/api/proofread-worker/pair"]
+    assert not (tmp_path / "model.json").exists()
+    ready = True
+    assert main(args + [model_url]) == 0
+    assert len(model_inputs) == 2
+    assert json.loads((tmp_path / "model.json").read_text()) == {
+        "model_url": model_url, "model": "reader-model"}
+    assert main(["run", "7"]) == 0
+    assert site_requests[-1].endswith("7/pages?after=0")

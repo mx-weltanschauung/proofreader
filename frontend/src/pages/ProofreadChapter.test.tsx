@@ -121,7 +121,14 @@ it('shows the helper command with the issued code and run', async () => {
   expect(
     await screen.findByText('proofread-assist pair abcd1234 --site-url ' + location.origin),
   ).toBeVisible();
-  expect(screen.getByText('proofread-assist run 7 --model-url URL --model MODEL')).toBeVisible();
+  expect(
+    screen.getByText('proofread-assist configure 7 --model-url URL --model MODEL'),
+  ).toBeVisible();
+  expect(screen.getByText('proofread-assist run 7')).toBeVisible();
+  expect(screen.getByRole('link', { name: 'Установите proofread-assist' })).toHaveAttribute(
+    'href',
+    '/help#proofread-assist',
+  );
 });
 it('retains an edited replacement after switching pages and an HTTP 429', async () => {
   await open();

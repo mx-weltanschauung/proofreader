@@ -193,8 +193,8 @@ function Review({ id }: { id: number }) {
           <details className="proof-helper">
             <summary>Подключить помощник для анализа</summary>
             <p>
-              Запустите установленный proofread-assist на своём компьютере. Получите одноразовый код
-              и выполните команду подключения.
+              <Link to="/help#proofread-assist">Установите proofread-assist</Link> на своём
+              компьютере. Получите одноразовый код и выполните команду подключения.
             </p>
             <button
               disabled={busy}
@@ -208,10 +208,15 @@ function Review({ id }: { id: number }) {
               </pre>
             )}
             <p>
-              Укажите адрес сервера модели и её имя. Повторите команду, чтобы продолжить
-              незавершённый анализ, затем обновите работу.
+              При первом запуске подставьте адрес API вместо URL и имя модели вместо MODEL. Помощник
+              проверит подключение и сохранит настройки на вашем компьютере.
             </p>
-            <pre>proofread-assist run {id} --model-url URL --model MODEL</pre>
+            <pre>proofread-assist configure {id} --model-url URL --model MODEL</pre>
+            <p>
+              Запустите анализ. Чтобы продолжить после перерыва, повторите команду и обновите
+              работу.
+            </p>
+            <pre>proofread-assist run {id}</pre>
           </details>
           <p>
             Анализ завершён для{' '}

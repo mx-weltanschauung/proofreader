@@ -8,6 +8,7 @@ import sys
 import tempfile
 from urllib.error import HTTPError
 
+from . import __version__
 from .client import endpoint, origin, read_scan, request_json
 from .model import analyze
 from .ocr import ocr_candidates
@@ -27,17 +28,44 @@ def pair(args):
     run_id, token = reply["run_id"], reply["token"]
     if type(run_id) is not int or not isinstance(token, str) or not token:
         raise ValueError("Некорректный ответ привязки.")
+    save_settings(f"{run_id}.json", {"site": site, "token": token})
+    print(f"Помощник связан с работой {run_id}.")
+    return 0
+
+
+def save_settings(name, values):
     folder = settings_dir()
     folder.mkdir(mode=0o700, parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode="w", dir=folder, delete=False) as stream:
         temp = Path(stream.name)
         try:
-            json.dump({"site": site, "token": token}, stream)
+            json.dump(values, stream)
             stream.close()
-            temp.replace(folder / f"{run_id}.json")
+            temp.replace(folder / name)
         finally:
             temp.unlink(missing_ok=True)
-    print(f"Помощник связан с работой {run_id}.")
+
+
+class ModelConfigurationError(ValueError):
+    pass
+
+
+def model_connection(site, url):
+    model_url = endpoint(url)
+    if "?" in model_url:
+        raise ModelConfigurationError("Укажите базовый адрес модели без параметров запроса.")
+    key = os.getenv("OPENAI_API_KEY")
+    if key and origin(model_url) == origin(site):
+        raise ModelConfigurationError("Для модели с ключом укажите отдельный от сайта адрес.")
+    return model_url, key
+
+
+def configure(args):
+    config = json.loads((settings_dir() / f"{args.run_id}.json").read_text())
+    model_url, key = model_connection(config["site"], args.model_url)
+    analyze(model_url, args.model, key, "Проверка подключения.")
+    save_settings("model.json", {"model_url": model_url, "model": args.model})
+    print("Подключение проверено. Настройки модели сохранены.")
     return 0
 
 
@@ -45,11 +73,19 @@ def run(args):
     config = json.loads((settings_dir() / f"{args.run_id}.json").read_text())
     pages = endpoint(config["site"]) + f"/api/proofread-worker/runs/{args.run_id}/pages"
     token = config["token"]
-    model_url = endpoint(args.model_url)
-    key = os.getenv("OPENAI_API_KEY")
-    if key and origin(model_url) == origin(config["site"]):
-        print("Для модели с ключом укажите адрес с другим origin, чем у сайта.", file=sys.stderr)
+    if args.model_url is None and args.model is None:
+        try:
+            model_settings = json.loads((settings_dir() / "model.json").read_text())
+        except FileNotFoundError:
+            print("Сначала выполните configure или укажите --model-url и --model.", file=sys.stderr)
+            return 1
+        url, model = model_settings["model_url"], model_settings["model"]
+    elif args.model_url and args.model:
+        url, model = args.model_url, args.model
+    else:
+        print("Укажите --model-url и --model вместе.", file=sys.stderr)
         return 1
+    model_url, key = model_connection(config["site"], url)
     after = 0
     failed = False
     while True:
@@ -71,7 +107,7 @@ def run(args):
             except (OSError, HTTPException, ValueError):
                 print(f"Полоса {after}: скан недоступен.", file=sys.stderr)
         try:
-            findings = analyze(model_url, args.model, key, text, scan if args.vision else None)
+            findings = analyze(model_url, model, key, text, scan if args.vision else None)
             if args.ocr and scan:
                 findings.extend(ocr_candidates(text, scan[0], args.ocr_language))
             payload = {"findings": findings}
@@ -87,21 +123,29 @@ def run(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="proofread-assist")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     bind = commands.add_parser("pair", help="Связать помощник с работой")
     bind.add_argument("code")
     bind.add_argument("--site-url", required=True)
+    setup = commands.add_parser("configure", help="Проверить модель и сохранить настройки")
+    setup.add_argument("run_id", type=int)
+    setup.add_argument("--model-url", required=True)
+    setup.add_argument("--model", required=True)
     job = commands.add_parser("run", help="Обработать незавершённые полосы главы")
     job.add_argument("run_id", type=int)
-    job.add_argument("--model-url", required=True, help="Базовый URL API, включая /v1 при необходимости")
-    job.add_argument("--model", required=True)
+    job.add_argument("--model-url", help="Базовый URL API, включая /v1 при необходимости")
+    job.add_argument("--model")
     job.add_argument("--ocr", action="store_true", help="Добавить находки Tesseract")
     job.add_argument("--ocr-language", default="rus")
     job.add_argument("--vision", action="store_true", help="Передать скан выбранной модели")
     args = parser.parse_args(argv)
     try:
-        return pair(args) if args.command == "pair" else run(args)
-    except (OSError, HTTPException, ValueError, KeyError, TypeError) as error:
+        return {"pair": pair, "configure": configure, "run": run}[args.command](args)
+    except ModelConfigurationError as error:
+        print(error, file=sys.stderr)
+        return 1
+    except (OSError, HTTPException, ValueError, KeyError, IndexError, TypeError) as error:
         detail = f"HTTP {error.code}" if isinstance(error, HTTPError) else type(error).__name__
         print(f"Не удалось выполнить команду ({detail}).", file=sys.stderr)
         return 1

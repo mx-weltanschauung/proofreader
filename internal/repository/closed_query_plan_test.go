@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -43,8 +44,30 @@ func TestClosedPagesDoesNotCheckChapterSpansPerPage(t *testing.T) {
 	pool := testPool(t)
 	w := newVolume(t, NewWorkRepository(pool), "plan fixture")
 	newPages(t, pool, w.ID, 1, 20)
-	plan := explainClosedQuery(t, pool, `SELECT id FROM closed_pages WHERE work_id=$1`, w.ID)
-	if strings.Contains(plan, "OR (SubPlan") {
-		t.Fatalf("page query checks closed chapter ranges once per page:\n%s", plan)
+	// Closed editions can legitimately introduce subplans on works. Only a
+	// correlated subplan in the pages scan filter repeats for each page.
+	type node struct {
+		Relation string `json:"Relation Name"`
+		Filter   string
+		Plans    []node
 	}
+	var raw []byte
+	err := pool.QueryRow(t.Context(), "EXPLAIN (FORMAT JSON) SELECT id FROM closed_pages WHERE work_id=$1", w.ID).Scan(&raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roots []struct{ Plan node }
+	if err := json.Unmarshal(raw, &roots); err != nil || len(roots) != 1 {
+		t.Fatalf("unexpected EXPLAIN: %s (%v)", raw, err)
+	}
+	var visit func(node)
+	visit = func(n node) {
+		if n.Relation == "pages" && strings.Contains(n.Filter, "OR (SubPlan") {
+			t.Fatalf("page scan uses correlated subplan: %s", n.Filter)
+		}
+		for _, child := range n.Plans {
+			visit(child)
+		}
+	}
+	visit(roots[0].Plan)
 }
