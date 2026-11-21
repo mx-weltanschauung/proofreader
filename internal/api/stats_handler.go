@@ -37,6 +37,7 @@ type EventRecorder interface {
 
 // StatsReader — чтение посещаемости для /admin/stats (*repository.StatsRepository).
 type StatsReader interface {
+	Downloads(ctx context.Context, from, today time.Time, limit int) (*repository.DownloadStats, error)
 	VisiblePages(ctx context.Context, workID, chapterID int64, from, today time.Time) (*repository.VisiblePageStats, error)
 	Traffic(ctx context.Context, from, today time.Time) ([]repository.TrafficRow, error)
 	Top(ctx context.Context, channel, kind string, from, today time.Time, limit int) ([]repository.TopRow, error)

@@ -800,6 +800,7 @@ func (rt *Router) Setup() *mux.Router {
 
 	// Посещаемость и здоровье — администратору.
 	admin.HandleFunc("/admin/stats/traffic", rt.statsHandler.Traffic).Methods("GET")
+	admin.HandleFunc("/admin/stats/downloads", rt.statsHandler.Downloads).Methods("GET")
 	admin.HandleFunc("/admin/stats/visible-pages", rt.statsHandler.VisiblePages).Methods("GET")
 	admin.HandleFunc("/admin/stats/top", rt.statsHandler.Top).Methods("GET")
 	admin.HandleFunc("/admin/stats/referrers", rt.statsHandler.Referrers).Methods("GET")

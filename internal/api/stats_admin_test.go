@@ -11,10 +11,15 @@ import (
 )
 
 type fakeStatsReader struct {
-	from, today   time.Time
-	kind          string
-	visibleResult *repository.VisiblePageStats
-	visibleErr    error
+	from, today     time.Time
+	kind            string
+	visibleResult   *repository.VisiblePageStats
+	visibleErr      error
+	downloadsResult *repository.DownloadStats
+}
+
+func (f *fakeStatsReader) Downloads(context.Context, time.Time, time.Time, int) (*repository.DownloadStats, error) {
+	return f.downloadsResult, nil
 }
 
 func (f *fakeStatsReader) VisiblePages(_ context.Context, _, _ int64, from, today time.Time) (*repository.VisiblePageStats, error) {
