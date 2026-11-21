@@ -134,7 +134,7 @@ it('shows the helper command with the issued code and run', async () => {
     screen.getByText('proofread-assist configure 7 --model-url URL --model MODEL'),
   ).toBeVisible();
   expect(screen.getByText('proofread-assist run 7')).toBeVisible();
-  expect(screen.getByText('proofread-assist run 7 --codex')).toBeVisible();
+  expect(screen.getByText('proofread-assist run 7 --codex --vision')).toBeVisible();
   expect(screen.getByRole('link', { name: 'Установите proofread-assist' })).toHaveAttribute(
     'href',
     '/help#proofread-assist',

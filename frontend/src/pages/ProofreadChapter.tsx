@@ -240,9 +240,10 @@ function Review({ id }: { id: number }) {
             <pre>proofread-assist run {id}</pre>
             <p>
               Если вы вошли в Codex CLI через ChatGPT, можно проверить полосу без отдельного ключа
-              API. Этот способ расходует лимит вашего плана Codex.
+              API. Флаг --vision передаёт скан: Codex сможет указать место находки на нём. Этот
+              способ расходует лимит вашего плана Codex.
             </p>
-            <pre>proofread-assist run {id} --codex</pre>
+            <pre>proofread-assist run {id} --codex --vision</pre>
           </details>
           <p>
             Анализ завершён для{' '}

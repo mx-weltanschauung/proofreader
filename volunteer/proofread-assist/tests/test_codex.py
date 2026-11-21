@@ -41,15 +41,23 @@ def test_codex_uses_chatgpt_cli_without_exposing_site_or_api_credentials(monkeyp
 def test_codex_vision_passes_scan_as_temporary_image(monkeypatch):
     monkeypatch.setattr('proofread_assist.codex.shutil.which', lambda name: '/usr/bin/codex')
 
-    def fake_run(command, **_kwargs):
+    def fake_run(command, **kwargs):
         image = Path(command[command.index('-i') + 1])
         assert image.read_bytes() == b'png-data'
         assert image.suffix == '.png'
-        Path(command[command.index('--output-last-message') + 1]).write_text('{"findings": []}')
+        assert 'scan_bbox' in kwargs['input']
+        Path(command[command.index('--output-last-message') + 1]).write_text(json.dumps({
+            'findings': [{
+                'start_rune': 0, 'end_rune': 12, 'old': 'Сараговского',
+                'new': 'Саратовского', 'reason': 'Сверено со сканом',
+                'scan_bbox': [0.305, 0.472, 0.246, 0.026],
+            }],
+        }, ensure_ascii=False))
         return CompletedProcess(command, 0)
 
     monkeypatch.setattr('proofread_assist.codex.subprocess.run', fake_run)
-    assert analyze_codex('Текст.', (b'png-data', 'image/png')) == []
+    found = analyze_codex('Сараговского', (b'png-data', 'image/png'))
+    assert found[0]['scan_bbox'] == [0.305, 0.472, 0.246, 0.026]
 
 
 def test_codex_missing_or_invalid_output_does_not_upload_invented_findings(monkeypatch):
