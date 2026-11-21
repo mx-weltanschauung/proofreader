@@ -36,19 +36,31 @@ func TestSettingsNewServerChangesLiveSuggestionLimit(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE site_settings SET suggestions_per_hour = 5 WHERE id = 1`); err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Exec(ctx, `UPDATE site_settings SET suggestions_per_hour = 5 WHERE id = 1`)
+	defer func() {
+		if _, err := pool.Exec(ctx, `UPDATE site_settings SET suggestions_per_hour = 5 WHERE id = 1`); err != nil {
+			t.Errorf("restore suggestion limit: %v", err)
+		}
+	}()
 
 	email := fmt.Sprintf("suggestion-limit-%d@test.local", time.Now().UnixNano())
 	var userID int64
 	if err := pool.QueryRow(ctx, `INSERT INTO users (email, password_hash, role) VALUES ($1, 'x', 'reader') RETURNING id`, email).Scan(&userID); err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID); err != nil {
+			t.Errorf("delete test user: %v", err)
+		}
+	}()
 	work := &models.Work{Title: "Проверка предела", Author: "Проба", Language: "ru", Country: "ru", Status: models.WorkStatusDraft, Role: models.WorkRoleVolume, NumberingStyle: models.NumberingArabic, OwnerID: userID}
 	if err := repository.NewWorkRepository(pool).Create(ctx, work, models.ClosureActor{}, ""); err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Exec(ctx, `DELETE FROM works WHERE id = $1`, work.ID)
+	defer func() {
+		if _, err := pool.Exec(ctx, `DELETE FROM works WHERE id = $1`, work.ID); err != nil {
+			t.Errorf("delete test work: %v", err)
+		}
+	}()
 	page := &models.Page{WorkID: work.ID, PageNumber: 1, ContentMarkdown: testPageText, Status: models.PageStatusNotProofread}
 	if err := repository.NewPageRepository(pool).Create(ctx, page); err != nil {
 		t.Fatal(err)
