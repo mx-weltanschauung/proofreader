@@ -38,6 +38,7 @@ vi.mock('../../services/api', () => ({
         },
       ],
     }),
+    visiblePages: vi.fn().mockResolvedValue({ data: { collecting_since: null, pages: [] } }),
     referrers: vi.fn().mockResolvedValue({ data: [{ key: 'yandex.ru', views: 3, visitors: 3 }] }),
     searches: vi.fn().mockResolvedValue({
       data: {
@@ -76,6 +77,15 @@ vi.mock('../../services/api', () => ({
 }));
 
 describe('StatsAdmin', () => {
+  it('открывает распределение из ссылки на главу', async () => {
+    render(
+      <MemoryRouter initialEntries={['/admin/stats?work=49&chapter=10125']}>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('region', { name: 'Видимые полосы' })).toBeInTheDocument();
+    expect(statsApi.visiblePages).toHaveBeenCalledWith(49, 10125, expect.any(Number));
+  });
   it('показывает итоги, топ со снятым, источники, нулевые запросы и здоровье', async () => {
     render(
       <MemoryRouter>

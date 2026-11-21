@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -36,12 +37,34 @@ type EventRecorder interface {
 
 // StatsReader — чтение посещаемости для /admin/stats (*repository.StatsRepository).
 type StatsReader interface {
+	VisiblePages(ctx context.Context, workID, chapterID int64, from, today time.Time) (*repository.VisiblePageStats, error)
 	Traffic(ctx context.Context, from, today time.Time) ([]repository.TrafficRow, error)
 	Top(ctx context.Context, channel, kind string, from, today time.Time, limit int) ([]repository.TopRow, error)
 	Referrers(ctx context.Context, from, today time.Time, limit int) ([]repository.CountRow, error)
 	Searches(ctx context.Context, from, today time.Time, limit int) (*repository.SearchStats, error)
 	Crawlers(ctx context.Context, from, today time.Time) ([]repository.CrawlerRow, error)
 	Devices(ctx context.Context, from, today time.Time) ([]repository.DeviceRow, error)
+}
+
+func (h *StatsHandler) VisiblePages(w http.ResponseWriter, r *http.Request) {
+	from, today, ok := h.period(r)
+	workID, workErr := strconv.ParseInt(r.URL.Query().Get("work_id"), 10, 64)
+	chapterID, chapterErr := strconv.ParseInt(r.URL.Query().Get("chapter_id"), 10, 64)
+	if !ok || workErr != nil || chapterErr != nil || workID < 1 || chapterID < 1 {
+		writeError(w, http.StatusBadRequest, "Неверные work_id, chapter_id или days")
+		return
+	}
+	result, err := h.reader.VisiblePages(r.Context(), workID, chapterID, from, today)
+	if errors.Is(err, repository.ErrVisibleChapterNotFound) {
+		writeError(w, http.StatusNotFound, "Глава не найдена в томе")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось прочитать видимые полосы")
+		return
+	}
+	result.Pages = nonNil(result.Pages)
+	writeJSONStatus(w, http.StatusOK, result)
 }
 
 // HealthSource — *metrics.Metrics.

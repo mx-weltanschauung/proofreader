@@ -11,8 +11,15 @@ import (
 )
 
 type fakeStatsReader struct {
-	from, today time.Time
-	kind        string
+	from, today   time.Time
+	kind          string
+	visibleResult *repository.VisiblePageStats
+	visibleErr    error
+}
+
+func (f *fakeStatsReader) VisiblePages(_ context.Context, _, _ int64, from, today time.Time) (*repository.VisiblePageStats, error) {
+	f.from, f.today = from, today
+	return f.visibleResult, f.visibleErr
 }
 
 func (f *fakeStatsReader) Traffic(_ context.Context, from, today time.Time) ([]repository.TrafficRow, error) {

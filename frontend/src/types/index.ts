@@ -1094,6 +1094,14 @@ export interface StatsTrafficRow {
   views: number;
   visitors: number;
 }
+export interface VisiblePagePoint {
+  page_number: number;
+  visitors: number;
+}
+export interface VisiblePageStats {
+  collecting_since: string | null;
+  pages: VisiblePagePoint[];
+}
 export interface StatsTopRow {
   work_id: number;
   entity_id: number;

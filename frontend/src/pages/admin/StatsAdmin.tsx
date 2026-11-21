@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { statsApi } from '../../services/api';
 import type {
   StatsCountRow,
@@ -15,6 +15,7 @@ import { chapterPath, editionPath, workPath } from '../../utils/paths';
 import { calendarTotals, moscowToday } from '../../utils/statsTotals';
 import { apiErrorMessage } from '../../utils/apiError';
 import './StatsAdmin.css';
+import { VisiblePagesStats } from './VisiblePagesStats';
 
 const PERIODS = [1, 7, 30, 90] as const;
 const KINDS: { kind: StatsTopKind; label: string }[] = [
@@ -89,6 +90,14 @@ function topLabel(kind: StatsTopKind, row: StatsTopRow): string {
 }
 
 export const StatsAdmin: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedWork = Number(searchParams.get('work'));
+  const selectedChapter = Number(searchParams.get('chapter'));
+  const hasSelectedChapter =
+    Number.isSafeInteger(selectedWork) &&
+    selectedWork > 0 &&
+    Number.isSafeInteger(selectedChapter) &&
+    selectedChapter > 0;
   const [days, setDays] = useState<number>(7);
   const [kind, setKind] = useState<StatsTopKind>('work');
 
@@ -235,6 +244,7 @@ export const StatsAdmin: React.FC = () => {
                 <th>Что</th>
                 <th>Просмотры</th>
                 <th>Посетителе-дни</th>
+                {kind === 'chapter' && <th>Распределение</th>}
               </tr>
             </thead>
             <tbody>
@@ -249,6 +259,21 @@ export const StatsAdmin: React.FC = () => {
                     <td>{href ? <Link to={href}>{label}</Link> : label}</td>
                     <td>{row.views}</td>
                     <td>{row.visitors}</td>
+                    {kind === 'chapter' && !row.missing && (
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSearchParams({
+                              work: String(row.work_id),
+                              chapter: String(row.entity_id),
+                            })
+                          }
+                        >
+                          Полосы
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -256,6 +281,10 @@ export const StatsAdmin: React.FC = () => {
           </table>
         </div>
       </section>
+
+      {hasSelectedChapter && (
+        <VisiblePagesStats workId={selectedWork} chapterId={selectedChapter} days={days} />
+      )}
 
       <section aria-label="Откуда" className="stats-admin-section">
         <h2>Откуда приходят</h2>

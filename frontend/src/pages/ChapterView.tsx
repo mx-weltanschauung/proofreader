@@ -636,6 +636,9 @@ export const ChapterView: React.FC = () => {
               {chapter.title}
               {chapterClosedInEffect && <ClosedBadge closure={closure} />}
             </h1>
+            {user?.role === 'administrator' && workId !== null && chapterId !== null && (
+              <Link to={`/admin/stats?work=${workId}&chapter=${chapterId}`}>Статистика полос</Link>
+            )}
             {workId != null && chapterId != null && (
               <ChapterEvents workId={workId} chapterId={chapterId} />
             )}
