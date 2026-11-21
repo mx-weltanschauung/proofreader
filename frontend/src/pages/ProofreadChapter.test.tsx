@@ -8,6 +8,7 @@ import ProofreadChapter from './ProofreadChapter';
 vi.mock('../services/api', () => ({
   API_BASE_URL: '',
   proofreadAPI: {
+    create: vi.fn(),
     get: vi.fn(),
     decide: vi.fn(),
     submit: vi.fn(),
@@ -133,10 +134,18 @@ it('shows the helper command with the issued code and run', async () => {
     screen.getByText('proofread-assist configure 7 --model-url URL --model MODEL'),
   ).toBeVisible();
   expect(screen.getByText('proofread-assist run 7')).toBeVisible();
+  expect(screen.getByText('proofread-assist run 7 --codex')).toBeVisible();
   expect(screen.getByRole('link', { name: 'Установите proofread-assist' })).toHaveAttribute(
     'href',
     '/help#proofread-assist',
   );
+});
+it('starts a fresh run for another analysis without changing the existing run', async () => {
+  await open();
+  vi.mocked(proofreadAPI.create).mockResolvedValue({ id: 8, work_id: 1, chapter_id: 2 });
+  fireEvent.click(screen.getByRole('button', { name: 'Новая проверка главы' }));
+  await waitFor(() => expect(proofreadAPI.create).toHaveBeenCalledWith(1, 2));
+  await waitFor(() => expect(proofreadAPI.get).toHaveBeenCalledWith(8));
 });
 it('retains an edited replacement after switching pages and an HTTP 429', async () => {
   await open();

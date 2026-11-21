@@ -10,6 +10,7 @@ from urllib.error import HTTPError
 
 from . import __version__
 from .client import endpoint, origin, read_scan, request_json
+from .codex import CodexError, analyze_codex
 from .model import analyze
 from .ocr import ocr_candidates
 
@@ -73,19 +74,29 @@ def run(args):
     config = json.loads((settings_dir() / f"{args.run_id}.json").read_text())
     pages = endpoint(config["site"]) + f"/api/proofread-worker/runs/{args.run_id}/pages"
     token = config["token"]
-    if args.model_url is None and args.model is None:
+    if args.codex:
+        if args.model_url is not None or args.model is not None:
+            print("С --codex не указывайте --model-url и --model.", file=sys.stderr)
+            return 1
+        if not shutil.which("codex"):
+            print("Codex CLI не найден в PATH. Установите Codex и войдите через ChatGPT.",
+                  file=sys.stderr)
+            return 1
+        model_url = key = model = None
+    elif args.model_url is None and args.model is None:
         try:
             model_settings = json.loads((settings_dir() / "model.json").read_text())
         except FileNotFoundError:
             print("Сначала выполните configure или укажите --model-url и --model.", file=sys.stderr)
             return 1
         url, model = model_settings["model_url"], model_settings["model"]
+        model_url, key = model_connection(config["site"], url)
     elif args.model_url and args.model:
         url, model = args.model_url, args.model
+        model_url, key = model_connection(config["site"], url)
     else:
         print("Укажите --model-url и --model вместе.", file=sys.stderr)
         return 1
-    model_url, key = model_connection(config["site"], url)
     after = 0
     failed = False
     while True:
@@ -99,6 +110,8 @@ def run(args):
             continue
         if page["analysis_status"] not in ("failed", "pending"):
             raise ValueError("Сайт вернул неизвестный статус анализа.")
+        if args.codex:
+            print(f"Полоса {after}: анализ Codex…", flush=True)
         text = page["base_markdown"]
         scan = None
         if page.get("scan_url") and (args.vision or args.ocr and shutil.which("tesseract")):
@@ -107,18 +120,22 @@ def run(args):
             except (OSError, HTTPException, ValueError):
                 print(f"Полоса {after}: скан недоступен.", file=sys.stderr)
         try:
-            findings = analyze(model_url, model, key, text, scan if args.vision else None)
+            findings = (analyze_codex(text, scan if args.vision else None) if args.codex else
+                        analyze(model_url, model, key, text, scan if args.vision else None))
             if args.ocr and scan:
                 findings.extend(ocr_candidates(text, scan[0], args.ocr_language))
             payload = {"findings": findings}
         except (OSError, HTTPException, ValueError, KeyError, IndexError, TypeError) as error:
             # Upstream messages can echo model credentials or page content.
-            detail = f"HTTP {error.code}" if isinstance(error, HTTPError) else type(error).__name__
+            detail = (str(error) if isinstance(error, CodexError) else
+                      f"HTTP {error.code}" if isinstance(error, HTTPError) else type(error).__name__)
             payload = {"analysis_error": f"Ошибка анализа ({detail})"}
             print(f"Полоса {after}: {payload['analysis_error']}", file=sys.stderr)
             failed = True
         payload["base_sha256"] = page["base_sha256"]
         request_json("PUT", f"{pages}/{page['page_id']}/findings", payload, token)
+        if args.codex and "findings" in payload:
+            print(f"Полоса {after}: находок {len(payload['findings'])}.", flush=True)
 
 
 def main(argv=None):
@@ -136,6 +153,7 @@ def main(argv=None):
     job.add_argument("run_id", type=int)
     job.add_argument("--model-url", help="Базовый URL API, включая /v1 при необходимости")
     job.add_argument("--model")
+    job.add_argument("--codex", action="store_true", help="Вызвать Codex CLI с текущим входом ChatGPT")
     job.add_argument("--ocr", action="store_true", help="Добавить находки Tesseract")
     job.add_argument("--ocr-language", default="rus")
     job.add_argument("--vision", action="store_true", help="Передать скан выбранной модели")

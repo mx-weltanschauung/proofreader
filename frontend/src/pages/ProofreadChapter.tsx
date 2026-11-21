@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import {
   API_BASE_URL,
@@ -60,6 +60,7 @@ function pageStatus(p: ProofreadPage, result?: string) {
 }
 
 function Review({ id }: { id: number }) {
+  const navigate = useNavigate();
   const [run, setRun] = useState<ProofreadRun | null>(null);
   const [pageID, select] = useState<number>();
   const [active, setActive] = useState<number>();
@@ -183,7 +184,22 @@ function Review({ id }: { id: number }) {
     <main className="proof-review">
       <h1>Проверка находок по главе</h1>
       {run && (
-        <Link to={chapterPath({ id: run.work_id }, { id: run.chapter_id })}>Вернуться к главе</Link>
+        <>
+          <Link to={chapterPath({ id: run.work_id }, { id: run.chapter_id })}>
+            Вернуться к главе
+          </Link>
+          <button
+            disabled={busy || editing !== undefined}
+            onClick={() =>
+              act(async () => {
+                const fresh = await proofreadAPI.create(run.work_id, run.chapter_id);
+                navigate(`/proofread/runs/${fresh.id}`);
+              })
+            }
+          >
+            Новая проверка главы
+          </button>
+        </>
       )}
       {error && <p role="alert">{error}</p>}
       <button
@@ -212,8 +228,9 @@ function Review({ id }: { id: number }) {
               </pre>
             )}
             <p>
-              При первом запуске подставьте адрес API вместо URL и имя модели вместо MODEL. Помощник
-              проверит подключение и сохранит настройки на вашем компьютере.
+              Для OpenAI-совместимой модели при первом запуске подставьте адрес API вместо URL и имя
+              модели вместо MODEL. Помощник проверит подключение и сохранит настройки на вашем
+              компьютере.
             </p>
             <pre>proofread-assist configure {id} --model-url URL --model MODEL</pre>
             <p>
@@ -221,6 +238,11 @@ function Review({ id }: { id: number }) {
               работу.
             </p>
             <pre>proofread-assist run {id}</pre>
+            <p>
+              Если вы вошли в Codex CLI через ChatGPT, можно проверить полосу без отдельного ключа
+              API. Этот способ расходует лимит вашего плана Codex.
+            </p>
+            <pre>proofread-assist run {id} --codex</pre>
           </details>
           <p>
             Анализ завершён для{' '}

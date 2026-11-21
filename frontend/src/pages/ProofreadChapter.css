@@ -63,7 +63,7 @@
 .proof-layout button[aria-current='page'],
 .proof-review button[aria-pressed='true'] {
   border-color: var(--color-accent);
-  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-secondary));
+  background: var(--color-success-tint);
   box-shadow: inset 4px 0 var(--color-accent);
 }
 .proof-scan-scroll {
@@ -98,19 +98,19 @@
 .proof-marker {
   position: absolute;
   box-sizing: border-box;
-  border: 3px solid #e04d20;
+  border: 3px solid var(--proof-marker-ink);
   border-radius: 0.3rem;
-  background: rgb(255 213 45 / 18%);
+  background: var(--proof-marker-fill);
   box-shadow:
-    0 0 0 3px rgb(255 255 255 / 85%),
-    0 0 0 5px #e04d20;
+    0 0 0 3px var(--proof-marker-halo),
+    0 0 0 5px var(--proof-marker-ink);
   pointer-events: none;
 }
 .proof-review mark {
   color: inherit;
-  background: #ffdb47;
+  background: var(--proof-mark-fill);
   border-radius: 0.15rem;
-  box-shadow: 0 0 0 2px #ffdb47;
+  box-shadow: 0 0 0 2px var(--proof-mark-fill);
 }
 .proof-review pre {
   white-space: pre-wrap;
@@ -125,7 +125,7 @@
 .proof-text article:has(button[aria-pressed='true']) {
   border-left: 4px solid var(--color-accent);
   padding-left: 0.7rem;
-  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  background: var(--color-success-tint);
 }
 .proof-text textarea {
   display: block;

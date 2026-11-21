@@ -156,6 +156,11 @@
   --stats-seo: #b0873c;
   --stats-mcp: #b05c5c;
   --stats-opds: #597d50;
+  /* Подсветка места находки на скане и исходного текста. */
+  --proof-marker-ink: #e04d20;
+  --proof-marker-fill: rgb(255 213 45 / 18%);
+  --proof-marker-halo: rgb(255 255 255 / 85%);
+  --proof-mark-fill: #ffdb47;
 }
 [data-theme='dark'],
 [data-theme='oled'],
@@ -487,6 +492,21 @@
   --color-info-ink: #93c1de;
   --color-info-hover: #9cc7e0;
   --color-scrim: rgba(0, 0, 0, 0.55);
+}
+
+[data-theme='dark'],
+[data-theme='oled'],
+[data-theme='gray-dim'] {
+  --proof-marker-ink: #ff7847;
+  --proof-marker-fill: rgb(255 213 45 / 23%);
+  --proof-marker-halo: rgb(0 0 0 / 85%);
+  --proof-mark-fill: #ffd966;
+}
+[data-theme='high-contrast'] {
+  --proof-marker-ink: #000000;
+  --proof-marker-fill: rgb(255 217 0 / 30%);
+  --proof-marker-halo: #ffffff;
+  --proof-mark-fill: #ffdf00;
 }
 
 html {
