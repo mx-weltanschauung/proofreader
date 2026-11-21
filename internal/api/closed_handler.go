@@ -41,6 +41,7 @@ type ClosedChapterSource interface {
 type ClosureLog interface {
 	LatestClosure(ctx context.Context, kind string, id int64, scope string) (*models.Closure, error)
 	ListClosures(ctx context.Context, limit, offset int) ([]models.Closure, error)
+	ListActiveClosures(ctx context.Context, limit, offset int) ([]models.ActiveClosure, error)
 }
 
 // ClosedHandler — маршруты «закрыть/открыть» работу, издание и журнал.

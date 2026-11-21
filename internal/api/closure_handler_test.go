@@ -178,6 +178,8 @@ func TestAdminCreateClosedDefaultReason(t *testing.T) {
 
 type fakeClosureLog struct {
 	latest        *models.Closure
+	active        []models.ActiveClosure
+	activeErr     error
 	limit, offset int
 }
 
@@ -187,6 +189,35 @@ func (f *fakeClosureLog) LatestClosure(context.Context, string, int64, string) (
 func (f *fakeClosureLog) ListClosures(_ context.Context, limit, offset int) ([]models.Closure, error) {
 	f.limit, f.offset = limit, offset
 	return nil, nil
+}
+func (f *fakeClosureLog) ListActiveClosures(_ context.Context, limit, offset int) ([]models.ActiveClosure, error) {
+	f.limit, f.offset = limit, offset
+	return f.active, f.activeErr
+}
+
+func TestActiveClosuresHandlerPagingAndErrors(t *testing.T) {
+	log := &fakeClosureLog{}
+	h := NewClosedHandler(nil, nil).WithLog(log)
+	get := func(q string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.Active(rec, httptest.NewRequest(http.MethodGet, "/api/admin/closures/active"+q, nil))
+		return rec
+	}
+	if rec := get(""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != "[]" || log.limit != 100 || log.offset != 0 {
+		t.Fatalf("умолчание: код=%d тело=%s limit=%d offset=%d", rec.Code, rec.Body.String(), log.limit, log.offset)
+	}
+	if rec := get("?limit=501&offset=20"); rec.Code != 200 || log.limit != 500 || log.offset != 20 {
+		t.Fatalf("ограничение страницы: код=%d limit=%d offset=%d", rec.Code, log.limit, log.offset)
+	}
+	for _, q := range []string{"?limit=0", "?limit=-1", "?limit=abc", "?offset=-1", "?offset=abc"} {
+		if rec := get(q); rec.Code != 400 {
+			t.Errorf("%s: код=%d, нужен 400", q, rec.Code)
+		}
+	}
+	log.activeErr = errors.New("хранилище недоступно")
+	if rec := get(""); rec.Code != 500 {
+		t.Fatalf("ошибка хранилища: код=%d", rec.Code)
+	}
 }
 
 func TestLatestClosureHidesReasonFromEditor(t *testing.T) {

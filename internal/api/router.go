@@ -771,6 +771,7 @@ func (rt *Router) Setup() *mux.Router {
 	admin.HandleFunc("/works/{workId}/chapters/{id}/scans-hidden", rt.closedHandler.ChapterScans).Methods("PUT")
 	admin.HandleFunc("/works/{workId}/chapters/{id}/closed-plan", rt.closedHandler.Plan).Methods("GET")
 	admin.HandleFunc("/admin/closures", rt.closedHandler.List).Methods("GET")
+	admin.HandleFunc("/admin/closures/active", rt.closedHandler.Active).Methods("GET")
 	admin.HandleFunc("/readers", rt.readerAdminHandler.List).Methods("GET")
 	admin.HandleFunc("/readers/{nickname}/collections", rt.readerAdminHandler.Collections).Methods("GET")
 

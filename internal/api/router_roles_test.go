@@ -273,6 +273,7 @@ var routeAccess = map[string]access{
 	"PUT /api/works/{workId}/chapters/{id}/scans-hidden": accessAdmin,
 	"GET /api/works/{workId}/chapters/{id}/closed-plan":  accessAdmin,
 	"GET /api/admin/closures":                            accessAdmin,
+	"GET /api/admin/closures/active":                     accessAdmin,
 	"GET /api/closures/latest":                           accessStaff,
 	"PUT /api/journals/{id}/closed":                      accessAdmin,
 	"PUT /api/journals/{id}/scans-hidden":                accessAdmin,
