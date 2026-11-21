@@ -46,7 +46,8 @@ __TLS_LINE__
 	# Пустой каталог допустим: приватный маршрут мониторинга ставится отдельно.
 	import /etc/caddy/monitoring/*.caddy
 	# Внутри фронта nginx сам проксирует /api на backend:8080.
-	reverse_proxy frontend:80
+	# Имя сервиса frontend может совпасть с сервисом другого приложения в общей сети.
+	reverse_proxy proofreader-frontend:80
 }
 
 #S3-BLOCK-BEGIN
