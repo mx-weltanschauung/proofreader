@@ -278,3 +278,63 @@ func TestLatestProofreadRunForUser(t *testing.T) {
 		t.Fatalf("latest = %+v, %v", got, err)
 	}
 }
+
+func TestRefreshProofreadPagePreservesOtherDecisionsAndReceipt(t *testing.T) {
+	ctx, repo, run, owner, other := proofreadFixture(t)
+	_, err := repo.pool.Exec(ctx, `
+ UPDATE chapters SET end_page=7 WHERE id=20;
+ UPDATE pages SET content_markdown='кот кот' WHERE id IN (31,32);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err = repo.Create(ctx, owner, run.WorkID, run.ChapterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages, err := repo.ListPages(ctx, run.ID)
+	if err != nil || len(pages) != 3 {
+		t.Fatal(pages, err)
+	}
+	for _, p := range pages {
+		candidates := []models.ProofreadFinding{proofreadCandidate()}
+		if p.PageID == 32 {
+			extra := proofreadCandidate()
+			extra.StartRune = 0
+			extra.EndRune = 3
+			extra.CandidateKey = "first-cat"
+			candidates = append(candidates, extra)
+		}
+		if err := repo.PutFindings(ctx, run.ID, p.PageID, p.BaseSHA256, candidates); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pages, err = repo.ListPages(ctx, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := pages[2].Findings[0]
+	if err := repo.SetDecision(ctx, run.ID, f.ID, owner, "accepted", f.New); err != nil {
+		t.Fatal(err)
+	}
+	_, err = repo.pool.Exec(ctx, "UPDATE proofread_run_pages SET submitted_at=now() WHERE run_id=$1 AND page_id=30", run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = repo.pool.Exec(ctx, "UPDATE pages SET content_markdown='новый текст' WHERE id IN(30,31)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.RefreshPage(ctx, run.ID, other, 31, pages[1].BaseSHA256, "новый текст"); !errors.Is(err, ErrProofreadRunNotFound) {
+		t.Fatal(err)
+	}
+	if err := repo.RefreshPage(ctx, run.ID, owner, 30, pages[0].BaseSHA256, "новый текст"); !errors.Is(err, ErrProofreadPageSubmitted) {
+		t.Fatal(err)
+	}
+	if err := repo.RefreshPage(ctx, run.ID, owner, 31, pages[1].BaseSHA256, "новый текст"); err != nil {
+		t.Fatal(err)
+	}
+	pages, err = repo.ListPages(ctx, run.ID)
+	if err != nil || pages[0].SubmittedAt == nil || len(pages[0].Findings) != 1 || pages[1].BaseMarkdown != "новый текст" || len(pages[1].Findings) != 0 || pages[1].AnalysisStatus != "pending" || pages[2].Findings[0].Decision != "accepted" || pages[2].Findings[1].Decision != "pending" {
+		t.Fatal(pages, err)
+	}
+}

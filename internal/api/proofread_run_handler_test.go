@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -36,6 +37,33 @@ func (s *proofreadFixtureStore) GetForUser(_ context.Context, id, userID int64) 
 }
 func (s *proofreadFixtureStore) ListPages(context.Context, int64) ([]models.ProofreadRunPage, error) {
 	return s.snapshots, nil
+}
+func (s *proofreadFixtureStore) PageForFinding(ctx context.Context, runID, findingID int64) (models.ProofreadRunPage, error) {
+	for _, p := range s.snapshots {
+		for _, f := range p.Findings {
+			if f.ID == findingID {
+				p.Findings = []models.ProofreadFinding{f}
+				return p, nil
+			}
+		}
+	}
+	return models.ProofreadRunPage{}, repository.ErrProofreadRunNotFound
+}
+func (s *proofreadFixtureStore) RunPage(ctx context.Context, runID, pageID int64) (models.ProofreadRunPage, error) {
+	for _, p := range s.snapshots {
+		if p.PageID == pageID {
+			return p, nil
+		}
+	}
+	return models.ProofreadRunPage{}, repository.ErrProofreadRunNotFound
+}
+func (s *proofreadFixtureStore) NextPage(ctx context.Context, runID int64, after int) (models.ProofreadRunPage, error) {
+	for _, p := range s.snapshots {
+		if p.PageNumber > after {
+			return p, nil
+		}
+	}
+	return models.ProofreadRunPage{}, repository.ErrProofreadRunNotFound
 }
 func (s *proofreadFixtureStore) PutFindings(context.Context, int64, int64, string, []models.ProofreadFinding) error {
 	s.uploads++
@@ -231,13 +259,19 @@ func (s *proofreadFixtureStore) ConsumePairCode(_ context.Context, code string) 
 	return s.run, "worker-token", nil
 }
 func (s *proofreadFixtureStore) SetDecision(_ context.Context, id, findingID, userID int64, decision models.FindingDecision, replacement string) error {
-	f := &s.snapshots[0].Findings[0]
-	if id != s.run.ID || userID != s.run.UserID || findingID != f.ID {
-		return repository.ErrProofreadRunNotFound
+	if id == s.run.ID && userID == s.run.UserID {
+		for _, p := range s.snapshots {
+			for i := range p.Findings {
+				f := &p.Findings[i]
+				if f.ID == findingID {
+					f.Decision = decision
+					f.Replacement = replacement
+					return nil
+				}
+			}
+		}
 	}
-	f.Decision = decision
-	f.Replacement = replacement
-	return nil
+	return repository.ErrProofreadRunNotFound
 }
 func TestProofreadReaderPairAndAccept(t *testing.T) {
 	f := newRunHTTPFixture(t)
@@ -343,5 +377,49 @@ func TestProofreadRunMarksStaleOnlyOnVisiblePage(t *testing.T) {
 		if test.hidden && (strings.Contains(w.Body.String(), "секретный текст") || strings.Contains(w.Body.String(), `"base_sha256":"hash"`)) {
 			t.Fatal("скрытый снимок доступен")
 		}
+	}
+}
+
+type failingEarlyScan struct{ storage.Storage }
+
+func (s failingEarlyScan) Head(ctx context.Context, key string) (int64, string, error) {
+	if key == "offline.png" {
+		return 0, "", errors.New("unavailable storage")
+	}
+	return s.Storage.Head(ctx, key)
+}
+func TestProofreadDecisionBypassesUnrelatedScanFailure(t *testing.T) {
+	f := newRunHTTPFixture(t)
+	pages := memPages(1, 3)
+	pages[0].PreviewPath = "offline.png"
+	pages[2].PreviewPath = "scan.png"
+	f.handler.pages = NewViewPages(memPageStore(pages), f.spans)
+	f.handler.storage = failingEarlyScan{f.store}
+	snapshot := f.runs.snapshots[0]
+	snapshot.PageID = 1003
+	snapshot.PageNumber = 3
+	f.runs.snapshots = []models.ProofreadRunPage{{PageID: 1001, PageNumber: 1, BaseMarkdown: "текст"}, snapshot}
+	for _, check := range []struct {
+		method, path, token, body string
+		status                    int
+	}{
+		{"GET", "proofread-runs/7", f.reader, "", 500},
+		{"PATCH", "proofread-runs/7/findings/5", f.reader, `{"decision":"accepted"}`, 204},
+		{"GET", "proofread-worker/runs/7/pages?after=1", "worker-token", "", 200},
+		{"GET", "proofread-worker/runs/7/pages?after=3", "worker-token", "", 204},
+	} {
+		w := f.call(check.method, check.path, check.token, check.body)
+		if w.Code != check.status {
+			t.Fatal(check.path, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestRefreshProofreadPageRequiresVisibleScan(t *testing.T) {
+	f := newRunHTTPFixture(t)
+	f.visibility.whole = "work"
+	w := f.call("POST", "proofread-runs/7/pages/1001/refresh", f.reader, "")
+	if w.Code != 404 {
+		t.Fatal(w.Code, w.Body.String())
 	}
 }

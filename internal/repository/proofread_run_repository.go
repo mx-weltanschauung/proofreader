@@ -91,39 +91,70 @@ func (r *ProofreadRunRepository) GetForUser(ctx context.Context, runID, userID i
 	return run, err
 }
 
-// ListPages is an internal read. The caller verifies run ownership or worker
-// credentials and applies current corpus and scan access rules before disclosure.
+const snapshotColumns = `p.page_id,p.page_number,p.base_markdown,p.base_sha256,p.analysis_status,
+ p.analysis_error,p.suggestion_id,p.submitted_at`
+const snapshotFindings = `COALESCE((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.start_rune,f.end_rune,f.id)
+ FROM proofread_findings f WHERE f.run_id=p.run_id AND f.page_id=p.page_id), '[]'::jsonb)`
+
+func scanSnapshot(row pgx.Row) (models.ProofreadRunPage, error) {
+	var p models.ProofreadRunPage
+	err := row.Scan(&p.PageID, &p.PageNumber, &p.BaseMarkdown, &p.BaseSHA256, &p.AnalysisStatus, &p.AnalysisError, &p.SuggestionID, &p.SubmittedAt, &p.Findings)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return p, ErrProofreadRunNotFound
+	}
+	for i := range p.Findings {
+		if string(p.Findings[i].ScanBBox) == "null" {
+			p.Findings[i].ScanBBox = nil
+		}
+	}
+	return p, err
+}
+
 func (r *ProofreadRunRepository) ListPages(ctx context.Context, runID int64) ([]models.ProofreadRunPage, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT p.page_id, p.page_number, p.base_markdown, p.base_sha256, p.analysis_status,
-		       p.analysis_error, p.suggestion_id, p.submitted_at,
-		       COALESCE((
-		           SELECT jsonb_agg(to_jsonb(f) ORDER BY f.start_rune, f.end_rune, f.id)
-		           FROM proofread_findings f WHERE f.run_id = p.run_id AND f.page_id = p.page_id
-		       ), '[]'::jsonb)
-		FROM proofread_run_pages p
-		WHERE p.run_id = $1
-		ORDER BY p.page_number, p.page_id`, runID)
+	rows, err := r.pool.Query(ctx, `SELECT `+snapshotColumns+`,`+snapshotFindings+` FROM proofread_run_pages p WHERE p.run_id=$1 ORDER BY p.page_number,p.page_id`, runID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (models.ProofreadRunPage, error) { return scanSnapshot(row) })
+}
+func (r *ProofreadRunRepository) PageForFinding(ctx context.Context, runID, findingID int64) (models.ProofreadRunPage, error) {
+	return scanSnapshot(r.pool.QueryRow(ctx, `SELECT `+snapshotColumns+`, jsonb_build_array(to_jsonb(f)) FROM proofread_findings f JOIN proofread_run_pages p USING(run_id,page_id) WHERE f.run_id=$1 AND f.id=$2`, runID, findingID))
+}
+func (r *ProofreadRunRepository) RunPage(ctx context.Context, runID, pageID int64) (models.ProofreadRunPage, error) {
+	return scanSnapshot(r.pool.QueryRow(ctx, `SELECT `+snapshotColumns+`, '[]'::jsonb FROM proofread_run_pages p WHERE p.run_id=$1 AND p.page_id=$2`, runID, pageID))
+}
+func (r *ProofreadRunRepository) NextPage(ctx context.Context, runID int64, after int) (models.ProofreadRunPage, error) {
+	return scanSnapshot(r.pool.QueryRow(ctx, `SELECT `+snapshotColumns+`, '[]'::jsonb FROM proofread_run_pages p WHERE p.run_id=$1 AND p.page_number>$2 ORDER BY p.page_number,p.page_id LIMIT 1`, runID, after))
+}
 
-	pages := make([]models.ProofreadRunPage, 0)
-	for rows.Next() {
-		var p models.ProofreadRunPage
-		if err := rows.Scan(&p.PageID, &p.PageNumber, &p.BaseMarkdown, &p.BaseSHA256, &p.AnalysisStatus,
-			&p.AnalysisError, &p.SuggestionID, &p.SubmittedAt, &p.Findings); err != nil {
-			return nil, err
+// RefreshPage verifies the checked live text again under the same locks as submission.
+func (r *ProofreadRunRepository) RefreshPage(ctx context.Context, runID, userID, pageID int64, baseHash, checkedText string) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var hash, live string
+		var submitted bool
+		err := tx.QueryRow(ctx, `SELECT rp.base_sha256, rp.submitted_at IS NOT NULL, COALESCE(p.content_markdown,'')
+ FROM proofread_run_pages rp JOIN proofread_runs r ON r.id=rp.run_id JOIN pages p ON p.id=rp.page_id
+ WHERE rp.run_id=$1 AND r.user_id=$2 AND rp.page_id=$3 FOR UPDATE OF rp FOR SHARE OF p`, runID, userID, pageID).Scan(&hash, &submitted, &live)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrProofreadRunNotFound
 		}
-		for i := range p.Findings {
-			if string(p.Findings[i].ScanBBox) == "null" {
-				p.Findings[i].ScanBBox = nil
-			}
+		if err != nil {
+			return err
 		}
-		pages = append(pages, p)
-	}
-	return pages, rows.Err()
+		if submitted {
+			return ErrProofreadPageSubmitted
+		}
+		newHash := fmt.Sprintf("%x", sha256.Sum256([]byte(live)))
+		if hash != baseHash || hash == newHash || live != checkedText {
+			return ErrProofreadBaseMismatch
+		}
+		_, err = tx.Exec(ctx, `DELETE FROM proofread_findings WHERE run_id=$1 AND page_id=$2`, runID, pageID)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE proofread_run_pages SET base_markdown=$3,base_sha256=$4,analysis_status='pending',analysis_error='' WHERE run_id=$1 AND page_id=$2`, runID, pageID, live, newHash)
+		return err
+	})
 }
 
 // lockProofreadRunPage serializes uploads, decisions and submission for the

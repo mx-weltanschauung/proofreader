@@ -7,7 +7,13 @@ import { proofreadAPI } from '../services/api';
 import ProofreadChapter from './ProofreadChapter';
 vi.mock('../services/api', () => ({
   API_BASE_URL: '',
-  proofreadAPI: { get: vi.fn(), decide: vi.fn(), submit: vi.fn(), pair: vi.fn() },
+  proofreadAPI: {
+    get: vi.fn(),
+    decide: vi.fn(),
+    submit: vi.fn(),
+    pair: vi.fn(),
+    refreshPage: vi.fn(),
+  },
 }));
 const findings = [
   {
@@ -109,8 +115,10 @@ it('shows a changed base immediately on reopening the run', async () => {
     pages: [{ ...run.pages[0], stale: true }],
   });
   await open();
-  expect(screen.getByRole('button', { name: 'Начать новую сверку главы' })).toBeVisible();
+  const refresh = screen.getByRole('button', { name: 'Обновить основу этой полосы' });
   expect(screen.getAllByRole('button', { name: 'Принять' })[0]).toBeDisabled();
+  fireEvent.click(refresh);
+  await waitFor(() => expect(proofreadAPI.refreshPage).toHaveBeenCalledWith(7, 1));
 });
 
 it('shows the helper command with the issued code and run', async () => {
@@ -222,4 +230,36 @@ it('waits for a delayed scan refresh before enabling decisions', async () => {
   await waitFor(() =>
     expect(screen.getByLabelText('Предлагаемый Markdown')).toHaveTextContent('😀 б а'),
   );
+});
+
+it('retains scan retry after failed refresh and remounts an unchanged URL', async () => {
+  await open();
+  const img = screen.getByRole('img');
+  fireEvent.error(img);
+  vi.mocked(proofreadAPI.get).mockRejectedValueOnce(new Error('offline'));
+  const retry = () => screen.getByRole('button', { name: 'Обновить ссылку на скан' });
+  fireEvent.click(retry());
+  await waitFor(() => expect(retry()).toBeEnabled());
+  const previous = screen.getByRole('img');
+  fireEvent.click(retry());
+  await waitFor(() => expect(screen.getByRole('img')).not.toBe(previous));
+  expect(retry()).toBeVisible();
+  fireEvent.load(screen.getByRole('img'));
+  expect(screen.queryByText('Обновить ссылку на скан')).toBeNull();
+});
+
+it('excludes an accepted replacement equal to the original', async () => {
+  const run = await proofreadAPI.get(7);
+  vi.mocked(proofreadAPI.get).mockResolvedValue({
+    ...run,
+    pages: [
+      {
+        ...run.pages[0],
+        findings: findings.map((f) => ({ ...f, decision: 'accepted', replacement: f.old })),
+      },
+    ],
+  });
+  await open();
+  expect(screen.getByRole('button', { name: /отправить проверенные полосы/i })).toBeDisabled();
+  expect(screen.getByText(/Предлагаемый текст совпадает/)).toBeVisible();
 });

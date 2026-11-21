@@ -3,12 +3,14 @@ import type { ScanBox } from '../services/api';
 
 export function ProofreadScan({
   url,
+  attempt = 0,
   number,
   box,
   refresh,
   refreshDisabled = false,
 }: {
   url: string;
+  attempt?: number;
   number: number;
   box?: ScanBox;
   refresh: () => void;
@@ -37,13 +39,7 @@ export function ProofreadScan({
       {failed && (
         <p role="alert">
           Не удалось загрузить скан.{' '}
-          <button
-            disabled={refreshDisabled}
-            onClick={() => {
-              setFailed(false);
-              refresh();
-            }}
-          >
+          <button disabled={refreshDisabled} onClick={refresh}>
             Обновить ссылку на скан
           </button>
         </p>
@@ -73,6 +69,7 @@ export function ProofreadScan({
           style={{ width: ratio ? `min(${zoom}%, ${(75 * ratio * zoom) / 100}vh)` : zoom + '%' }}
         >
           <img
+            key={attempt}
             src={url}
             alt={'Скан полосы ' + number}
             draggable={false}

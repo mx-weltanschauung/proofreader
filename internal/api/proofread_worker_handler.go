@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -99,11 +100,6 @@ func (h *ProofreadHandler) worker(w http.ResponseWriter, r *http.Request) {
 		proofreadFailure(w, err)
 		return
 	}
-	pages, err := h.runs.ListPages(ctx, id)
-	if err != nil {
-		proofreadFailure(w, err)
-		return
-	}
 	after := 0
 	if raw := r.URL.Query().Get("after"); raw != "" {
 		after, err = strconv.Atoi(raw)
@@ -112,32 +108,35 @@ func (h *ProofreadHandler) worker(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	for _, s := range pages {
-		if r.Method == http.MethodPut && s.PageID != proofreadID(r, "pageId") || r.Method == http.MethodGet && s.PageNumber <= after {
-			continue
-		}
-		p, err := h.page(ctx, c, s)
-		if err != nil {
-			proofreadFailure(w, err)
+	var s models.ProofreadRunPage
+	if r.Method == http.MethodGet {
+		s, err = h.runs.NextPage(ctx, id, after)
+		if errors.Is(err, repository.ErrProofreadRunNotFound) {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.Method == http.MethodGet {
-			p.Findings = nil
-			writeJSON(w, p)
-			return
-		}
-		if p.SkipReason != "" {
-			writeError(w, 422, p.SkipReason)
-			return
-		}
-		h.upload(w, r, id, s, upload)
+	} else {
+		s, err = h.runs.RunPage(ctx, id, proofreadID(r, "pageId"))
+	}
+	if err != nil {
+		proofreadFailure(w, err)
+		return
+	}
+	p, err := h.page(ctx, c, s)
+	if err != nil {
+		proofreadFailure(w, err)
 		return
 	}
 	if r.Method == http.MethodGet {
-		w.WriteHeader(204)
+		p.Findings = nil
+		writeJSON(w, p)
 		return
 	}
-	proofreadFailure(w, repository.ErrProofreadRunNotFound)
+	if p.SkipReason != "" {
+		writeError(w, 422, p.SkipReason)
+		return
+	}
+	h.upload(w, r, id, s, upload)
 }
 
 type workerUpload struct {

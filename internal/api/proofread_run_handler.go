@@ -83,9 +83,10 @@ func (h *ProofreadHandler) chapter(ctx context.Context, run models.ProofreadRun)
 
 type proofreadPage struct {
 	models.ProofreadRunPage
-	SkipReason string `json:"skip_reason,omitempty"`
-	ScanURL    string `json:"scan_url,omitempty"`
-	Stale      bool   `json:"stale,omitempty"`
+	liveMarkdown string
+	SkipReason   string `json:"skip_reason,omitempty"`
+	ScanURL      string `json:"scan_url,omitempty"`
+	Stale        bool   `json:"stale,omitempty"`
 }
 
 func (h *ProofreadHandler) page(ctx context.Context, c *models.Chapter, s models.ProofreadRunPage) (proofreadPage, error) {
@@ -122,7 +123,7 @@ func (h *ProofreadHandler) page(ctx context.Context, c *models.Chapter, s models
 	if url == "" {
 		return skipped, nil
 	}
-	return proofreadPage{ProofreadRunPage: s, ScanURL: url, Stale: s.BaseMarkdown != p.ContentMarkdown}, nil
+	return proofreadPage{ProofreadRunPage: s, liveMarkdown: p.ContentMarkdown, ScanURL: url, Stale: s.BaseMarkdown != p.ContentMarkdown}, nil
 }
 
 func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +165,37 @@ func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
 		proofreadFailure(w, err)
 		return
 	}
+	if r.Method == http.MethodPatch || mux.CurrentRoute(r).GetName() == "proofread-refresh" {
+		var snapshot models.ProofreadRunPage
+		if r.Method == http.MethodPatch {
+			snapshot, err = h.runs.PageForFinding(ctx, id, proofreadID(r, "findingId"))
+		} else {
+			snapshot, err = h.runs.RunPage(ctx, id, proofreadID(r, "pageId"))
+		}
+		if err != nil {
+			proofreadFailure(w, err)
+			return
+		}
+		p, err := h.page(ctx, c, snapshot)
+		if err != nil {
+			proofreadFailure(w, err)
+			return
+		}
+		if p.SkipReason != "" {
+			proofreadFailure(w, repository.ErrProofreadRunNotFound)
+			return
+		}
+		if r.Method == http.MethodPatch {
+			h.decide(w, r, run, p.Findings[0], decision)
+			return
+		}
+		if err := h.runs.RefreshPage(ctx, id, claims.UserID, p.PageID, p.BaseSHA256, p.liveMarkdown); err != nil {
+			proofreadFailure(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if r.Method == "POST" {
 		code, err := h.runs.IssuePairCode(ctx, id, claims.UserID)
 		if err != nil {
@@ -185,20 +217,7 @@ func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
 			proofreadFailure(w, err)
 			return
 		}
-		if r.Method == http.MethodPatch {
-			for _, f := range p.Findings {
-				if f.ID == proofreadID(r, "findingId") {
-					h.decide(w, r, run, f, decision)
-					return
-				}
-			}
-			continue
-		}
 		out = append(out, p)
-	}
-	if r.Method == "PATCH" {
-		proofreadFailure(w, repository.ErrProofreadRunNotFound)
-		return
 	}
 	writeJSON(w, struct {
 		models.ProofreadRun

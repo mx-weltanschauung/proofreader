@@ -1011,6 +1011,9 @@ export const proofreadAPI = {
   async get(id: number) {
     return (await api.get<ProofreadRun>(`/proofread-runs/${id}`)).data;
   },
+  async refreshPage(id: number, page: number) {
+    await api.post(`/proofread-runs/${id}/pages/${page}/refresh`);
+  },
   async decide(id: number, finding: number, decision: ProofreadDecision, replacement: string) {
     await api.patch(`/proofread-runs/${id}/findings/${finding}`, { decision, replacement });
   },

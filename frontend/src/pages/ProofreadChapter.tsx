@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { isAxiosError } from 'axios';
 import {
   API_BASE_URL,
@@ -35,6 +35,10 @@ function proposal(page: ProofreadPage) {
   }
   return chunks.join('') + runes.slice(end).join('');
 }
+function hasChangedProposal(page: ProofreadPage) {
+  const text = proposal(page);
+  return text !== null && text !== page.base_markdown;
+}
 const outcomes: Record<string, string> = {
   submitted: 'Предложение отправлено',
   already_submitted: 'Предложение уже отправлено',
@@ -67,7 +71,7 @@ function Review({ id }: { id: number }) {
   const [code, setCode] = useState('');
   const [results, setResults] = useState<Record<number, string>>({});
   const mark = useRef<HTMLElement>(null);
-  const navigate = useNavigate();
+  const [scanAttempt, setScanAttempt] = useState(0);
   const reload = useCallback(async () => {
     try {
       const fresh = await proofreadAPI.get(id);
@@ -167,7 +171,7 @@ function Review({ id }: { id: number }) {
       p.analysis_status === 'analyzed' &&
       p.findings?.some((f) => f.decision === 'accepted') &&
       p.findings.every((f) => f.decision !== 'pending') &&
-      proposal(p) !== null,
+      hasChangedProposal(p),
   );
   const original = Array.from(page?.base_markdown ?? '');
   const proposed = page && proposal(page);
@@ -249,12 +253,18 @@ function Review({ id }: { id: number }) {
                 <>
                   {page.scan_url && (
                     <ProofreadScan
-                      key={page.page_id + '-' + page.scan_url}
+                      key={page.page_id}
+                      attempt={scanAttempt}
                       number={page.page_number}
                       url={page.scan_url}
                       box={selected?.scan_bbox}
                       refreshDisabled={busy || editing !== undefined}
-                      refresh={() => act(reload)}
+                      refresh={() =>
+                        act(async () => {
+                          await reload();
+                          setScanAttempt((n) => n + 1);
+                        })
+                      }
                     />
                   )}
                   <section className="proof-text">
@@ -266,16 +276,23 @@ function Review({ id }: { id: number }) {
                         <Link to={pagePath({ id: run.work_id }, page.page_number)}>
                           Посмотреть текущий текст полосы
                         </Link>
+                        <p>
+                          Обновление удалит находки и решения этой полосы. Затем запустите помощник
+                          повторно.
+                        </p>
                         <button
                           disabled={busy}
                           onClick={() =>
                             act(async () => {
-                              const next = await proofreadAPI.create(run.work_id, run.chapter_id);
-                              navigate(`/proofread/runs/${next.id}`);
+                              await proofreadAPI.refreshPage(id, page.page_id);
+                              setResults((prev) => ({ ...prev, [page.page_id]: '' }));
+                              setActive(undefined);
+                              setEditing(undefined);
+                              await reload();
                             })
                           }
                         >
-                          Начать новую сверку главы
+                          Обновить основу этой полосы
                         </button>
                       </>
                     )}
@@ -297,6 +314,12 @@ function Review({ id }: { id: number }) {
                     ) : (
                       <>
                         <pre aria-label="Предлагаемый Markdown">{proposed}</pre>
+                        {proposed === page.base_markdown &&
+                          findings.some((f) => f.decision === 'accepted') && (
+                            <p>
+                              Предлагаемый текст совпадает с исходным. Полоса не войдёт в отправку.
+                            </p>
+                          )}
                         {proposed !== page.base_markdown && (
                           <MarkdownDiff before={page.base_markdown} after={proposed ?? ''} />
                         )}
