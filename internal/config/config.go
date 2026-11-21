@@ -36,6 +36,8 @@ type SiteConfig struct {
 	AgeRating  string
 	// Tagline — короткая подпись под именем в шапке; пусто — подписи нет.
 	Tagline string
+	// MonitoringURL — необязательный путь к отдельной панели метрик.
+	MonitoringURL string
 	// ReservedNicknames дополняет базовый закрытый список ников
 	// (models.SetExtraReservedNicknames) — обычно именами авторов корпуса.
 	ReservedNicknames []string
@@ -210,6 +212,7 @@ func Load() (*Config, error) {
 			ChannelURL:        getEnv("SITE_CHANNEL_URL", ""),
 			AgeRating:         getEnv("SITE_AGE_RATING", ""),
 			Tagline:           getEnv("SITE_TAGLINE", ""),
+			MonitoringURL:     getEnv("SITE_MONITORING_URL", ""),
 			ReservedNicknames: splitList(os.Getenv("RESERVED_NICKNAMES")),
 		},
 	}

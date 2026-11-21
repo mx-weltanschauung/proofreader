@@ -1861,6 +1861,21 @@ describe('ChapterView: закрытая глава', () => {
       isLoading: false,
     });
 
+  it('ссылку на распределение полос видит только администратор', async () => {
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CHAPTER));
+    signIn('administrator');
+    const view = renderChapter();
+    expect(await screen.findByRole('link', { name: 'Статистика полос' })).toHaveAttribute(
+      'href',
+      '/admin/stats?work=3&chapter=127',
+    );
+    view.unmount();
+    signIn('editor');
+    renderChapter();
+    await screen.findByRole('link', { name: 'Страница 245' });
+    expect(screen.queryByRole('link', { name: 'Статистика полос' })).not.toBeInTheDocument();
+  });
+
   it('администратору печатает дату и причину закрытия', async () => {
     signIn('administrator');
     vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CLOSED));

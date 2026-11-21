@@ -1,0 +1,16 @@
+.visible-pages-scroll {
+  max-height: 36rem;
+  overflow: auto;
+}
+.visible-pages-table {
+  min-width: 23rem;
+}
+.visible-pages-table td:last-child {
+  width: 45%;
+}
+.visible-pages-bar {
+  height: 0.8rem;
+  min-width: 0;
+  background: var(--stats-spa);
+  border-radius: 2px;
+}

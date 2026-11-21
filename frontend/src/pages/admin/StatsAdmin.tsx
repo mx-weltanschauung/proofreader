@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { statsApi } from '../../services/api';
 import type {
   StatsCountRow,
@@ -15,6 +15,10 @@ import { chapterPath, editionPath, workPath } from '../../utils/paths';
 import { calendarTotals, moscowToday } from '../../utils/statsTotals';
 import { apiErrorMessage } from '../../utils/apiError';
 import './StatsAdmin.css';
+import { VisiblePagesStats } from './VisiblePagesStats';
+import { DownloadsStats } from './DownloadsStats';
+import { TrafficChart } from './TrafficChart';
+import { useSite } from '../../services/site';
 
 const PERIODS = [1, 7, 30, 90] as const;
 const KINDS: { kind: StatsTopKind; label: string }[] = [
@@ -24,14 +28,6 @@ const KINDS: { kind: StatsTopKind; label: string }[] = [
   { kind: 'collection', label: 'Подборки' },
   { kind: 'concept', label: 'Понятия' },
   { kind: 'edition', label: 'Издания' },
-];
-const CHANNELS: { key: string; label: string }[] = [
-  { key: 'spa', label: 'Читатели' },
-  { key: 'md', label: 'Текст для нейросетей' },
-  { key: 'download', label: 'Скачивания' },
-  { key: 'seo', label: 'Краулеры' },
-  { key: 'mcp', label: 'MCP' },
-  { key: 'opds', label: 'Каталог OPDS' },
 ];
 const DEVICE_LABELS: Record<string, string> = {
   narrow: 'Телефон',
@@ -89,28 +85,30 @@ function topLabel(kind: StatsTopKind, row: StatsTopRow): string {
 }
 
 export const StatsAdmin: React.FC = () => {
+  const { monitoringUrl } = useSite();
+  const monitoringHref = /^\/monitoring\/vmui\/?$/.test(monitoringUrl) ? monitoringUrl : '';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedWork = Number(searchParams.get('work'));
+  const selectedChapter = Number(searchParams.get('chapter'));
+  const hasSelectedChapter =
+    Number.isSafeInteger(selectedWork) &&
+    selectedWork > 0 &&
+    Number.isSafeInteger(selectedChapter) &&
+    selectedChapter > 0;
   const [days, setDays] = useState<number>(7);
+  const [chartDays, setChartDays] = useState<7 | 30 | 90>(7);
   const [kind, setKind] = useState<StatsTopKind>('work');
 
-  const traffic = useLoad<StatsTrafficRow[]>(() => statsApi.traffic(30), []);
+  const traffic = useLoad<StatsTrafficRow[]>(
+    () => statsApi.traffic(Math.max(30, chartDays)),
+    [chartDays],
+  );
   const top = useLoad<StatsTopRow[]>(() => statsApi.top(kind, days), [kind, days]);
   const refs = useLoad<StatsCountRow[]>(() => statsApi.referrers(days), [days]);
   const searches = useLoad<StatsSearches>(() => statsApi.searches(days), [days]);
   const crawlers = useLoad<StatsCrawlerRow[]>(() => statsApi.crawlers(days), [days]);
   const devices = useLoad<StatsDeviceRow[]>(() => statsApi.devices(days), [days]);
   const health = useLoad<StatsHealth>(() => statsApi.health(), []);
-
-  // Столбики: по дню — сумма по каналам, стопкой.
-  const byDay = useMemo(() => {
-    const m = new Map<string, Record<string, number>>();
-    for (const r of traffic.data ?? []) {
-      const d = m.get(r.day) ?? {};
-      d[r.channel] = r.views;
-      m.set(r.day, d);
-    }
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [traffic.data]);
-  const maxDay = Math.max(1, ...byDay.map(([, c]) => Object.values(c).reduce((a, b) => a + b, 0)));
 
   // Окна считаются по календарю (Москва), а не по последним N дням в данных:
   // без визитов сегодня «Сегодня» не должно показывать вчера.
@@ -143,6 +141,13 @@ export const StatsAdmin: React.FC = () => {
         Уникальные считаются внутри суток: за период длиннее дня это посетителе-дни, а не люди.
         Сотрудники не учитываются.
       </p>
+      {monitoringHref && (
+        <p>
+          <a href={monitoringHref} target="_blank" rel="noopener noreferrer">
+            Графики сервера
+          </a>
+        </p>
+      )}
 
       <section aria-label="Обзор" className="stats-admin-section">
         <h2>Обзор за 30 дней</h2>
@@ -167,42 +172,7 @@ export const StatsAdmin: React.FC = () => {
             </dd>
           </div>
         </dl>
-        <svg
-          className="stats-admin-bars"
-          viewBox={`0 0 ${Math.max(byDay.length, 1) * 12} 100`}
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Просмотры по дням"
-        >
-          {byDay.map(([day, counts], i) => {
-            let y = 100;
-            return CHANNELS.map(({ key }) => {
-              const v = counts[key] ?? 0;
-              const h = (v / maxDay) * 100;
-              y -= h;
-              return v > 0 ? (
-                <rect
-                  key={`${day}-${key}`}
-                  x={i * 12 + 1}
-                  y={y}
-                  width={10}
-                  height={h}
-                  className={`stats-bar stats-bar-${key}`}
-                >
-                  <title>{`${day.slice(0, 10)}: ${key} ${v}`}</title>
-                </rect>
-              ) : null;
-            });
-          })}
-        </svg>
-        <ul className="stats-admin-legend">
-          {CHANNELS.map((c) => (
-            <li key={c.key}>
-              <span className={`stats-swatch stats-bar-${c.key}`} />
-              {c.label}
-            </li>
-          ))}
-        </ul>
+        <TrafficChart rows={traffic.data ?? []} days={chartDays} onDaysChange={setChartDays} />
       </section>
 
       <div className="stats-admin-periods" role="group" aria-label="Период">
@@ -235,6 +205,7 @@ export const StatsAdmin: React.FC = () => {
                 <th>Что</th>
                 <th>Просмотры</th>
                 <th>Посетителе-дни</th>
+                {kind === 'chapter' && <th>Распределение</th>}
               </tr>
             </thead>
             <tbody>
@@ -249,6 +220,21 @@ export const StatsAdmin: React.FC = () => {
                     <td>{href ? <Link to={href}>{label}</Link> : label}</td>
                     <td>{row.views}</td>
                     <td>{row.visitors}</td>
+                    {kind === 'chapter' && !row.missing && (
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSearchParams({
+                              work: String(row.work_id),
+                              chapter: String(row.entity_id),
+                            })
+                          }
+                        >
+                          Полосы
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -256,6 +242,12 @@ export const StatsAdmin: React.FC = () => {
           </table>
         </div>
       </section>
+
+      {hasSelectedChapter && (
+        <VisiblePagesStats workId={selectedWork} chapterId={selectedChapter} days={days} />
+      )}
+
+      <DownloadsStats days={days} />
 
       <section aria-label="Откуда" className="stats-admin-section">
         <h2>Откуда приходят</h2>

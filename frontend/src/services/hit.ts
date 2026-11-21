@@ -47,6 +47,27 @@ export function sendHit(path: string, ref: string): void {
   }
 }
 
+/** Маячок полосы: тот же токен сотрудника и неблокирующая отправка. */
+export function sendVisiblePage(workId: number, pageNumber: number): void {
+  const headers: Record<string, string> = {};
+  try {
+    const token = localStorage.getItem('token');
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    // Блокировка хранилища не мешает чтению.
+  }
+  try {
+    void fetch(`${API_BASE_URL}/api/visible-page`, {
+      method: 'POST',
+      keepalive: true,
+      headers,
+      body: JSON.stringify({ work_id: workId, page_number: pageNumber }),
+    }).catch(() => {});
+  } catch {
+    // Статистика не влияет на экран чтения.
+  }
+}
+
 // Источник захода: только чужой хост, свой переход по сайту — не источник.
 export function externalReferrer(): string {
   try {

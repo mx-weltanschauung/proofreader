@@ -21,6 +21,7 @@ export interface SiteInfo {
   ageRating: string;
   /** Подпись под именем в шапке; пусто — подписи нет. */
   siteTagline: string;
+  monitoringUrl: string;
 }
 
 export const DEFAULT_SITE: SiteInfo = {
@@ -30,6 +31,7 @@ export const DEFAULT_SITE: SiteInfo = {
   channelUrl: '',
   ageRating: '',
   siteTagline: '',
+  monitoringUrl: '',
 };
 
 /** Страница /legal — доверенный HTML-фрагмент оператора (instance/legal.html). */
@@ -66,6 +68,7 @@ function loadSite(): void {
           channelUrl: d.channel_url || '',
           ageRating: d.age_rating || '',
           siteTagline: d.site_tagline || '',
+          monitoringUrl: d.monitoring_url || '',
         },
       });
     })

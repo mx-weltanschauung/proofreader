@@ -104,6 +104,14 @@ test_frontend_mounts_instance_dir() {
     fail "frontend не монтирует ./instance в /usr/share/nginx/html/instance:ro: $(jq -c '.services.frontend.volumes' <<<"$json")"
 }
 
+test_caddy_mounts_optional_monitoring_directory() {
+  prod_project external
+  local json; json="$(prod config --format json)"
+  jq -e --arg src "$TMPROOT/config/monitoring-caddy" \
+    '.services.caddy.volumes | any(.source == $src and .target == "/etc/caddy/monitoring" and .read_only == true)' \
+    <<<"$json" >/dev/null || fail 'Caddy не монтирует необязательный каталог мониторинга'
+}
+
 # Переменные экземпляра (имя, описание, ссылки, подпись, ники) доходят до
 # бэкенда из .env — список environment у сервиса явный, и пропущенная в нём
 # переменная молча не существует внутри контейнера.
@@ -118,10 +126,11 @@ SITE_SUPPORT_URL=https://example.org/give
 SITE_CHANNEL_URL=https://example.org/news
 SITE_AGE_RATING=18+
 SITE_TAGLINE=собрания
+SITE_MONITORING_URL=/monitoring/vmui/
 RESERVED_NICKNAMES=a,b
 ENV
     json="$(prod config --format json)"
-    for var in SITE_NAME SITE_DESCRIPTION SITE_SUPPORT_URL SITE_CHANNEL_URL SITE_AGE_RATING SITE_TAGLINE RESERVED_NICKNAMES; do
+    for var in SITE_NAME SITE_DESCRIPTION SITE_SUPPORT_URL SITE_CHANNEL_URL SITE_AGE_RATING SITE_TAGLINE SITE_MONITORING_URL RESERVED_NICKNAMES; do
       [[ -n "$(jq -r --arg v "$var" '.services.backend.environment[$v] // empty' <<<"$json")" ]] ||
         fail "$mode: $var не доходит до backend"
     done

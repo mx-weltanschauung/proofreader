@@ -12,7 +12,7 @@ import (
 
 func TestSiteHandlerGet(t *testing.T) {
 	h := NewSiteHandler(config.SiteConfig{Name: "Тест", Description: "о собрании",
-		SupportURL: "https://example.org/give", ChannelURL: "https://example.org/news", AgeRating: "18+", Tagline: "собрания"})
+		SupportURL: "https://example.org/give", ChannelURL: "https://example.org/news", AgeRating: "18+", Tagline: "собрания", MonitoringURL: "/monitoring/vmui/"})
 	rec := httptest.NewRecorder()
 	h.Get(rec, httptest.NewRequest("GET", "/api/site", nil))
 	if rec.Code != 200 {
@@ -26,7 +26,7 @@ func TestSiteHandlerGet(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]any{"site_name": "Тест", "site_description": "о собрании",
-		"support_url": "https://example.org/give", "channel_url": "https://example.org/news", "age_rating": "18+", "site_tagline": "собрания"}
+		"support_url": "https://example.org/give", "channel_url": "https://example.org/news", "age_rating": "18+", "site_tagline": "собрания", "monitoring_url": "/monitoring/vmui/"}
 	for k, v := range want {
 		if got[k] != v {
 			t.Errorf("%s = %v, want %v", k, got[k], v)
@@ -48,7 +48,7 @@ func TestSiteHandlerFieldsAreExactlyUsed(t *testing.T) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	want := "age_rating channel_url site_description site_name site_tagline support_url"
+	want := "age_rating channel_url monitoring_url site_description site_name site_tagline support_url"
 	if strings.Join(keys, " ") != want {
 		t.Errorf("поля ответа: %v, ждали %s", keys, want)
 	}

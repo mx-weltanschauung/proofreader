@@ -139,6 +139,7 @@ var routeAccess = map[string]access{
 	"GET /api/static-archive/download":              accessPublic,
 	// Маячок посещаемости: без токена, отвечает 204 на всё.
 	"POST /api/hit":                                        accessPublic,
+	"POST /api/visible-page":                               accessPublic,
 	"GET /api/search":                                      accessPublic,
 	"GET /api/search/pages":                                accessPublic,
 	"GET /api/works":                                       accessPublic,
@@ -327,6 +328,8 @@ var routeAccess = map[string]access{
 	"GET /api/admin/settings":                 accessAdmin,
 	"PATCH /api/admin/settings":               accessAdmin,
 	"GET /api/admin/stats/traffic":            accessAdmin,
+	"GET /api/admin/stats/downloads":          accessAdmin,
+	"GET /api/admin/stats/visible-pages":      accessAdmin,
 	"GET /api/admin/stats/top":                accessAdmin,
 	"GET /api/admin/stats/referrers":          accessAdmin,
 	"GET /api/admin/stats/searches":           accessAdmin,

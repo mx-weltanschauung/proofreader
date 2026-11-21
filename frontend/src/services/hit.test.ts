@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { deviceClass, sendHit } from './hit';
+import { deviceClass, sendHit, sendVisiblePage } from './hit';
 
 describe('deviceClass', () => {
   it('режет ширину на три корзины по границам 600 и 1024', () => {
@@ -62,5 +62,23 @@ describe('sendHit', () => {
     sendHit('/works/1', '');
     const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
     expect(init.headers.Authorization).toBe('Bearer tok');
+  });
+});
+
+describe('sendVisiblePage', () => {
+  it('шлёт номер полосы с токеном и keepalive', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockReturnValue('tok');
+    const fetchMock = vi.fn().mockResolvedValue({});
+    vi.stubGlobal('fetch', fetchMock);
+    sendVisiblePage(49, 12);
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/visible-page');
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+      method: 'POST',
+      keepalive: true,
+      headers: { Authorization: 'Bearer tok' },
+      body: JSON.stringify({ work_id: 49, page_number: 12 }),
+    });
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 });
