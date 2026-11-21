@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth, isAdmin, canEdit, isReader } from '../hooks/useAuth';
 import { useSiteHeaderHeight } from '../hooks/useSiteHeaderHeight';
@@ -7,6 +7,7 @@ import { ReadingSettings } from './ReadingSettings';
 import { feedbackApi } from '../services/api';
 import { roleLabel } from '../utils/roleLabel';
 import { joinPathFor } from '../utils/returnUrl';
+import { STAFF_GROUPS, staffGroups } from '../utils/staffNavigation';
 import { SearchTrigger } from './SearchTrigger';
 import { useSite } from '../services/site';
 import './Header.css';
@@ -23,18 +24,9 @@ const DIRECT_PATHS = [
 
 // Служебные страницы, чьи ссылки находятся за «Все разделы». Скрытые
 // /documents/review должны перекрыть публичный /documents.
-const STAFF_SECTION_PATHS = [
-  '/documents/review',
-  '/reader-comments/review',
-  '/mine/notes',
-  '/mine/comments',
-  '/admin/audio',
-  '/admin/users',
-  '/admin/feedback',
-  '/admin/cache',
-  '/admin/settings',
-  '/admin/closures',
-];
+const STAFF_SECTION_PATHS = STAFF_GROUPS.filter((group) => group.id !== 'frequent').flatMap(
+  (group) => group.links.map((link) => link.to),
+);
 
 function currentHeaderPath(pathname: string): string | null {
   if (STAFF_SECTION_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
@@ -66,8 +58,50 @@ export const Header: React.FC = () => {
   const { siteName, siteTagline } = useSite();
   const { user, logout, isAuthenticated } = useAuth();
   const headerRef = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuCloseTimer = useRef<number | null>(null);
+  const [menuState, setMenuState] = useState({ open: false, clicked: false });
+  const menuOpen = menuState.open;
+  const openMenu = useCallback(() => {
+    if (menuCloseTimer.current !== null) {
+      window.clearTimeout(menuCloseTimer.current);
+      menuCloseTimer.current = null;
+    }
+    setMenuState((prev) => (prev.open ? prev : { ...prev, open: true }));
+  }, []);
+  const closeMenu = useCallback(() => {
+    if (menuCloseTimer.current !== null) {
+      window.clearTimeout(menuCloseTimer.current);
+      menuCloseTimer.current = null;
+    }
+    setMenuState((prev) => (!prev.open && !prev.clicked ? prev : { open: false, clicked: false }));
+  }, []);
+  const toggleMenu = useCallback(() => {
+    if (menuCloseTimer.current !== null) {
+      window.clearTimeout(menuCloseTimer.current);
+      menuCloseTimer.current = null;
+    }
+    setMenuState((prev) =>
+      prev.clicked ? { open: false, clicked: false } : { open: true, clicked: true },
+    );
+  }, []);
   useSiteHeaderHeight(headerRef);
   const location = useLocation();
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) closeMenu();
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [menuOpen, closeMenu]);
+  useEffect(
+    () => () => {
+      if (menuCloseTimer.current !== null) window.clearTimeout(menuCloseTimer.current);
+    },
+    [],
+  );
   const [unreadFeedback, setUnreadFeedback] = useState(0);
   const admin = isAdmin(user);
   const staff = canEdit(user);
@@ -126,9 +160,15 @@ export const Header: React.FC = () => {
   // читает total из того же запроса, которым открывается сама очередь
   // (limit=0 — нужен только total, не строки).
   const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const menuCounts = {
+    suggestions: pendingCount,
+    comments: commentCount,
+    feedback: unreadFeedback,
+  };
   const [prevUserId, setPrevUserId] = useState(user?.id ?? null);
   if (prevUserId !== (user?.id ?? null)) {
     setPrevUserId(user?.id ?? null);
+    setMenuState({ open: false, clicked: false });
     setPendingCount(null);
     setCommentCount(0);
     setUnreadFeedback(0);
@@ -243,14 +283,75 @@ export const Header: React.FC = () => {
                 </HeaderLink>
               </>
             )}
-            <HeaderLink to="/staff" pathname={location.pathname}>
-              Все разделы
-              {(commentCount > 0 || (admin && unreadFeedback > 0)) && (
-                <span className="header-staff-dot">
-                  <span className="visually-hidden">Есть новые записи</span>
-                </span>
+            <div
+              className="header-staff-menu"
+              ref={menuRef}
+              onPointerEnter={(event) => {
+                if (event.pointerType === 'mouse') openMenu();
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType === 'mouse') {
+                  if (menuCloseTimer.current !== null) window.clearTimeout(menuCloseTimer.current);
+                  menuCloseTimer.current = window.setTimeout(() => {
+                    closeMenu();
+                  }, 180);
+                }
+              }}
+              onFocus={openMenu}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) closeMenu();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  menuTriggerRef.current?.focus();
+                  closeMenu();
+                }
+              }}
+            >
+              <button
+                type="button"
+                ref={menuTriggerRef}
+                className="header-nav-link header-staff-trigger"
+                aria-expanded={menuOpen}
+                aria-controls={menuOpen ? 'header-staff-menu-panel' : undefined}
+                aria-current={
+                  currentHeaderPath(location.pathname) === '/staff' ? 'page' : undefined
+                }
+                onClick={toggleMenu}
+              >
+                Все разделы
+                {(commentCount > 0 || (admin && unreadFeedback > 0)) && (
+                  <span className="header-staff-dot">
+                    <span className="visually-hidden">Есть новые записи</span>
+                  </span>
+                )}
+              </button>
+              {menuOpen && (
+                <div
+                  id="header-staff-menu-panel"
+                  className="header-staff-menu-panel"
+                  role="group"
+                  aria-label="Все служебные разделы"
+                >
+                  {staffGroups(admin).map((group) => (
+                    <section key={group.id} aria-label={group.title}>
+                      <h3>{group.title}</h3>
+                      {group.links.map((link) => (
+                        <Link key={link.to} to={link.to} onClick={closeMenu}>
+                          {link.label}
+                          {link.count && (menuCounts[link.count] ?? 0) > 0 && (
+                            <span className="header-badge">{menuCounts[link.count]}</span>
+                          )}
+                        </Link>
+                      ))}
+                    </section>
+                  ))}
+                  <Link className="header-staff-all-link" to="/staff" onClick={closeMenu}>
+                    Открыть страницу всех разделов
+                  </Link>
+                </div>
               )}
-            </HeaderLink>
+            </div>
           </div>
         </nav>
       )}
