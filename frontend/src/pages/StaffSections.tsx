@@ -47,7 +47,7 @@ export function StaffSections() {
   if (!staff) return null;
 
   return (
-    <main className="staff-sections">
+    <div className="staff-sections">
       <h1>Все разделы</h1>
       <div className="staff-sections-grid">
         <section aria-labelledby="staff-frequent">
@@ -88,6 +88,6 @@ export function StaffSections() {
           <Link to="/mine/comments">Мои комментарии</Link>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

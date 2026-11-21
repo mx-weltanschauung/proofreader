@@ -127,4 +127,16 @@ describe('StaffSections', () => {
     expect(screen.getByRole('link', { name: 'Комментарии' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Обращения' })).toBeInTheDocument();
   });
+
+  it('не вкладывает второй main в основной контейнер сайта', () => {
+    signIn('administrator');
+    const { container } = render(
+      <MemoryRouter>
+        <main>
+          <StaffSections />
+        </main>
+      </MemoryRouter>,
+    );
+    expect(container.querySelectorAll('main')).toHaveLength(1);
+  });
 });
