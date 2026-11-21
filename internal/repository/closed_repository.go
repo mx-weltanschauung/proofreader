@@ -409,11 +409,13 @@ func (r *ClosedRepository) ListClosures(ctx context.Context, limit, offset int) 
 func (r *ClosedRepository) ListActiveClosures(ctx context.Context, limit, offset int) ([]models.ActiveClosure, error) {
 	const query = `WITH work_flags AS (
 		SELECT w.id, w.title, w.closed, w.scans_hidden,
-			(coalesce(work_closed_by(w.parent_work_id), '') <> ''
+			(coalesce(p.closed, false) OR coalesce(pe.closed, false)
 			 OR coalesce(e.closed, false) OR coalesce(j.closed, false)) AS inherited_full,
 			(coalesce(work_scans_hidden_by(w.parent_work_id), '') <> ''
 			 OR coalesce(e.scans_hidden, false) OR coalesce(j.scans_hidden, false)) AS inherited_scans
 		FROM works w
+		LEFT JOIN works p ON p.id = w.parent_work_id
+		LEFT JOIN editions pe ON pe.id = p.edition_id
 		LEFT JOIN editions e ON e.id = w.edition_id
 		LEFT JOIN journal_issues ji ON ji.work_id = w.id
 		LEFT JOIN journals j ON j.id = ji.journal_id
@@ -425,11 +427,12 @@ func (r *ClosedRepository) ListActiveClosures(ctx context.Context, limit, offset
 		FROM chapters c
 		LEFT JOIN LATERAL (
 			WITH RECURSIVE ancestors AS (
-				SELECT p.parent_id, p.closed, p.scans_hidden
-				FROM chapters p WHERE p.id = c.parent_id
-				UNION ALL
-				SELECT p.parent_id, p.closed, p.scans_hidden
+				SELECT p.id, p.parent_id, p.closed, p.scans_hidden
+				FROM chapters p WHERE p.id = c.parent_id AND p.id <> c.id
+				UNION
+				SELECT p.id, p.parent_id, p.closed, p.scans_hidden
 				FROM chapters p JOIN ancestors a ON p.id = a.parent_id
+				WHERE p.id <> c.id
 			)
 			SELECT bool_or(closed) AS closed, bool_or(scans_hidden) AS scans_hidden FROM ancestors
 		) a ON true

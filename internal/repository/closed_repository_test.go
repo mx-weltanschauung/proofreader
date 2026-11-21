@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -141,6 +142,62 @@ func TestListActiveClosuresStablePaging(t *testing.T) {
 	}
 	if len(first) != 2 || len(second) != 2 || len(third) != 1 || len(ids) != 5 {
 		t.Fatalf("страницы 2/2/1: %d/%d/%d, id=%v", len(first), len(second), len(third), ids)
+	}
+}
+
+func TestListActiveClosuresDoesNotInheritJournalThroughParentWork(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	closed := NewClosedRepository(pool)
+	works := NewWorkRepository(pool)
+	journalRepo := NewJournalRepository(pool)
+	journal := newJournal(t, journalRepo, "closed-parent-journal")
+	_, issue := newIssue(t, journalRepo, journal, 1925, 1, 1)
+	child := newChild(t, works, issue, "Вступление")
+	actor := models.ClosureActor{Name: "test"}
+	if _, err := closed.SetJournalClosed(ctx, journal.ID, true, actor, "журнал"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetWorkClosed(ctx, child.ID, true, actor, "работа"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := closed.ListActiveClosures(ctx, 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.Kind == "work" && row.EntityID == child.ID && row.Scope == "full" {
+			if row.Inherited {
+				t.Fatalf("закрытый журнал родителя не наследуется служебной работой: %+v", row)
+			}
+			return
+		}
+	}
+	t.Fatal("собственное закрытие дочерней работы отсутствует")
+}
+
+func TestListActiveClosuresHandlesChapterCycle(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	closed := NewClosedRepository(pool)
+	chapters := NewChapterRepository(pool)
+	work := newVolume(t, NewWorkRepository(pool), "Том с циклом глав")
+	a := newChapter(t, chapters, work.ID, nil, "Глава A", 1, 10, 1)
+	b := newChapter(t, chapters, work.ID, &a.ID, "Глава B", 2, 3, 1)
+	if _, err := pool.Exec(ctx, `UPDATE chapters SET parent_id = $2 WHERE id = $1`, a.ID, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := closed.SetChapterClosed(ctx, a.ID, true, models.ClosureActor{Name: "test"}, "тест"); err != nil {
+		t.Fatal(err)
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	rows, err := closed.ListActiveClosures(queryCtx, 100, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].Inherited {
+		t.Fatalf("собственный флаг не должен наследоваться через цикл: %+v", rows)
 	}
 }
 

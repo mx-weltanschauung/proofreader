@@ -44,6 +44,11 @@
   margin: 1rem 0;
 }
 
+.closures-admin-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .closures-admin-table th,
 .closures-admin-table td {
   padding: 0.4rem 0.6rem;

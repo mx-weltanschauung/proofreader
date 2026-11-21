@@ -69,12 +69,16 @@ describe('разбор обращений', () => {
 
   it('помечает письмо разобранным', async () => {
     vi.mocked(feedbackApi.setHandled).mockReturnValue(ok({ ok: true }));
+    const changed = vi.fn();
+    window.addEventListener('feedback-changed', changed);
     renderList();
 
     await screen.findByText('на 412-й опечатка');
     await userEvent.click(screen.getAllByRole('button', { name: 'Разобрано' })[0]);
 
     await waitFor(() => expect(feedbackApi.setHandled).toHaveBeenCalledWith(2, true));
+    await waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    window.removeEventListener('feedback-changed', changed);
   });
 
   it('удаляет письмо только после подтверждения', async () => {

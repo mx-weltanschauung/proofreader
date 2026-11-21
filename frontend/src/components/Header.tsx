@@ -75,13 +75,17 @@ export const Header: React.FC = () => {
   useEffect(() => {
     if (!staff) return;
     let alive = true;
+    let request = 0;
     const load = () => {
+      const current = ++request;
       void readerCommentsApi
         .pendingCount()
         .then((r) => {
-          if (alive) setCommentCount(r.data.count);
+          if (alive && current === request) setCommentCount(r.data.count);
         })
-        .catch(() => {});
+        .catch(() => {
+          if (alive && current === request) setCommentCount(0);
+        });
     };
     load();
     window.addEventListener('reader-comments-changed', load);
@@ -96,18 +100,25 @@ export const Header: React.FC = () => {
       return;
     }
     let alive = true;
+    let request = 0;
     // Счётчик — украшение: молчаливый отказ лучше сообщения об ошибке в шапке
     // на каждой странице.
-    void feedbackApi
-      .unreadCount()
-      .then((response) => {
-        if (alive) setUnreadFeedback(response.data.count);
-      })
-      .catch(() => {
-        if (alive) setUnreadFeedback(0);
-      });
+    const load = () => {
+      const current = ++request;
+      void feedbackApi
+        .unreadCount()
+        .then((response) => {
+          if (alive && current === request) setUnreadFeedback(response.data.count);
+        })
+        .catch(() => {
+          if (alive && current === request) setUnreadFeedback(0);
+        });
+    };
+    load();
+    window.addEventListener('feedback-changed', load);
     return () => {
       alive = false;
+      window.removeEventListener('feedback-changed', load);
     };
   }, [admin, user?.id]);
 

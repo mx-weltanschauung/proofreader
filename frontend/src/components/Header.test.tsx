@@ -96,6 +96,7 @@ describe('подпись под именем', () => {
 
 describe('Header', () => {
   beforeEach(() => {
+    vi.mocked(readerCommentsApi.pendingCount).mockReset();
     vi.mocked(readerCommentsApi.pendingCount).mockResolvedValue({ data: { count: 0 } } as never);
     useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
     // Значок очереди спрашивает suggestionsApi.queue у любого редактора или
@@ -294,6 +295,48 @@ describe('Header', () => {
     renderHeader();
     await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalled());
     expect(screen.getByRole('link', { name: 'Все разделы' })).toHaveAttribute('href', '/staff');
+  });
+
+  it('снимает индикатор после ошибки обновления комментариев', async () => {
+    vi.mocked(readerCommentsApi.pendingCount)
+      .mockResolvedValueOnce({ data: { count: 2 } } as never)
+      .mockRejectedValueOnce(new Error('нет сети'));
+    useAuth.setState({
+      user: { id: 2, email: 'editor@proofreader.local', role: 'editor' },
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    renderHeader();
+    await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ });
+    await act(async () => {
+      window.dispatchEvent(new Event('reader-comments-changed'));
+    });
+    await waitFor(() => expect(readerCommentsApi.pendingCount).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: 'Все разделы' })).toBeInTheDocument(),
+    );
+  });
+
+  it('обновляет индикатор после обработки обращения', async () => {
+    vi.mocked(feedbackApi.unreadCount)
+      .mockReturnValueOnce(ok({ count: 2 }))
+      .mockReturnValueOnce(ok({ count: 0 }));
+    useAuth.setState({
+      user: { id: 1, email: 'admin@proofreader.local', role: 'administrator' },
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    renderHeader();
+    await screen.findByRole('link', { name: /Все разделы.*Есть новые записи/ });
+    await act(async () => {
+      window.dispatchEvent(new Event('feedback-changed'));
+    });
+    await waitFor(() => expect(feedbackApi.unreadCount).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: 'Все разделы' })).toBeInTheDocument(),
+    );
   });
 
   it('после смены администратора не показывает чужой индикатор', async () => {

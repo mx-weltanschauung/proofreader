@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
@@ -9,6 +9,14 @@ import { ClosuresAdmin } from './ClosuresAdmin';
 
 function ok<T>(data: T): Promise<AxiosResponse<T>> {
   return Promise.resolve({ data } as unknown as AxiosResponse<T>);
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 const ROWS: ClosureEntry[] = [
@@ -212,5 +220,85 @@ describe('ClosuresAdmin', () => {
     });
     renderPage();
     await waitFor(() => expect(screen.getByText('Только администратор')).toBeInTheDocument());
+  });
+
+  it('держит каждую открываемую строку недоступной до завершения её запроса', async () => {
+    vi.spyOn(closuresApi, 'active').mockReturnValue(ok([ACTIVE[0], ACTIVE[1]]));
+    const first = deferred<AxiosResponse<never>>();
+    const second = deferred<AxiosResponse<never>>();
+    vi.spyOn(worksApi, 'setClosed').mockReturnValue(first.promise);
+    vi.spyOn(chaptersApi, 'setScansHidden').mockReturnValue(second.promise);
+    vi.spyOn(window, 'prompt').mockReturnValue('основание');
+    renderPage();
+    await screen.findByText('письмо издателя');
+    const buttons = screen.getAllByRole('button', { name: 'Открыть' });
+    await userEvent.click(buttons[0]);
+    await userEvent.click(buttons[1]);
+    expect(buttons[0]).toBeDisabled();
+    expect(buttons[1]).toBeDisabled();
+    await act(async () => {
+      first.resolve({ data: {} } as AxiosResponse<never>);
+      await first.promise;
+    });
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Открыть' })[0]).not.toBeDisabled(),
+    );
+    expect(screen.getAllByRole('button', { name: 'Открыть' })[1]).toBeDisabled();
+    await act(async () => {
+      second.resolve({ data: {} } as AxiosResponse<never>);
+      await second.promise;
+    });
+  });
+
+  it('игнорирует старую страницу после перечитывания открытых строк', async () => {
+    const oldPage = deferred<AxiosResponse<ActiveClosure[]>>();
+    const active = vi
+      .spyOn(closuresApi, 'active')
+      .mockReturnValueOnce(
+        ok(
+          Array.from({ length: 100 }, (_, i) => ({
+            ...ACTIVE[0],
+            entity_id: i + 1,
+            title: `Том ${i + 1}`,
+          })),
+        ),
+      )
+      .mockReturnValueOnce(oldPage.promise)
+      .mockReturnValueOnce(ok([]));
+    vi.spyOn(worksApi, 'setClosed').mockReturnValue(ok({} as never));
+    vi.spyOn(window, 'prompt').mockReturnValue('основание');
+    renderPage();
+    await screen.findByText('Том 100');
+    await userEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+    await userEvent.click(
+      within(screen.getByRole('link', { name: 'Том 1' }).closest('tr')!).getByRole('button', {
+        name: 'Открыть',
+      }),
+    );
+    await waitFor(() => expect(active).toHaveBeenCalledTimes(3));
+    await screen.findByText('Актуальных закрытий нет.');
+    await act(async () => {
+      oldPage.resolve({ data: [ACTIVE[1]] } as AxiosResponse<ActiveClosure[]>);
+      await oldPage.promise;
+    });
+    expect(screen.queryByText('Подглава')).toBeNull();
+  });
+
+  it('обновляет журнал, если открытие завершилось после перехода на него', async () => {
+    vi.spyOn(closuresApi, 'active').mockReturnValue(ok([ACTIVE[0]]));
+    const history = vi.spyOn(closuresApi, 'list').mockReturnValue(ok(ROWS));
+    const opening = deferred<AxiosResponse<never>>();
+    vi.spyOn(worksApi, 'setClosed').mockReturnValue(opening.promise);
+    vi.spyOn(window, 'prompt').mockReturnValue('основание');
+    renderPage();
+    await screen.findByText('письмо издателя');
+    await userEvent.click(screen.getByRole('button', { name: 'Открыть' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Журнал' }));
+    await screen.findByText('письмо издателя о правах');
+    await act(async () => {
+      opening.resolve({ data: {} } as AxiosResponse<never>);
+      await opening.promise;
+    });
+    await waitFor(() => expect(history).toHaveBeenCalledTimes(2));
   });
 });
