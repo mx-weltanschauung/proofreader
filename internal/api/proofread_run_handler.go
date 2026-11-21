@@ -142,6 +142,10 @@ func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
 		proofreadFailure(w, err)
 		return
 	}
+	var decision readerDecision
+	if r.Method == http.MethodPatch && !proofreadBody(w, r, &decision) {
+		return
+	}
 	c, err := h.chapter(ctx, run)
 	if err != nil {
 		proofreadFailure(w, err)
@@ -171,7 +175,7 @@ func (h *ProofreadHandler) reader(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPatch {
 			for _, f := range p.Findings {
 				if f.ID == proofreadID(r, "findingId") {
-					h.decide(w, r, run, f)
+					h.decide(w, r, run, f, decision)
 					return
 				}
 			}
@@ -215,14 +219,12 @@ func (h *ProofreadHandler) create(w http.ResponseWriter, r *http.Request, userID
 	writeJSONStatus(w, 201, run)
 }
 
-func (h *ProofreadHandler) decide(w http.ResponseWriter, r *http.Request, run models.ProofreadRun, f models.ProofreadFinding) {
-	var b struct {
-		Decision    models.FindingDecision `json:"decision"`
-		Replacement *string                `json:"replacement"`
-	}
-	if !proofreadBody(w, r, &b) {
-		return
-	}
+type readerDecision struct {
+	Decision    models.FindingDecision `json:"decision"`
+	Replacement *string                `json:"replacement"`
+}
+
+func (h *ProofreadHandler) decide(w http.ResponseWriter, r *http.Request, run models.ProofreadRun, f models.ProofreadFinding, b readerDecision) {
 	replacement := f.New
 	if b.Replacement != nil {
 		replacement = *b.Replacement

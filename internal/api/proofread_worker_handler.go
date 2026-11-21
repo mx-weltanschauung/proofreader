@@ -14,8 +14,8 @@ import (
 type workerCandidate struct {
 	CandidateKey string          `json:"candidate_key"`
 	StartRune    *int            `json:"start_rune"`
-	EndRune      int             `json:"end_rune"`
-	Old          string          `json:"old"`
+	EndRune      *int            `json:"end_rune"`
+	Old          *string         `json:"old"`
 	New          *string         `json:"new"`
 	Source       string          `json:"source"`
 	Reason       string          `json:"reason"`
@@ -32,7 +32,7 @@ func validWorkerFinding(base []rune, f models.ProofreadFinding) bool {
 	if f.ID != 0 || f.Decision != "" || f.Replacement != "" || f.Old == f.New {
 		return false
 	}
-	if f.StartRune < 0 || f.EndRune <= f.StartRune || f.EndRune > len(base) || string(base[f.StartRune:f.EndRune]) != f.Old {
+	if f.StartRune < 0 || f.EndRune < f.StartRune || f.EndRune > len(base) || string(base[f.StartRune:f.EndRune]) != f.Old {
 		return false
 	}
 	if len(f.ScanBBox) == 0 || string(f.ScanBBox) == "null" {
@@ -90,6 +90,10 @@ func (h *ProofreadHandler) worker(w http.ResponseWriter, r *http.Request) {
 		proofreadFailure(w, err)
 		return
 	}
+	var upload workerUpload
+	if r.Method == http.MethodPut && !proofreadBody(w, r, &upload) {
+		return
+	}
 	c, err := h.chapter(ctx, run)
 	if err != nil {
 		proofreadFailure(w, err)
@@ -126,7 +130,7 @@ func (h *ProofreadHandler) worker(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 422, p.SkipReason)
 			return
 		}
-		h.upload(w, r, id, s)
+		h.upload(w, r, id, s, upload)
 		return
 	}
 	if r.Method == http.MethodGet {
@@ -136,15 +140,13 @@ func (h *ProofreadHandler) worker(w http.ResponseWriter, r *http.Request) {
 	proofreadFailure(w, repository.ErrProofreadRunNotFound)
 }
 
-func (h *ProofreadHandler) upload(w http.ResponseWriter, r *http.Request, id int64, p models.ProofreadRunPage) {
-	var b struct {
-		Base          string            `json:"base_sha256"`
-		Findings      []workerCandidate `json:"findings"`
-		AnalysisError string            `json:"analysis_error"`
-	}
-	if !proofreadBody(w, r, &b) {
-		return
-	}
+type workerUpload struct {
+	Base          string            `json:"base_sha256"`
+	Findings      []workerCandidate `json:"findings"`
+	AnalysisError string            `json:"analysis_error"`
+}
+
+func (h *ProofreadHandler) upload(w http.ResponseWriter, r *http.Request, id int64, p models.ProofreadRunPage, b workerUpload) {
 	if b.Base != p.BaseSHA256 {
 		proofreadFailure(w, repository.ErrProofreadBaseMismatch)
 		return
@@ -159,11 +161,11 @@ func (h *ProofreadHandler) upload(w http.ResponseWriter, r *http.Request, id int
 		keys := make(map[string]bool, len(b.Findings))
 		findings := make([]models.ProofreadFinding, 0, len(b.Findings))
 		for _, candidate := range b.Findings {
-			if candidate.StartRune == nil || candidate.New == nil {
+			if candidate.EndRune == nil || candidate.Old == nil || candidate.StartRune == nil || candidate.New == nil {
 				proofreadFailure(w, repository.ErrProofreadInvalidFinding)
 				return
 			}
-			f := models.ProofreadFinding{CandidateKey: candidate.CandidateKey, StartRune: *candidate.StartRune, EndRune: candidate.EndRune, Old: candidate.Old, New: *candidate.New, Source: candidate.Source, Reason: candidate.Reason, ScanBBox: candidate.ScanBBox}
+			f := models.ProofreadFinding{CandidateKey: candidate.CandidateKey, StartRune: *candidate.StartRune, EndRune: *candidate.EndRune, Old: *candidate.Old, New: *candidate.New, Source: candidate.Source, Reason: candidate.Reason, ScanBBox: candidate.ScanBBox}
 
 			if keys[f.CandidateKey] || !validWorkerFinding(base, f) {
 				proofreadFailure(w, repository.ErrProofreadInvalidFinding)

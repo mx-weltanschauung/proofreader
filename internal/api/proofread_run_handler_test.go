@@ -112,7 +112,7 @@ func TestWorkerRejectsHiddenChapter(t *testing.T) {
 	f := newRunHTTPFixture(t)
 	f.runs.run.ChapterID = 3
 	for _, test := range []struct{ method, path, token string }{{"GET", "proofread-runs/7", f.reader}, {"GET", "proofread-worker/runs/7/pages", "worker-token"}, {"PUT", "proofread-worker/runs/7/pages/1001/findings", "worker-token"}} {
-		if w := f.call(test.method, test.path, test.token, ""); w.Code != 404 {
+		if w := f.call(test.method, test.path, test.token, `{"base_sha256":"hash","findings":[]}`); w.Code != 404 {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}
@@ -265,5 +265,37 @@ func TestProofreadReaderPairAndAccept(t *testing.T) {
 	w := f.call("PATCH", "proofread-runs/7/findings/5", f.reader, `{"decision":"accepted","replacement":""}`)
 	if w.Code != 204 || finding.Replacement != "" {
 		t.Fatal(w.Code, finding)
+	}
+}
+
+type closePageAtEOF struct {
+	io.Reader
+	closePage func()
+}
+
+func (body closePageAtEOF) Read(p []byte) (int, error) {
+	n, err := body.Reader.Read(p)
+	if err == io.EOF {
+		body.closePage()
+	}
+	return n, err
+}
+
+func TestProofreadAccessAfterReadingBody(t *testing.T) {
+	for _, method := range []string{"PUT", "PATCH"} {
+		t.Run(method, func(t *testing.T) {
+			f := newRunHTTPFixture(t)
+			path, token, body, want := "/api/proofread-worker/runs/7/pages/1001/findings", "worker-token", `{"base_sha256":"hash","findings":[]}`, 422
+			if method == "PATCH" {
+				path, token, body, want = "/api/proofread-runs/7/findings/5", f.reader, `{"decision":"accepted"}`, 404
+			}
+			req := httptest.NewRequest(method, path, closePageAtEOF{strings.NewReader(body), func() { f.spans[1] = []models.PageSpan{{Start: 1, End: 1}} }})
+			req.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			f.router.ServeHTTP(w, req)
+			if w.Code != want || f.runs.uploads != 0 || f.runs.snapshots[0].Findings[0].Decision == models.FindingAccepted {
+				t.Fatalf("status %d, uploads %d, decision %q", w.Code, f.runs.uploads, f.runs.snapshots[0].Findings[0].Decision)
+			}
+		})
 	}
 }

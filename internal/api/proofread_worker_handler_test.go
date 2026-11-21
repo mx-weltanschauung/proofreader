@@ -50,3 +50,13 @@ func TestWorkerValidatesUploadBeforeSaving(t *testing.T) {
 		t.Fatal(f.runs.uploads)
 	}
 }
+
+func TestWorkerAcceptsUnicodeEndInsertion(t *testing.T) {
+	f := newRunHTTPFixture(t)
+	f.runs.snapshots[0].BaseMarkdown = "Ёж"
+	body := `{"base_sha256":"hash","findings":[{"candidate_key":"punct","start_rune":2,"end_rune":2,"old":"","new":"!","source":"model","reason":"скан"}]}`
+	w := f.call("PUT", "proofread-worker/runs/7/pages/1001/findings", "worker-token", body)
+	if w.Code != 204 || f.runs.uploads != 1 {
+		t.Fatal(w.Code, w.Body.String(), f.runs.uploads)
+	}
+}
