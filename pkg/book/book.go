@@ -86,7 +86,11 @@ type Page struct {
 	Internal int
 	Printed  int
 	HTML     string // содержимое <body>, уже прошедшее через xhtml.Body (снимается fragment() в pkg/markdown)
-	Markdown string // сырой content_markdown
+	Markdown string // разметка для MD; имена сносок могут иметь префикс секции
+	// RawMarkdown — исходный content_markdown до разнесения якорей сносок по
+	// секциям. PDF рендерит примечания заново постранично и должен видеть
+	// печатные номера, а не служебные префиксы MarkdownWriter.
+	RawMarkdown string
 }
 
 // Pages — страницы одного источника, отсортированные по Internal.

@@ -18,10 +18,10 @@ describe('DownloadMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  it('offers all four formats', async () => {
+  it('offers all five formats', async () => {
     await open();
     const menu = screen.getByRole('menu');
-    for (const name of [/EPUB/, /FB2/, /Markdown/, /HTML/]) {
+    for (const name of [/EPUB/, /FB2/, /PDF/, /Markdown/, /HTML/]) {
       expect(screen.getByRole('menuitem', { name })).toBeInTheDocument();
     }
     expect(menu).toBeInTheDocument();
@@ -36,6 +36,10 @@ describe('DownloadMenu', () => {
     expect(screen.getByRole('menuitem', { name: /FB2/ })).toHaveAttribute(
       'href',
       '/api/works/47/download?format=fb2',
+    );
+    expect(screen.getByRole('menuitem', { name: /PDF/ })).toHaveAttribute(
+      'href',
+      '/api/works/47/download?format=pdf',
     );
   });
 
@@ -92,13 +96,13 @@ describe('DownloadMenu', () => {
   });
 
   describe('звук', () => {
-    it('с audio даёт пятый пункт — плейлист .m3u', async () => {
+    it('с audio даёт шестой пункт — плейлист .m3u', async () => {
       render(<DownloadMenu href="/api/works/4/download" audio />);
       await userEvent.click(screen.getByRole('button', { name: /Скачать/ }));
       const m3u = screen.getByRole('menuitem', { name: /Аудио — плейлист \.m3u/ });
       expect(m3u).toHaveAttribute('href', '/api/works/4/download?format=m3u');
       expect(m3u).toHaveTextContent('для VLC и других плееров');
-      expect(screen.getAllByRole('menuitem')).toHaveLength(5);
+      expect(screen.getAllByRole('menuitem')).toHaveLength(6);
     });
 
     // Спека: запоминание формата на плейлист не распространяется — иначе

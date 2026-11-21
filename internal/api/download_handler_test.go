@@ -45,6 +45,29 @@ func TestDownloadWorkServesEPUB(t *testing.T) {
 	}
 }
 
+func TestDownloadPDFOnAllRoutes(t *testing.T) {
+	cases := []struct {
+		name string
+		handler http.HandlerFunc
+		url string
+		vars map[string]string
+		filename string
+	}{
+		{"том", downloadHandler().Work, "/api/works/1/download?format=pdf", map[string]string{"id": "1"}, "work-1.pdf"},
+		{"глава", downloadHandler().Chapter, "/api/works/1/chapters/10/download?format=pdf", map[string]string{"workId": "1", "id": "10"}, "chapter-10.pdf"},
+		{"подборка", downloadHandler().Collection, "/api/collections/moi/download?format=pdf", map[string]string{"slug": "moi"}, "collection-moi.pdf"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := downloadRequest(tc.handler, tc.url, tc.vars)
+			if rec.Code != http.StatusOK { t.Fatalf("status %d: %s", rec.Code, rec.Body.String()) }
+			if got := rec.Header().Get("Content-Type"); got != "application/pdf" { t.Errorf("Content-Type = %q", got) }
+			if !strings.Contains(rec.Header().Get("Content-Disposition"), tc.filename) { t.Errorf("filename = %q", rec.Header().Get("Content-Disposition")) }
+			if !strings.HasPrefix(rec.Body.String(), "%PDF-") { t.Error("body is not PDF") }
+		})
+	}
+}
+
 func TestDownloadRejectsUnknownFormat(t *testing.T) {
 	rec := downloadRequest(downloadHandler().Work, "/api/works/1/download?format=docx", map[string]string{"id": "1"})
 
