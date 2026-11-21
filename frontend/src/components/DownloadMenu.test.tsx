@@ -58,7 +58,8 @@ describe('DownloadMenu', () => {
           finishRequest = resolve;
         }),
     );
-    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:pdf'), revokeObjectURL: vi.fn() });
+    const revokeUrl = vi.fn();
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:pdf'), revokeObjectURL: revokeUrl });
     const saved: string[] = [];
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
       this: HTMLAnchorElement,
@@ -88,6 +89,10 @@ describe('DownloadMenu', () => {
       await vi.waitFor(() => expect(saved).toEqual(['volume-47.pdf']));
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Скачать' })).toBeEnabled();
+      // Дожидаемся отложенной очистки URL до следующего теста.
+      await vi.waitFor(() => expect(revokeUrl).toHaveBeenCalledWith('blob:pdf'), {
+        timeout: 3000,
+      });
     } finally {
       vi.restoreAllMocks();
     }
