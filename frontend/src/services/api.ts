@@ -74,6 +74,7 @@ import type {
   SearchTermsResponse,
   SearchPagesResponse,
   CacheStats,
+  SiteSettings,
   StatsTrafficRow,
   StatsTopRow,
   StatsTopKind,
@@ -893,6 +894,12 @@ export const cacheApi = {
 
   purgeChapter: (workId: number, chapterId: number) =>
     api.delete<{ removed: number }>(`/works/${workId}/chapters/${chapterId}/cache`),
+};
+
+export const settingsApi = {
+  get: () => api.get<SiteSettings>('/admin/settings'),
+  update: (suggestionsPerHour: number) =>
+    api.patch<SiteSettings>('/admin/settings', { suggestions_per_hour: suggestionsPerHour }),
 };
 
 // Озвучка (спека аудиокниг 29.09, шаг 3). Чтение — публичное, остальное —

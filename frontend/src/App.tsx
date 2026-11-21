@@ -126,6 +126,9 @@ const StatsAdmin = lazy(() =>
 const CacheAdmin = lazy(() =>
   import('./pages/admin/CacheAdmin').then((m) => ({ default: m.CacheAdmin })),
 );
+const SettingsAdmin = lazy(() =>
+  import('./pages/admin/SettingsAdmin').then((m) => ({ default: m.SettingsAdmin })),
+);
 const ClosuresAdmin = lazy(() =>
   import('./pages/admin/ClosuresAdmin').then((m) => ({ default: m.ClosuresAdmin })),
 );
@@ -407,6 +410,14 @@ function App() {
                   element={
                     <RequireRole roles={['administrator']}>
                       <CacheAdmin />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/admin/settings"
+                  element={
+                    <RequireRole roles={['administrator']}>
+                      <SettingsAdmin />
                     </RequireRole>
                   }
                 />
