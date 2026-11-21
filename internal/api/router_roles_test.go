@@ -139,6 +139,7 @@ var routeAccess = map[string]access{
 	"GET /api/static-archive/download":              accessPublic,
 	// Маячок посещаемости: без токена, отвечает 204 на всё.
 	"POST /api/hit":                                        accessPublic,
+	"POST /api/visible-page":                               accessPublic,
 	"GET /api/search":                                      accessPublic,
 	"GET /api/search/pages":                                accessPublic,
 	"GET /api/works":                                       accessPublic,
