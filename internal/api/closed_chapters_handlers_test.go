@@ -138,7 +138,7 @@ func newClosedChaptersFixture(t *testing.T) *closedChaptersFixture {
 	suggestions := &fakeSuggestionStore{recentIPs: map[string]int{}, detail: &repository.SuggestionDetail{
 		SuggestionRow: repository.SuggestionRow{ID: 3, PageID: 1005}, CurrentMarkdown: "Полоса 5.",
 	}}
-	sh := NewPageSuggestionHandler(suggestions, viewPages, &fakePageVersions{},
+	sh := newTestPageSuggestionHandler(suggestions, viewPages, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	works := &filedWorks{fakeWorkRepo: &fakeWorkRepo{}, works: map[int64]*models.Work{
 		1: {ID: 1, Title: "Том с закрытой главой", FilePath: "works/1/original/a.pdf"},

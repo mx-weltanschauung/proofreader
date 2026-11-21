@@ -26,7 +26,7 @@ func (f *fakeSuggestionStore) DeleteRejected(ctx context.Context) (int64, error)
 // router.go: литерал выше шаблона.
 func deleteRig(t *testing.T, store *fakeSuggestionStore) http.Handler {
 	t.Helper()
-	h := NewPageSuggestionHandler(store, pageStoreWith(nil, nil), &fakePageVersions{},
+	h := newTestPageSuggestionHandler(store, pageStoreWith(nil, nil), &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/suggestions/rejected", h.DeleteRejected).Methods("DELETE")

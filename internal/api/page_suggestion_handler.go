@@ -20,6 +20,7 @@ import (
 	"proofreader/internal/middleware"
 	"proofreader/internal/models"
 	"proofreader/internal/repository"
+	"proofreader/internal/settings"
 )
 
 const (
@@ -45,8 +46,6 @@ const (
 	// короче 500 знаков. Число пола не с потолка: 99.99-й процентиль корпуса
 	// — 18 927 знаков; 20 000 берёт его с запасом.
 	suggestionRelativeCapFloor = 20000
-
-	suggestionRatePerHour = 5
 )
 
 // hasInvisibleRunes сообщает, есть ли в строке символы, которых на экране не
@@ -102,6 +101,7 @@ type PageSuggestionHandler struct {
 	cuts        DocumentCutStore
 	jwtSecret   string
 	trustProxy  bool
+	limit       settings.LimitReader
 	// closed — закрытые работы: «моё» читателя не называет правок на полосах
 	// закрытого. nil — ничего не закрыто.
 	closed ClosedStore
@@ -122,6 +122,7 @@ func NewPageSuggestionHandler(
 	cuts DocumentCutStore,
 	jwtSecret string,
 	trustProxy bool,
+	limit settings.LimitReader,
 ) *PageSuggestionHandler {
 	return &PageSuggestionHandler{
 		suggestions: suggestions,
@@ -131,6 +132,7 @@ func NewPageSuggestionHandler(
 		cuts:        cuts,
 		jwtSecret:   jwtSecret,
 		trustProxy:  trustProxy,
+		limit:       limit,
 	}
 }
 
@@ -262,8 +264,14 @@ func (h *PageSuggestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// проскакивал мимо предела целиком: замер на одноразовой базе — из
 	// двадцати одновременных подач при пределе пять прошли восемнадцать.
 	// Вместе с ловушкой это вся защита маршрута от залива.
+	limit, err := h.limit.Get(ctx)
+	if err != nil {
+		log.Printf("read suggestion limit: %v", err)
+		writeError(w, http.StatusInternalServerError, "Не удалось принять правку")
+		return
+	}
 	accepted, err := h.suggestions.CreateWithinLimit(ctx, s,
-		suggestionRatePerHour, time.Now().Add(-time.Hour))
+		limit, time.Now().Add(-time.Hour))
 	if err != nil {
 		log.Printf("create suggestion for page %d: %v", pageID, err)
 		writeError(w, http.StatusInternalServerError, "Не удалось принять правку")

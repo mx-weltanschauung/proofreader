@@ -16,6 +16,7 @@ import (
 	"proofreader/internal/pagecache"
 	"proofreader/internal/repository"
 	"proofreader/internal/seo"
+	"proofreader/internal/settings"
 	"proofreader/internal/stats"
 	"proofreader/pkg/markdown"
 	"proofreader/pkg/storage"
@@ -193,9 +194,11 @@ func NewServer(d ServerDeps) *mux.Router {
 		feedbackRepo, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders,
 	)
 	pageSuggestionRepo := repository.NewPageSuggestionRepository(pool)
+	settingsRepo := repository.NewSiteSettingsRepository(pool)
+	suggestionLimit := settings.NewSuggestionLimit(settingsRepo, time.Minute)
 	pageSuggestionHandler := NewPageSuggestionHandler(
 		pageSuggestionRepo, viewPages, pageVersionRepo, fragmentRepo, documentCutRepo,
-		cfg.JWT.Secret, cfg.Server.TrustProxyHeaders,
+		cfg.JWT.Secret, cfg.Server.TrustProxyHeaders, suggestionLimit,
 	).WithClosed(closedRepo)
 	// Настоящее хранилище (pageCache), а не общий rangeCache: сбросу нужно
 	// уметь удалять и мести файлы, а не только читать и наполнять.
@@ -253,6 +256,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		readerAdminHandler,
 		authService,
 	).WithMCP(mcpHandler).
+		WithSettings(NewSettingsHandler(suggestionLimit)).
 		WithOPDS(opdsHandler).
 		WithClosed(closedRepo).
 		WithClosedWriter(NewClosedHandler(closedRepo, servingCache).WithChapters(chapterRepo).WithLog(closedRepo)).
