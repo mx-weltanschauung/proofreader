@@ -41,6 +41,17 @@ func TestLoadSiteFromEnv(t *testing.T) {
 	}
 }
 
+func TestLoadSiteMonitoringURL(t *testing.T) {
+	t.Setenv("SITE_MONITORING_URL", "/monitoring/vmui/")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Site.MonitoringURL != "/monitoring/vmui/" {
+		t.Fatalf("url=%q", cfg.Site.MonitoringURL)
+	}
+}
+
 func TestLoad(t *testing.T) {
 	cfg, err := Load()
 	if err != nil {

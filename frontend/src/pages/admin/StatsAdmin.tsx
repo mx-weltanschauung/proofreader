@@ -18,6 +18,7 @@ import './StatsAdmin.css';
 import { VisiblePagesStats } from './VisiblePagesStats';
 import { DownloadsStats } from './DownloadsStats';
 import { TrafficChart } from './TrafficChart';
+import { useSite } from '../../services/site';
 
 const PERIODS = [1, 7, 30, 90] as const;
 const KINDS: { kind: StatsTopKind; label: string }[] = [
@@ -84,6 +85,8 @@ function topLabel(kind: StatsTopKind, row: StatsTopRow): string {
 }
 
 export const StatsAdmin: React.FC = () => {
+  const { monitoringUrl } = useSite();
+  const monitoringHref = /^\/monitoring\/vmui\/?$/.test(monitoringUrl) ? monitoringUrl : '';
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedWork = Number(searchParams.get('work'));
   const selectedChapter = Number(searchParams.get('chapter'));
@@ -138,6 +141,13 @@ export const StatsAdmin: React.FC = () => {
         Уникальные считаются внутри суток: за период длиннее дня это посетителе-дни, а не люди.
         Сотрудники не учитываются.
       </p>
+      {monitoringHref && (
+        <p>
+          <a href={monitoringHref} target="_blank" rel="noopener noreferrer">
+            Графики сервера
+          </a>
+        </p>
+      )}
 
       <section aria-label="Обзор" className="stats-admin-section">
         <h2>Обзор за 30 дней</h2>

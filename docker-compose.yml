@@ -93,6 +93,7 @@ services:
       SITE_CHANNEL_URL: ${SITE_CHANNEL_URL:-}
       SITE_AGE_RATING: ${SITE_AGE_RATING:-}
       SITE_TAGLINE: ${SITE_TAGLINE:-}
+      SITE_MONITORING_URL: ${SITE_MONITORING_URL:-}
       RESERVED_NICKNAMES: ${RESERVED_NICKNAMES:-}
       # Отдельный слушатель /metrics для Prometheus. Порт НЕ публикуется —
       # доступ только изнутри docker-сети.

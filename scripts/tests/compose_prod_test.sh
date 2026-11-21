@@ -126,10 +126,11 @@ SITE_SUPPORT_URL=https://example.org/give
 SITE_CHANNEL_URL=https://example.org/news
 SITE_AGE_RATING=18+
 SITE_TAGLINE=собрания
+SITE_MONITORING_URL=/monitoring/vmui/
 RESERVED_NICKNAMES=a,b
 ENV
     json="$(prod config --format json)"
-    for var in SITE_NAME SITE_DESCRIPTION SITE_SUPPORT_URL SITE_CHANNEL_URL SITE_AGE_RATING SITE_TAGLINE RESERVED_NICKNAMES; do
+    for var in SITE_NAME SITE_DESCRIPTION SITE_SUPPORT_URL SITE_CHANNEL_URL SITE_AGE_RATING SITE_TAGLINE SITE_MONITORING_URL RESERVED_NICKNAMES; do
       [[ -n "$(jq -r --arg v "$var" '.services.backend.environment[$v] // empty' <<<"$json")" ]] ||
         fail "$mode: $var не доходит до backend"
     done

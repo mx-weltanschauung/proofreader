@@ -1,9 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { StatsAdmin } from './StatsAdmin';
 import { calendarTotals } from '../../utils/statsTotals';
 import { statsApi } from '../../services/api';
+import { useSite } from '../../services/site';
+
+vi.mock('../../services/site', () => ({ useSite: vi.fn(() => ({ monitoringUrl: '' })) }));
+afterEach(() => vi.mocked(useSite).mockReturnValue({ monitoringUrl: '' } as never));
 
 vi.mock('../../services/api', () => ({
   statsApi: {
@@ -78,6 +82,33 @@ vi.mock('../../services/api', () => ({
 }));
 
 describe('StatsAdmin', () => {
+  it('ссылку на VMUI показывает только для безопасного пути', () => {
+    vi.mocked(useSite).mockReturnValue({ monitoringUrl: '/monitoring/vmui/' } as never);
+    const view = render(
+      <MemoryRouter>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('link', { name: 'Графики сервера' })).toHaveAttribute(
+      'href',
+      '/monitoring/vmui/',
+    );
+    view.unmount();
+    vi.mocked(useSite).mockReturnValue({ monitoringUrl: '//evil.example' } as never);
+    render(
+      <MemoryRouter>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('link', { name: 'Графики сервера' })).toBeNull();
+    vi.mocked(useSite).mockReturnValue({ monitoringUrl: 'javascript:alert(1)' } as never);
+    render(
+      <MemoryRouter>
+        <StatsAdmin />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole('link', { name: 'Графики сервера' })).toBeNull();
+  });
   it('запрашивает 90 дней для графика, сохраняя верхние счётчики', async () => {
     render(
       <MemoryRouter>
