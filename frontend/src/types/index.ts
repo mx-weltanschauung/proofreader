@@ -1094,6 +1094,24 @@ export interface StatsTrafficRow {
   views: number;
   visitors: number;
 }
+export interface DownloadSummaryRow {
+  kind: string;
+  format: string;
+  views: number;
+}
+export interface DownloadTopRow {
+  kind: 'work' | 'chapter';
+  work_id: number;
+  entity_id: number;
+  format: string;
+  title: string;
+  missing: boolean;
+  views: number;
+}
+export interface StatsDownloads {
+  summary: DownloadSummaryRow[];
+  top: DownloadTopRow[];
+}
 export interface VisiblePagePoint {
   page_number: number;
   visitors: number;

@@ -39,6 +39,7 @@ vi.mock('../../services/api', () => ({
       ],
     }),
     visiblePages: vi.fn().mockResolvedValue({ data: { collecting_since: null, pages: [] } }),
+    downloads: vi.fn().mockResolvedValue({ data: { summary: [], top: [] } }),
     referrers: vi.fn().mockResolvedValue({ data: [{ key: 'yandex.ru', views: 3, visitors: 3 }] }),
     searches: vi.fn().mockResolvedValue({
       data: {

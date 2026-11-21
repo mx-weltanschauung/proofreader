@@ -16,6 +16,7 @@ import { calendarTotals, moscowToday } from '../../utils/statsTotals';
 import { apiErrorMessage } from '../../utils/apiError';
 import './StatsAdmin.css';
 import { VisiblePagesStats } from './VisiblePagesStats';
+import { DownloadsStats } from './DownloadsStats';
 
 const PERIODS = [1, 7, 30, 90] as const;
 const KINDS: { kind: StatsTopKind; label: string }[] = [
@@ -285,6 +286,8 @@ export const StatsAdmin: React.FC = () => {
       {hasSelectedChapter && (
         <VisiblePagesStats workId={selectedWork} chapterId={selectedChapter} days={days} />
       )}
+
+      <DownloadsStats days={days} />
 
       <section aria-label="Откуда" className="stats-admin-section">
         <h2>Откуда приходят</h2>
