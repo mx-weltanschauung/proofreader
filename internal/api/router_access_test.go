@@ -25,6 +25,32 @@ func newTestRouter(t *testing.T) *Router {
 	return createTestRouter()
 }
 
+func TestSettingsRoutesRequireAdministrator(t *testing.T) {
+	router := newTestRouter(t).Setup()
+	for _, method := range []string{http.MethodGet, http.MethodPatch} {
+		for _, tc := range []struct {
+			name, token string
+			want        int
+		}{
+			{"guest", "", http.StatusUnauthorized},
+			{"reader", readerToken(t), http.StatusForbidden},
+			{"editor", editorToken(t), http.StatusForbidden},
+			{"administrator", adminToken(t), http.StatusOK},
+		} {
+			t.Run(method+"/"+tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(method, "/api/admin/settings", strings.NewReader(`{"suggestions_per_hour":7}`))
+				if tc.token != "" {
+					req.Header.Set("Authorization", "Bearer "+tc.token)
+				}
+				got := serveWithRecover(t, router, req)
+				if got != tc.want {
+					t.Fatalf("%s as %s = %d, want %d", method, tc.name, got, tc.want)
+				}
+			})
+		}
+	}
+}
+
 // tokenForRole mints a JWT for a synthetic user with the given role, using the
 // same JWT config as createTestRouter() (shared "test-secret").
 func tokenForRole(t *testing.T, role models.UserRole) string {
@@ -379,7 +405,7 @@ func TestAccessMatrix(t *testing.T) {
 		// в TestRouterDispatchesGetByNumberThroughMux, в роутер подставлен
 		// настоящий PageSuggestionHandler поверх fakeSuggestionStore.
 		rt2 := newTestRouter(t)
-		rt2.pageSuggestionHandler = NewPageSuggestionHandler(&fakeSuggestionStore{}, nil, nil, nil, nil, "test-secret", false)
+		rt2.pageSuggestionHandler = newTestPageSuggestionHandler(&fakeSuggestionStore{}, nil, nil, nil, nil, "test-secret", false)
 		r2 := rt2.Setup()
 
 		req := httptest.NewRequest("GET", "/api/suggestions/mine", nil)

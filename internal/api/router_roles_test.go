@@ -323,6 +323,8 @@ var routeAccess = map[string]access{
 	"PATCH /api/feedback/{id}":                accessAdmin,
 	"DELETE /api/feedback/{id}":               accessAdmin,
 	"GET /api/cache/stats":                    accessAdmin,
+	"GET /api/admin/settings":                 accessAdmin,
+	"PATCH /api/admin/settings":               accessAdmin,
 	"GET /api/admin/stats/traffic":            accessAdmin,
 	"GET /api/admin/stats/top":                accessAdmin,
 	"GET /api/admin/stats/referrers":          accessAdmin,

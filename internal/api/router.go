@@ -61,6 +61,7 @@ type Router struct {
 	seoHandler            *seo.Handler
 	cacheHandler          *CacheHandler
 	readerAdminHandler    *ReaderAdminHandler
+	settingsHandler       *SettingsHandler
 	authService           *auth.Service
 	// siteHandler — имя и контакты экземпляра (/api/site); nil — умолчание.
 	siteHandler *SiteHandler
@@ -94,6 +95,13 @@ func (rt *Router) WithOPDS(h http.Handler) *Router {
 // экран /admin/stats. Отдельным методом по той же причине, что WithMCP.
 func (rt *Router) WithStats(h *StatsHandler) *Router {
 	rt.statsHandler = h
+	return rt
+}
+
+// WithSettings подключает общие настройки без нового позиционного параметра
+// конструктора Router.
+func (rt *Router) WithSettings(h *SettingsHandler) *Router {
+	rt.settingsHandler = h
 	return rt
 }
 
@@ -767,6 +775,8 @@ func (rt *Router) Setup() *mux.Router {
 	admin.HandleFunc("/readers/{nickname}/collections", rt.readerAdminHandler.Collections).Methods("GET")
 
 	admin.HandleFunc("/users", rt.userHandler.List).Methods("GET")
+	admin.HandleFunc("/admin/settings", rt.settingsHandler.Get).Methods("GET")
+	admin.HandleFunc("/admin/settings", rt.settingsHandler.Patch).Methods("PATCH")
 	admin.HandleFunc("/users", rt.userHandler.Create).Methods("POST")
 	admin.HandleFunc("/users/{id}", rt.userHandler.Update).Methods("PUT")
 	admin.HandleFunc("/users/{id}", rt.userHandler.Delete).Methods("DELETE")

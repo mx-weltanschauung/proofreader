@@ -27,6 +27,7 @@ const HEADER_PATHS = [
   '/admin/readers',
   '/admin/feedback',
   '/admin/cache',
+  '/admin/settings',
   '/admin/closures',
   '/admin/stats',
 ];
@@ -240,6 +241,9 @@ export const Header: React.FC = () => {
                 </HeaderLink>
                 <HeaderLink to="/admin/cache" pathname={location.pathname}>
                   Кэш
+                </HeaderLink>
+                <HeaderLink to="/admin/settings" pathname={location.pathname}>
+                  Настройки
                 </HeaderLink>
                 <HeaderLink to="/admin/closures" pathname={location.pathname}>
                   Закрытия

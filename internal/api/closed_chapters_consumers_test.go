@@ -510,7 +510,7 @@ func TestMineHidesSuggestionsOnClosedChapterPages(t *testing.T) {
 	spans := chapterSet{spans: map[int64][]models.PageSpan{42: {{Start: 2, End: 3}}}}
 	mine := func(claims *auth.Claims) *httptest.ResponseRecorder {
 		store := &fakeSuggestionStore{recentIPs: map[string]int{}, rows: append([]repository.SuggestionRow{}, rows...)}
-		h := NewPageSuggestionHandler(store, NewViewPages(&fakePageStore{}, spans), &fakePageVersions{},
+		h := newTestPageSuggestionHandler(store, NewViewPages(&fakePageStore{}, spans), &fakePageVersions{},
 			&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 		rec := httptest.NewRecorder()
 		withClaims(claims, h.Mine)(rec, httptest.NewRequest(http.MethodGet, "/api/suggestions/mine", nil))

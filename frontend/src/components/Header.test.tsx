@@ -279,6 +279,10 @@ describe('Header', () => {
     });
     renderHeader();
     expect(screen.getByRole('link', { name: 'Кэш' })).toHaveAttribute('href', '/admin/cache');
+    expect(screen.getByRole('link', { name: 'Настройки' })).toHaveAttribute(
+      'href',
+      '/admin/settings',
+    );
     expect(screen.getByRole('link', { name: 'Статистика' })).toHaveAttribute(
       'href',
       '/admin/stats',
@@ -295,6 +299,7 @@ describe('Header', () => {
     });
     renderHeader();
     expect(screen.queryByRole('link', { name: 'Кэш' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Настройки' })).toBeNull();
     await waitFor(() => expect(suggestionsApi.queue).toHaveBeenCalled());
   });
 
@@ -374,6 +379,7 @@ describe('Header', () => {
         '/admin/readers',
         '/admin/feedback',
         '/admin/cache',
+        '/admin/settings',
         '/admin/closures',
         '/admin/stats',
       ]);

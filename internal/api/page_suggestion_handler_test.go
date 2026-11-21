@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -136,13 +137,21 @@ func withClaims(claims *auth.Claims, fn http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+func newTestPageSuggestionHandler(
+	suggestions PageSuggestionStore, pages PageStore, versions PageVersionStore,
+	fragments FragmentStore, cuts DocumentCutStore, secret string, trustProxy bool,
+) *PageSuggestionHandler {
+	return NewPageSuggestionHandler(suggestions, pages, versions, fragments, cuts,
+		secret, trustProxy, &fakeSuggestionLimit{value: 5})
+}
+
 func suggestionTestRig(t *testing.T) (*fakeSuggestionStore, *fakePageStore, http.Handler) {
 	t.Helper()
 	suggestions := &fakeSuggestionStore{recentIPs: map[string]int{}}
 	pages := pageStoreWith(&models.Page{
 		ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: testPageText,
 	}, nil)
-	h := NewPageSuggestionHandler(suggestions, pages, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(suggestions, pages, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 
 	r := mux.NewRouter()
@@ -270,7 +279,7 @@ func TestSuggestionRelativeCapRejectsBloat(t *testing.T) {
 	pages := pageStoreWith(&models.Page{
 		ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: base,
 	}, nil)
-	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(store, pages, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/works/{workId}/pages/{pageId}/suggestions",
@@ -304,7 +313,7 @@ func TestSuggestionAbsoluteCapRejectsEvenWithinRelativeCap(t *testing.T) {
 	pages := pageStoreWith(&models.Page{
 		ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: base,
 	}, nil)
-	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(store, pages, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/works/{workId}/pages/{pageId}/suggestions",
@@ -338,7 +347,7 @@ func TestSuggestionRelativeCapFloorAllowsNormalTextOnEmptyBase(t *testing.T) {
 	pages := pageStoreWith(&models.Page{
 		ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: "",
 	}, nil)
-	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(store, pages, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/works/{workId}/pages/{pageId}/suggestions",
@@ -365,7 +374,7 @@ func TestSuggestionRelativeCapFloorStillRejectsOnEmptyBase(t *testing.T) {
 	pages := pageStoreWith(&models.Page{
 		ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: "",
 	}, nil)
-	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(store, pages, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/works/{workId}/pages/{pageId}/suggestions",
@@ -391,7 +400,7 @@ func TestSuggestionRelativeCapFloorStillRejectsOnEmptyBase(t *testing.T) {
 func TestSuggestionRateLimited(t *testing.T) {
 	store, _, r := suggestionTestRig(t)
 	// clientIP при trustProxy=false берёт RemoteAddr; httptest ставит 192.0.2.1.
-	store.recentIPs[hashIP("192.0.2.1", "соль")] = suggestionRatePerHour
+	store.recentIPs[hashIP("192.0.2.1", "соль")] = 5
 
 	rec := postSuggestion(t, r, validBody())
 	if rec.Code != http.StatusTooManyRequests {
@@ -402,13 +411,55 @@ func TestSuggestionRateLimited(t *testing.T) {
 	}
 }
 
+type fakeSuggestionLimit struct {
+	value int
+	err   error
+}
+
+func (f *fakeSuggestionLimit) Get(context.Context) (int, error) { return f.value, f.err }
+
+func TestSuggestionRateUsesUpdatedSetting(t *testing.T) {
+	store := &fakeSuggestionStore{recentIPs: map[string]int{}}
+	pages := pageStoreWith(&models.Page{ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: testPageText}, nil)
+	limit := &fakeSuggestionLimit{value: 2}
+	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{}, &fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false, limit)
+	r := mux.NewRouter()
+	r.HandleFunc("/api/works/{workId}/pages/{pageId}/suggestions", withClaims(testReaderClaims, h.Create)).Methods("POST")
+	for i := 0; i < 2; i++ {
+		if rec := postSuggestion(t, r, validBody()); rec.Code != http.StatusCreated {
+			t.Fatalf("submission %d = %d", i, rec.Code)
+		}
+	}
+	limit.value = 1
+	if rec := postSuggestion(t, r, validBody()); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("after lower limit = %d", rec.Code)
+	}
+	if len(store.created) != 2 {
+		t.Fatalf("created = %d", len(store.created))
+	}
+}
+
+func TestSuggestionRateSettingReadFailureDoesNotCreate(t *testing.T) {
+	store := &fakeSuggestionStore{recentIPs: map[string]int{}}
+	pages := pageStoreWith(&models.Page{ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: testPageText}, nil)
+	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{}, &fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false, &fakeSuggestionLimit{err: errors.New("db down")})
+	r := mux.NewRouter()
+	r.HandleFunc("/api/works/{workId}/pages/{pageId}/suggestions", withClaims(testReaderClaims, h.Create)).Methods("POST")
+	if rec := postSuggestion(t, r, validBody()); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("submission = %d", rec.Code)
+	}
+	if len(store.created) != 0 {
+		t.Fatalf("created = %d", len(store.created))
+	}
+}
+
 func TestSuggestionControlCharsRejectedBeforeAnyDBWork(t *testing.T) {
 	store := &fakeSuggestionStore{recentIPs: map[string]int{}}
 	var getByIDCalls int
 	pages := pageStoreWith(&models.Page{
 		ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: testPageText,
 	}, &getByIDCalls)
-	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(store, pages, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/works/{workId}/pages/{pageId}/suggestions",
@@ -517,7 +568,7 @@ func TestSuggestionCreateRequiresLogin(t *testing.T) {
 	pages := pageStoreWith(&models.Page{
 		ID: 42, WorkID: 7, PageNumber: 3, ContentMarkdown: testPageText,
 	}, nil)
-	h := NewPageSuggestionHandler(suggestions, pages, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(suggestions, pages, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 
 	r := mux.NewRouter()
@@ -551,7 +602,7 @@ func TestSuggestionUsesProxyHeaderOnlyWhenTrusted(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &fakeSuggestionStore{recentIPs: map[string]int{}}
-			h := NewPageSuggestionHandler(store, pageStoreWith(page, nil), &fakePageVersions{},
+			h := newTestPageSuggestionHandler(store, pageStoreWith(page, nil), &fakePageVersions{},
 				&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", tc.trustProxy)
 
 			r := mux.NewRouter()
@@ -596,7 +647,7 @@ func TestSuggestionIPHashNeverLeaves(t *testing.T) {
 func mineRig(t *testing.T, claims *auth.Claims, rows []repository.SuggestionRow) (*fakeSuggestionStore, http.Handler) {
 	t.Helper()
 	store := &fakeSuggestionStore{recentIPs: map[string]int{}, rows: rows}
-	h := NewPageSuggestionHandler(store, &fakePageStore{}, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(store, &fakePageStore{}, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/suggestions/mine", withClaims(claims, h.Mine)).Methods("GET")
@@ -685,7 +736,7 @@ func TestMineListsByUser(t *testing.T) {
 
 func queueRig(t *testing.T, store *fakeSuggestionStore) http.Handler {
 	t.Helper()
-	h := NewPageSuggestionHandler(store, &fakePageStore{}, &fakePageVersions{},
+	h := newTestPageSuggestionHandler(store, &fakePageStore{}, &fakePageVersions{},
 		&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/suggestions", h.List).Methods("GET")
@@ -883,7 +934,7 @@ func TestQueueDetailCarriesThreeTexts(t *testing.T) {
 
 func decisionRig(t *testing.T, store *fakeSuggestionStore, pages *fakePageStore) http.Handler {
 	t.Helper()
-	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{}, &fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
+	h := newTestPageSuggestionHandler(store, pages, &fakePageVersions{}, &fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false)
 	r := mux.NewRouter()
 	post := func(path string, fn http.HandlerFunc) {
 		r.HandleFunc(path, func(w http.ResponseWriter, req *http.Request) {
@@ -966,7 +1017,7 @@ func TestAcceptReanchorsDocumentCuts(t *testing.T) {
 		},
 		Status: models.CutStatusOK,
 	})
-	h := NewPageSuggestionHandler(store, pages, &fakePageVersions{}, &fakeFragmentStore{}, cuts, "соль", false)
+	h := newTestPageSuggestionHandler(store, pages, &fakePageVersions{}, &fakeFragmentStore{}, cuts, "соль", false)
 	r := mux.NewRouter()
 	r.HandleFunc("/api/suggestions/{id}/accept", func(w http.ResponseWriter, req *http.Request) {
 		h.Accept(w, req.WithContext(context.WithValue(req.Context(),
@@ -1101,7 +1152,7 @@ func TestMineHidesSuggestionsOnClosedWorks(t *testing.T) {
 	rows := []repository.SuggestionRow{{ID: 1, WorkID: 41, WorkTitle: "закрытый"}, {ID: 2, WorkID: 42, WorkTitle: "открытый"}}
 	mine := func(claims *auth.Claims, closed *fakeClosedStore) *httptest.ResponseRecorder {
 		store := &fakeSuggestionStore{recentIPs: map[string]int{}, rows: append([]repository.SuggestionRow{}, rows...)}
-		h := NewPageSuggestionHandler(store, &fakePageStore{}, &fakePageVersions{},
+		h := newTestPageSuggestionHandler(store, &fakePageStore{}, &fakePageVersions{},
 			&fakeFragmentStore{}, &fakeDocumentCutStore{}, "соль", false).WithClosed(closed)
 		rec := httptest.NewRecorder()
 		withClaims(claims, h.Mine)(rec, httptest.NewRequest(http.MethodGet, "/api/suggestions/mine", nil))

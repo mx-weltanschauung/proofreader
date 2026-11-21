@@ -117,4 +117,9 @@ func resetDB(t *testing.T, pool *pgxpool.Pool) {
 		VALUES (1, 'owner@test.local', 'x', 'administrator')`); err != nil {
 		t.Fatalf("не удалось создать владельца работ: %v", err)
 	}
+	// Настройки — одна обязательная строка. TRUNCATE стирает миграционный
+	// посев, поэтому каждый интеграционный тест получает то же значение 5.
+	if _, err := pool.Exec(ctx, `INSERT INTO site_settings (id, suggestions_per_hour) VALUES (1, 5)`); err != nil {
+		t.Fatalf("не удалось восстановить настройки: %v", err)
+	}
 }

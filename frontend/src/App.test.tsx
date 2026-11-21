@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import type { AxiosResponse } from 'axios';
 import App from './App';
 import { useAuth } from './hooks/useAuth';
-import { documentsApi, suggestionsApi } from './services/api';
+import { documentsApi, settingsApi, suggestionsApi } from './services/api';
 
 // Сторож адреса «/documents/review»: он обязан открывать очередь модерации,
 // а не карточку разбора с id="review". На сервере (router.go) это была бы
@@ -23,9 +23,11 @@ vi.mock('./services/api', () => ({
     view: vi.fn(),
   },
   readerCommentsApi: { pendingCount: vi.fn().mockResolvedValue({ data: { count: 0 } }) },
+  feedbackApi: { unreadCount: vi.fn().mockResolvedValue({ data: { count: 0 } }) },
   suggestionsApi: {
     queue: vi.fn(),
   },
+  settingsApi: { get: vi.fn(), update: vi.fn() },
 }));
 
 function ok<T>(data: T): Promise<AxiosResponse<T>> {
@@ -75,6 +77,45 @@ describe('App — маршрут /documents/review', () => {
     // :id.
     expect(vi.mocked(documentsApi.view)).not.toHaveBeenCalled();
     expect(screen.queryByText(/документ не найден/i)).toBeNull();
+  });
+});
+
+describe('App — маршрут /admin/settings', () => {
+  beforeEach(() => {
+    vi.mocked(settingsApi.get)
+      .mockReset()
+      .mockReturnValue(ok({ suggestions_per_hour: 5 }));
+    vi.mocked(suggestionsApi.queue)
+      .mockReset()
+      .mockReturnValue(ok({ items: [], total: 0 }));
+  });
+
+  it('открывает настройки администратору', async () => {
+    useAuth.setState({
+      user: { id: 1, email: 'admin@example.org', role: 'administrator' },
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    window.history.pushState({}, '', '/admin/settings');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Настройки' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('spinbutton', { name: 'Предложений правок за час' }),
+    ).toHaveValue(5);
+  });
+
+  it('не открывает настройки редактору', async () => {
+    useAuth.setState({
+      user: { id: 2, email: 'editor@example.org', role: 'editor' },
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    window.history.pushState({}, '', '/admin/settings');
+    render(<App />);
+    await waitFor(() => expect(window.location.pathname).toBe('/'));
+    expect(settingsApi.get).not.toHaveBeenCalled();
   });
 });
 

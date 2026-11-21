@@ -1067,6 +1067,11 @@ export interface CacheStats {
   oldest_age_seconds: number;
 }
 
+/** Настройки читальни, доступные администратору. */
+export interface SiteSettings {
+  suggestions_per_hour: number;
+}
+
 // Посещаемость и здоровье (/api/admin/stats/*). Поле day приходит как RFC3339 —
 // это ключ группировки, а не дата для показа.
 export interface StatsTrafficRow {
