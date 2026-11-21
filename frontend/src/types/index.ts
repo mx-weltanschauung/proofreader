@@ -506,6 +506,20 @@ export interface ClosureEntry {
   at: string;
 }
 
+/** Собственный действующий признак, а не строка журнала. */
+export interface ActiveClosure {
+  kind: ClosureKind;
+  scope: 'full' | 'scans';
+  entity_id: number;
+  title: string;
+  work_id: number | null;
+  slug: string | null;
+  at: string | null;
+  reason: string;
+  actor_name: string;
+  inherited: boolean;
+}
+
 /** Судьба черновика относительно модерации. Публикация — отдельная ось
  *  (`published_at`): у опубликованного разбора черновик законно бывает
  *  «на_рассмотрении», и на людях при этом прежняя одобренная редакция.
