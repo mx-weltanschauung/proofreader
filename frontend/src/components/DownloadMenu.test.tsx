@@ -88,6 +88,11 @@ describe('DownloadMenu', () => {
       await vi.waitFor(() => expect(saved).toEqual(['volume-47.pdf']));
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Скачать' })).toBeEnabled();
+      // Дождаться очистки собственного blob до следующего теста: иначе его
+      // таймер вызовет новый mock URL.revokeObjectURL уже в тесте EPUB.
+      await vi.waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:pdf'), {
+        timeout: 3000,
+      });
     } finally {
       vi.restoreAllMocks();
     }
