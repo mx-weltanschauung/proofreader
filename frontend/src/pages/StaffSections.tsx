@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { canEdit, isAdmin, useAuth } from '../hooks/useAuth';
 import { feedbackApi, readerCommentsApi, suggestionsApi } from '../services/api';
+import { staffGroups } from '../utils/staffNavigation';
 import './StaffSections.css';
 
 function Count({ value }: { value: number | null }) {
@@ -50,43 +51,17 @@ export function StaffSections() {
     <div className="staff-sections">
       <h1>Все разделы</h1>
       <div className="staff-sections-grid">
-        <section aria-labelledby="staff-frequent">
-          <h2 id="staff-frequent">Часто используемые</h2>
-          <Link to="/suggestions/queue">
-            Предложения <Count value={suggestions} />
-          </Link>
-          {admin && (
-            <>
-              <Link to="/admin/readers">Читатели</Link>
-              <Link to="/admin/stats">Статистика</Link>
-            </>
-          )}
-        </section>
-        <section aria-labelledby="staff-work">
-          <h2 id="staff-work">Работа</h2>
-          <Link to="/documents/review">Разборы на проверку</Link>
-          <Link to="/reader-comments/review">
-            Комментарии <Count value={comments} />
-          </Link>
-          <Link to="/admin/audio">Озвучка</Link>
-        </section>
-        {admin && (
-          <section aria-labelledby="staff-management">
-            <h2 id="staff-management">Управление</h2>
-            <Link to="/admin/users">Пользователи</Link>
-            <Link to="/admin/feedback">
-              Обращения <Count value={feedback} />
-            </Link>
-            <Link to="/admin/closures">Закрытия</Link>
-            <Link to="/admin/cache">Кэш</Link>
-            <Link to="/admin/settings">Настройки</Link>
+        {staffGroups(admin).map((group) => (
+          <section key={group.id} aria-labelledby={`staff-${group.id}`}>
+            <h2 id={`staff-${group.id}`}>{group.title}</h2>
+            {group.links.map((link) => (
+              <Link key={link.to} to={link.to}>
+                {link.label}{' '}
+                {link.count && <Count value={{ suggestions, comments, feedback }[link.count]} />}
+              </Link>
+            ))}
           </section>
-        )}
-        <section aria-labelledby="staff-mine">
-          <h2 id="staff-mine">Моё</h2>
-          <Link to="/mine/notes">Заметки</Link>
-          <Link to="/mine/comments">Мои комментарии</Link>
-        </section>
+        ))}
       </div>
     </div>
   );
