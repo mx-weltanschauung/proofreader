@@ -420,6 +420,7 @@ func (rt *Router) Setup() *mux.Router {
 	// Маячок посещаемости SPA — public, а не голый api: OptionalAuth нужен,
 	// чтобы не считать сотрудников.
 	public.HandleFunc("/hit", rt.statsHandler.Hit).Methods("POST")
+	public.HandleFunc("/visible-page", rt.statsHandler.VisiblePage).Methods("POST")
 
 	// Полнотекстовый поиск: каталог и тома одним ответом, полосы тома —
 	// вторым. Публичен, как все чтения; таймаут и потолки — в обработчике.

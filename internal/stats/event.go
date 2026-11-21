@@ -24,6 +24,7 @@ func CleanQuery(q string) string {
 // Каналы: откуда пришло событие.
 const (
 	ChannelSPA      = "spa"      // маячок из браузера
+	ChannelReading  = "reading"  // полоса в области чтения; отдельная таблица
 	ChannelMD       = "md"       // .md глав, томов, понятий и витрины указателя, llms.txt
 	ChannelMCP      = "mcp"      // вызов инструмента MCP
 	ChannelDownload = "download" // скачивание тома, главы, подборки
