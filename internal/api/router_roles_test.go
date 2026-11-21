@@ -36,6 +36,7 @@ const (
 	// редакционного процесса, а не к своим собственным — см. её строку ниже.
 	accessAny
 	accessReader
+	accessWorker
 	accessStaff
 	accessAdmin
 )
@@ -46,6 +47,14 @@ const (
 // router.go (public/authRequired/staff/reader/admin), а не по догадке о
 // смысле маршрута.
 var routeAccess = map[string]access{
+	"POST /api/proofread-runs":                                    accessReader,
+	"GET /api/proofread-runs/{id}":                                accessReader,
+	"PATCH /api/proofread-runs/{id}/findings/{findingId}":         accessReader,
+	"POST /api/proofread-runs/{id}/pair-code":                     accessReader,
+	"POST /api/proofread-worker/pair":                             accessPublic,
+	"GET /api/proofread-worker/runs/{id}/pages":                   accessWorker,
+	"PUT /api/proofread-worker/runs/{id}/pages/{pageId}/findings": accessWorker,
+
 	"GET /api/works/{workId}/reader-comments":    accessPublic,
 	"POST /api/works/{workId}/reader-comments":   accessReader,
 	"GET /api/reader-comments/mine":              accessReader,
@@ -556,7 +565,7 @@ func TestRequireRoleRejectsRoleOutsideEnum(t *testing.T) {
 	token := nonsenseRoleToken(t)
 
 	for key, lvl := range routeAccess {
-		if lvl == accessPublic || lvl == accessAny {
+		if lvl == accessPublic || lvl == accessAny || lvl == accessWorker {
 			continue
 		}
 		method, path := splitRouteKey(key)

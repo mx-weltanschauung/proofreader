@@ -14,6 +14,7 @@ import (
 
 // Router holds all API handlers and creates routes
 type Router struct {
+	proofread *ProofreadHandler
 	// mcpHandler — MCP-сервер читальни (internal/mcp). nil — маршрут отвечает
 	// 404: так собран роутер в тестах, которым сервер не нужен.
 	mcpHandler http.Handler
@@ -312,6 +313,7 @@ func (rt *Router) Setup() *mux.Router {
 	// "/collections/{slug}" разобрал бы "/collections/mine" как слаг
 	// подборки, и запрос до reader.HandleFunc("/collections/mine", ...) не
 	// дошёл бы вовсе (см. TestCollectionsMineRouteNotSwallowedByGenericSlug).
+	worker := api.PathPrefix("").Subrouter()
 	reader := api.PathPrefix("").Subrouter()
 	reader.Use(middleware.AuthMiddleware(rt.authService))
 	reader.Use(middleware.RequireRole(
@@ -497,6 +499,13 @@ func (rt *Router) Setup() *mux.Router {
 	// Предложение исправления от читателя. Под входом: маршрут стоит на
 	// reader, а не на public — правку подаёт учётная запись, а не
 	// предъявительский билет.
+	reader.HandleFunc("/proofread-runs", rt.proofread.reader).Methods("POST")
+	reader.HandleFunc("/proofread-runs/{id}", rt.proofread.reader).Methods("GET")
+	reader.HandleFunc("/proofread-runs/{id}/findings/{findingId}", rt.proofread.reader).Methods("PATCH")
+	reader.HandleFunc("/proofread-runs/{id}/pair-code", rt.proofread.reader).Methods("POST")
+	worker.HandleFunc("/proofread-worker/pair", rt.proofread.pair).Methods("POST")
+	worker.HandleFunc("/proofread-worker/runs/{id}/pages", rt.proofread.worker).Methods("GET")
+	worker.HandleFunc("/proofread-worker/runs/{id}/pages/{pageId}/findings", rt.proofread.worker).Methods("PUT")
 	reader.HandleFunc("/works/{workId}/pages/{pageId}/suggestions",
 		rt.pageSuggestionHandler.Create).Methods("POST")
 
