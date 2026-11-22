@@ -58,7 +58,7 @@ const MAX_EDIT_LENGTH = 1000;
 // сборка бы её выбросила.
 type BoundedDiff = Change[] | undefined;
 
-type DiffMode = 'words' | 'whitespace' | 'lines';
+type DiffMode = 'words' | 'whitespace' | 'lines' | 'lines-error';
 
 /**
  * Пословный дифф. Построчного здесь мало: правка одной буквы в абзаце даёт
@@ -72,10 +72,18 @@ type DiffMode = 'words' | 'whitespace' | 'lines';
  */
 export const MarkdownDiff: React.FC<MarkdownDiffProps> = ({ before, after }) => {
   const { parts, mode } = useMemo((): { parts: Change[]; mode: DiffMode } => {
-    const wordParts = diffWords(before, after, {
-      intlSegmenter: RU_WORD_SEGMENTER,
-      maxEditLength: MAX_EDIT_LENGTH,
-    }) as BoundedDiff;
+    let wordParts: BoundedDiff;
+    try {
+      wordParts = diffWords(before, after, {
+        intlSegmenter: RU_WORD_SEGMENTER,
+        maxEditLength: MAX_EDIT_LENGTH,
+      }) as BoundedDiff;
+    } catch {
+      // diff@7 может выбросить исключение при обработке пробелов между
+      // правкой и сносками (например, перед «\n\n[^s31]»). Показываем
+      // построчный дифф, чтобы предложение оставалось доступно редактору.
+      return { parts: diffLines(before, after), mode: 'lines-error' };
+    }
     if (!wordParts) {
       return { parts: diffLines(before, after), mode: 'lines' };
     }
@@ -111,6 +119,11 @@ export const MarkdownDiff: React.FC<MarkdownDiffProps> = ({ before, after }) => 
         <div className="markdown-diff-note">
           Правка слишком велика для пословного сравнения — показан построчный дифф: изменённые
           строки видны целиком, отдельные слова в них не выделены.
+        </div>
+      )}
+      {mode === 'lines-error' && (
+        <div className="markdown-diff-note">
+          Пословный дифф не удалось построить — показан построчный дифф.
         </div>
       )}
       {parts.map((part, i) => {
