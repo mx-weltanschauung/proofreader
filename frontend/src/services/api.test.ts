@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import api, {
+  authApi,
   marginNotesApi,
   audioApi,
   conceptsApi,
@@ -77,6 +78,25 @@ describe('401-перехватчик', () => {
     await rejectWith401();
 
     expect(window.location.href).toBe('');
+  });
+
+  it('не уводит читателя с /join при неверном пароле', async () => {
+    window.location.pathname = '/join';
+    const originalAdapter = api.defaults.adapter;
+    api.defaults.adapter = (config) =>
+      Promise.reject({
+        config,
+        response: { status: 401, data: { message: 'Неверный пароль' } },
+      });
+
+    try {
+      await expect(authApi.join('Читатель', 'неверный-пароль')).rejects.toMatchObject({
+        response: { status: 401, data: { message: 'Неверный пароль' } },
+      });
+      expect(window.location.href).toBe('');
+    } finally {
+      api.defaults.adapter = originalAdapter;
+    }
   });
 
   // У читателя тоже bearer-токен: по истечении сессии сотрудническая дверь
