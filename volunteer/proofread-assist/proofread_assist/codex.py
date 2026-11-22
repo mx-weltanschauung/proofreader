@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 
 from .analysis import candidates
+from .batch import BATCH_SCHEMA, page_prompt, parse_batch
 
 
 class CodexError(ValueError):
@@ -92,3 +93,38 @@ def analyze_codex(text, scan=None):
         if rows and not found:
             raise CodexError("Codex CLI вернул находки с неверными позициями.")
         return found
+
+
+def analyze_codex_batch(pages):
+    executable = shutil.which("codex")
+    if not executable:
+        raise CodexError("Codex CLI не найден в PATH.")
+    with tempfile.TemporaryDirectory(prefix="proofread-codex-") as directory:
+        scratch = Path(directory)
+        schema, result = scratch / "schema.json", scratch / "result.json"
+        schema.write_text(json.dumps(BATCH_SCHEMA), encoding="utf-8")
+        command = [executable, "exec", "-C", directory, "--skip-git-repo-check",
+                   "--ephemeral", "--ignore-user-config", "-s", "read-only",
+                   "--output-schema", str(schema), "--output-last-message", str(result)]
+        for index, page in enumerate(pages):
+            if page.get("scan"):
+                data, mime = page["scan"]
+                extension = {"image/png": ".png", "image/jpeg": ".jpg",
+                             "image/webp": ".webp"}.get(mime)
+                if not extension:
+                    raise CodexError("Формат скана не поддерживается Codex CLI.")
+                image = scratch / f"scan-{index}{extension}"
+                image.write_bytes(data)
+                command.extend(["-i", str(image)])
+        command.append("-")
+        env = os.environ.copy()
+        env.pop("OPENAI_API_KEY", None)
+        try:
+            completed = subprocess.run(command, input=page_prompt(pages), text=True,
+                                       encoding="utf-8", capture_output=True, timeout=900,
+                                       env=env, cwd=directory)
+            if completed.returncode != 0:
+                raise CodexError("Codex CLI завершился с ошибкой.")
+            return parse_batch(pages, json.loads(result.read_text(encoding="utf-8")))
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
+            raise CodexError("Codex CLI не вернул корректный пакет полос.") from error

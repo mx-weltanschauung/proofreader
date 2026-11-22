@@ -3,6 +3,7 @@ import json
 
 from .analysis import candidates
 from .client import request_json
+from .batch import page_prompt, parse_batch
 
 
 PROMPT = """Проверь полосу на опечатки и ошибки распознавания. Сохраняй орфографию
@@ -25,3 +26,18 @@ def analyze(url, model, key, text, scan=None):
                                     {"role": "user", "content": content}]}, key)
     rows = json.loads(response["choices"][0]["message"]["content"])
     return candidates(text, rows)
+
+
+def analyze_batch(url, model, key, pages):
+    content = [{"type": "text", "text": page_prompt(pages)}]
+    for page in pages:
+        if page.get("scan"):
+            data, mime = page["scan"]
+            encoded = base64.b64encode(data).decode("ascii")
+            content.append({"type": "text", "text": f"Скан полосы page_id={page['page_id']}:"})
+            content.append({"type": "image_url", "image_url": {
+                "url": f"data:{mime};base64,{encoded}"}})
+    response = request_json("POST", url + "/chat/completions", {
+        "model": model, "messages": [{"role": "user", "content": content}]}, key)
+    payload = json.loads(response["choices"][0]["message"]["content"])
+    return parse_batch(pages, payload)

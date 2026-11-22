@@ -135,6 +135,12 @@ it('shows the helper command with the issued code and run', async () => {
   ).toBeVisible();
   expect(screen.getByText('proofread-assist run 7')).toBeVisible();
   expect(screen.getByText('proofread-assist run 7 --codex --vision')).toBeVisible();
+  expect(screen.getByText('proofread-assist run 7 --claude --vision')).toBeVisible();
+  expect(
+    screen.getByText('proofread-assist run 7 --claude-api --model ИМЯ_МОДЕЛИ --vision'),
+  ).toBeVisible();
+  expect(screen.getByText('--batch-size 15')).toBeVisible();
+  expect(screen.getByRole('heading', { name: 'Выберите способ анализа' })).toBeVisible();
   expect(screen.getByRole('link', { name: 'Установите proofread-assist' })).toHaveAttribute(
     'href',
     '/help#proofread-assist',

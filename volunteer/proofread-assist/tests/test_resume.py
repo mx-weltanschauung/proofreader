@@ -50,7 +50,8 @@ def test_retries_one_failed_page(serve, monkeypatch, tmp_path):
         return main(argv)
 
     assert invoke(["pair", "once", "--site-url", serve(site)]) == 0
-    args = ["run", "7", "--model-url", serve(model) + "/v1", "--model", "volunteer-model"]
+    args = ["run", "7", "--model-url", serve(model) + "/v1", "--model", "volunteer-model",
+            "--batch-size", "1"]
     assert invoke(args) == 1
     assert states == ["analyzed", "pending", "failed", "analyzed"]
     assert invoke(args) == 0
