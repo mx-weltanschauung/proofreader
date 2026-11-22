@@ -55,80 +55,6 @@ export const Help: React.FC = () => {
         </p>
       </section>
 
-      <section id="proofread-assist">
-        <h2>Помощник для вычитки главы</h2>
-        <p>
-          <a href="https://github.com/mx-weltanschauung/proofreader/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess">
-            Скачайте последнюю успешную сборку proofread-assist
-          </a>
-          : внизу страницы сборки откройте Artifacts и выберите архив для своей системы. Для
-          скачивания нужен вход в GitHub. Распакуйте ZIP от GitHub, затем архив внутри него, и
-          откройте терминал в папке с программой. В примерах ниже замените{' '}
-          <code>proofread-assist</code> на <code>./proofread-assist</code> в Linux и macOS или на{' '}
-          <code>.\proofread-assist.exe</code> в Windows PowerShell.
-        </p>
-        <p>
-          В работе над главой раскройте «Подключить помощник для анализа», получите одноразовый код
-          и выполните показанную там команду <code>pair</code>. Номер этой работы подставьте вместо{' '}
-          <code>НОМЕР_РАБОТЫ</code> в командах ниже.
-        </p>
-        <h3>Выберите модель</h3>
-        <ul>
-          <li>
-            <strong>Claude Code через аккаунт.</strong> Установите{' '}
-            <a href="https://code.claude.com/docs/en/overview">Claude Code</a>, войдите и проверьте
-            вход командой <code>claude auth status</code>. Ключ API не нужен.
-            <pre className="help-proofread-command">
-              <code>proofread-assist run НОМЕР_РАБОТЫ --claude --vision</code>
-            </pre>
-          </li>
-          <li>
-            <strong>Anthropic API.</strong> Задайте <code>ANTHROPIC_API_KEY</code> в терминале и
-            укажите доступную вам модель. API оплачивается отдельно; ключ сайту не передаётся.
-            <pre className="help-proofread-command">
-              <code>
-                proofread-assist run НОМЕР_РАБОТЫ --claude-api --model ИМЯ_МОДЕЛИ --vision
-              </code>
-            </pre>
-          </li>
-          <li>
-            <strong>Codex CLI через ChatGPT.</strong> Войдите в Codex CLI и запустите:
-            <pre className="help-proofread-command">
-              <code>proofread-assist run НОМЕР_РАБОТЫ --codex --vision</code>
-            </pre>
-          </li>
-          <li>
-            <strong>Локальная или внешняя OpenAI-совместимая модель.</strong> Один раз проверьте
-            подключение, затем запустите анализ. Для сервиса с ключом задайте{' '}
-            <code>OPENAI_API_KEY</code> в терминале.
-            <pre className="help-proofread-command">
-              <code>proofread-assist configure НОМЕР_РАБОТЫ --model-url URL --model MODEL</code>
-            </pre>
-            <pre className="help-proofread-command">
-              <code>proofread-assist run НОМЕР_РАБОТЫ --vision</code>
-            </pre>
-          </li>
-        </ul>
-        <p>
-          За один вызов модель получает до 10 полос. Число выбираете вы: добавьте к команде{' '}
-          <code>--batch-size 15</code> для 15 полос, допустимо от 1 до 20. Если модели не хватает
-          контекста, уменьшите пакет до <code>--batch-size 1</code>. Флаг <code>--vision</code>{' '}
-          передаёт сканы, чтобы модель могла указать место правки на странице. Если выбранная модель
-          не умеет работать с изображениями, уберите этот флаг.
-        </p>
-        <p>
-          После анализа обновите работу, сверьте каждую находку со сканом, примите или отклоните
-          правки и отправьте результат на проверку редактору. Если работа прервалась, повторите{' '}
-          <code>run</code>: обработанные полосы помощник пропустит. После обновления программы
-          скачайте новую сборку: сайт не обновляет её автоматически. Подробности о локальной Qwen и
-          Tesseract есть в{' '}
-          <a href="https://github.com/mx-weltanschauung/proofreader/tree/main/volunteer/proofread-assist">
-            инструкции к помощнику
-          </a>
-          .
-        </p>
-      </section>
-
       <section>
         <h2>Как читать</h2>
 
@@ -545,6 +471,116 @@ export const Help: React.FC = () => {
         <pre>
           <code>claude mcp add --transport http chitalnya {mcpUrl}</code>
         </pre>
+      </section>
+
+      <section id="proofread-assist" className="help-proofread">
+        <h2>Помочь с вычиткой главы</h2>
+        <p className="help-proofread-lead">
+          На странице главы рядом с «Читать потоком» есть кнопка{' '}
+          <strong>«Помочь с вычиткой»</strong>. Нажмите её, чтобы открыть работу над всей главой.
+          Если вы ещё не вошли, сначала откроется запись в читальню.
+        </p>
+        <ol className="help-proofread-steps">
+          <li>
+            <h3>Откройте помощник в работе</h3>
+            <p>
+              На странице работы раскройте блок <strong>«Подключить помощник для анализа»</strong>.
+              Он свёрнут, пока вы его не откроете. В нём находятся кнопка получения одноразового
+              кода и команды с номером вашей работы.
+            </p>
+          </li>
+          <li>
+            <h3>Установите и подключите программу</h3>
+            <p>
+              <a href="https://github.com/mx-weltanschauung/proofreader/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess">
+                Скачайте последнюю успешную сборку proofread-assist
+              </a>
+              : внизу страницы сборки откройте Artifacts и выберите архив для своей системы. Для
+              скачивания нужен вход в GitHub. Распакуйте ZIP от GitHub, затем архив внутри него, и
+              откройте терминал в папке с программой.
+            </p>
+            <p>
+              В работе нажмите <strong>«Получить одноразовый код»</strong> и выполните показанную
+              команду <code>pair</code>. В примерах ниже замените <code>proofread-assist</code> на{' '}
+              <code>./proofread-assist</code> в Linux и macOS или на{' '}
+              <code>.\proofread-assist.exe</code> в Windows PowerShell.
+            </p>
+          </li>
+          <li>
+            <h3>Выберите модель и запустите анализ</h3>
+            <p>
+              В командах ниже подставьте номер своей работы вместо <code>НОМЕР_РАБОТЫ</code>.
+              Достаточно выбрать один способ.
+            </p>
+            <div className="help-proofread-methods">
+              <div className="help-proofread-method help-proofread-method--claude">
+                <h4>Claude Code через аккаунт</h4>
+                <p>
+                  Установите <a href="https://code.claude.com/docs/en/overview">Claude Code</a>,
+                  войдите и проверьте вход командой <code>claude auth status</code>. Ключ API не
+                  нужен.
+                </p>
+                <pre className="help-proofread-command">
+                  <code>proofread-assist run НОМЕР_РАБОТЫ --claude --vision</code>
+                </pre>
+              </div>
+              <div className="help-proofread-method">
+                <h4>Anthropic API</h4>
+                <p>
+                  Задайте <code>ANTHROPIC_API_KEY</code> в терминале и укажите доступную модель. API
+                  оплачивается отдельно; ключ сайту не передаётся.
+                </p>
+                <pre className="help-proofread-command">
+                  <code>
+                    proofread-assist run НОМЕР_РАБОТЫ --claude-api --model ИМЯ_МОДЕЛИ --vision
+                  </code>
+                </pre>
+              </div>
+              <div className="help-proofread-method">
+                <h4>Codex CLI через ChatGPT</h4>
+                <p>Войдите в Codex CLI. Отдельный ключ API не нужен.</p>
+                <pre className="help-proofread-command">
+                  <code>proofread-assist run НОМЕР_РАБОТЫ --codex --vision</code>
+                </pre>
+              </div>
+              <div className="help-proofread-method">
+                <h4>Локальная или внешняя модель</h4>
+                <p>
+                  Для OpenAI-совместимого API один раз проверьте подключение. Если сервису нужен
+                  ключ, задайте <code>OPENAI_API_KEY</code> в терминале.
+                </p>
+                <pre className="help-proofread-command">
+                  <code>proofread-assist configure НОМЕР_РАБОТЫ --model-url URL --model MODEL</code>
+                </pre>
+                <pre className="help-proofread-command">
+                  <code>proofread-assist run НОМЕР_РАБОТЫ --vision</code>
+                </pre>
+              </div>
+            </div>
+            <p className="help-proofread-note">
+              За один вызов модель получает до 10 полос. Добавьте <code>--batch-size 15</code>,
+              чтобы задать другое число от 1 до 20. Если модели не хватает контекста, уменьшите
+              пакет до <code>--batch-size 1</code>. Флаг <code>--vision</code> передаёт сканы;
+              уберите его, если выбранная модель не работает с изображениями.
+            </p>
+          </li>
+          <li>
+            <h3>Проверьте находки</h3>
+            <p>
+              Обновите работу, сверьте каждую находку со сканом, примите или отклоните правки и
+              отправьте результат редактору. Если анализ прервался, повторите <code>run</code>:
+              обработанные полосы помощник пропустит.
+            </p>
+            <p>
+              После обновления программы скачайте новую сборку: сайт не обновляет её автоматически.
+              Подробности о локальной Qwen и Tesseract есть в{' '}
+              <a href="https://github.com/mx-weltanschauung/proofreader/tree/main/volunteer/proofread-assist">
+                инструкции к помощнику
+              </a>
+              .
+            </p>
+          </li>
+        </ol>
       </section>
 
       <section>

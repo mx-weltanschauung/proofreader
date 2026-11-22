@@ -14,9 +14,107 @@
   scroll-margin-top: calc(var(--site-header-height) + 1rem);
 }
 
-.help-proofread-command {
+.help pre {
   max-width: 100%;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.help-proofread-lead,
+.help-proofread-note {
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-bg-tertiary);
+}
+
+.help-proofread-steps {
+  display: grid;
+  gap: 0.9rem;
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: proofread-step;
+}
+
+.help-proofread-steps > li {
+  position: relative;
+  min-width: 0;
+  padding: 0.9rem 0.9rem 0.9rem 3.3rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.5rem;
+  background: var(--color-bg-secondary);
+  counter-increment: proofread-step;
+}
+
+.help-proofread-steps > li::before {
+  content: counter(proofread-step);
+  position: absolute;
+  top: 0.9rem;
+  left: 0.9rem;
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-accent-on);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.help .help-proofread-steps h3 {
+  margin: 0 0 0.45rem;
+  font-size: 1.1rem;
+}
+
+.help-proofread-steps p {
+  margin: 0.45rem 0 0;
+}
+
+.help-proofread code {
+  overflow-wrap: anywhere;
+}
+
+.help-proofread-methods {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.8rem 0;
+}
+
+.help-proofread-method {
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.4rem;
+  background: var(--color-bg-primary);
+}
+
+.help-proofread-method--claude {
+  border-color: var(--color-accent);
+  box-shadow: inset 3px 0 var(--color-accent);
+}
+
+.help-proofread-method h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.help-proofread-command {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0.55rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.3rem;
+  background: var(--color-bg-tertiary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.help-proofread-note {
+  margin-top: 0.8rem;
 }
 
 .help section[id],
