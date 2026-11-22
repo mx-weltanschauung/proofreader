@@ -80,7 +80,7 @@ def analyze_codex(text, scan=None):
         env.pop("OPENAI_API_KEY", None)
         try:
             completed = subprocess.run(
-                command, input=PROMPT + text, text=True, capture_output=True,
+                command, input=PROMPT + text, text=True, encoding="utf-8", capture_output=True,
                 timeout=300, env=env, cwd=directory,
             )
             if completed.returncode != 0:

@@ -11,6 +11,7 @@ permissions:
 jobs:
   helper:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2022, macos-15]
     runs-on: ${{ matrix.os }}

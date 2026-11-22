@@ -215,7 +215,9 @@ func TestWorkerReceivesFetchableSignedScan(t *testing.T) {
 			w.WriteHeader(403)
 			return
 		}
-		io.WriteString(w, "image bytes")
+		if _, err := io.WriteString(w, "image bytes"); err != nil {
+			t.Errorf("write scan response: %v", err)
+		}
 	}))
 	defer object.Close()
 	backend, err := storage.NewS3Storage(storage.S3Config{Endpoint: object.URL, Bucket: "bucket", Region: "us-east-1", UsePathStyle: true, AccessKey: "test", SecretKey: "test"})

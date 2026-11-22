@@ -46,13 +46,14 @@ def test_codex_vision_passes_scan_as_temporary_image(monkeypatch):
         assert image.read_bytes() == b'png-data'
         assert image.suffix == '.png'
         assert 'scan_bbox' in kwargs['input']
+        assert kwargs['encoding'] == 'utf-8'
         Path(command[command.index('--output-last-message') + 1]).write_text(json.dumps({
             'findings': [{
                 'start_rune': 0, 'end_rune': 12, 'old': 'Сараговского',
                 'new': 'Саратовского', 'reason': 'Сверено со сканом',
                 'scan_bbox': [0.305, 0.472, 0.246, 0.026],
             }],
-        }, ensure_ascii=False))
+        }, ensure_ascii=False), encoding='utf-8')
         return CompletedProcess(command, 0)
 
     monkeypatch.setattr('proofread_assist.codex.subprocess.run', fake_run)
