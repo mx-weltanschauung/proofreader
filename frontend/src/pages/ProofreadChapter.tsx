@@ -239,11 +239,15 @@ function Review({ id }: { id: number }) {
             </p>
             <pre>proofread-assist run {id}</pre>
             <p>
-              Если вы вошли в Codex CLI через ChatGPT, можно проверить полосу без отдельного ключа
-              API. Флаг --vision передаёт скан: Codex сможет указать место находки на нём. Этот
-              способ расходует лимит вашего плана Codex.
+              Если вы вошли в Codex CLI через ChatGPT, можно проанализировать полосы главы без
+              отдельного ключа API. Флаг --vision передаёт сканы: Codex сможет указать места находок
+              на них. Этот способ расходует лимит вашего плана Codex.
             </p>
             <pre>proofread-assist run {id} --codex --vision</pre>
+            <p>
+              Claude Code и Anthropic API тоже поддерживаются. Команды и настройка числа полос за
+              один вызов модели — в <Link to="/help#proofread-assist">справке</Link>.
+            </p>
           </details>
           <p>
             Анализ завершён для{' '}

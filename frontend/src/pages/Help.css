@@ -14,6 +14,11 @@
   scroll-margin-top: calc(var(--site-header-height) + 1rem);
 }
 
+.help-proofread-command {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .help section[id],
 .help h2[id] {
   scroll-margin-top: calc(var(--site-header-height) + 1rem);
