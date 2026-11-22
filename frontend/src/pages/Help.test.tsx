@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { Help } from './Help';
@@ -64,6 +64,18 @@ describe('страница справки', () => {
   it('рассказывает, что это за место', () => {
     setup();
     expect(document.getElementById('about')).not.toBeNull();
+  });
+
+  it('даёт быстрые переходы по темам без пустых ссылок', () => {
+    setup();
+    const navigation = screen.getByRole('navigation', { name: 'Разделы справки' });
+    const links = within(navigation).getAllByRole('link');
+    expect(links.length).toBeGreaterThan(10);
+    for (const link of links) {
+      const hash = link.getAttribute('href');
+      expect(hash?.startsWith('#')).toBe(true);
+      expect(document.getElementById(hash!.slice(1)), `нет раздела для ${hash}`).not.toBeNull();
+    }
   });
 
   // Хвостик «Подробнее» ведёт на /help#<идентификатор подсказки>. Раздел без

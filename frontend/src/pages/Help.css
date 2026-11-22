@@ -9,6 +9,59 @@
   margin-top: 2rem;
 }
 
+.help-toc {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.6rem;
+  background: var(--color-bg-secondary);
+}
+
+.help .help-toc h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.help-toc-links {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.help-toc-links a {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.3rem;
+  background: var(--color-bg-secondary);
+  color: var(--color-link);
+  font-size: 0.92rem;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.help-toc-links a:hover {
+  text-decoration: underline;
+}
+
+.help-toc-links a:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.help > section:not(.help-reset) {
+  padding: 1.1rem 0;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.help > section > h2:first-child {
+  margin-top: 0;
+  padding-left: 0.65rem;
+  border-left: 3px solid var(--color-accent);
+}
+
 .help h3 {
   margin-top: 1.5rem;
   scroll-margin-top: calc(var(--site-header-height) + 1rem);
@@ -18,6 +71,36 @@
   max-width: 100%;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.help-action {
+  margin: 1rem 0;
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-bg-tertiary);
+}
+
+.help-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.help-choices--stacked {
+  grid-template-columns: 1fr;
+}
+
+.help-choices > div {
+  min-width: 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.4rem;
+  background: var(--color-bg-secondary);
+}
+
+.help-choices p {
+  margin: 0.25rem 0 0;
 }
 
 .help-proofread-lead,
@@ -160,18 +243,51 @@
 }
 
 .help-search-syntax {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.35fr) minmax(0, 1fr);
   margin: 1rem 0;
+  border: 1px solid var(--color-border-light);
+  border-radius: 0.4rem;
+  overflow: hidden;
 }
 
 .help-search-syntax dt {
-  margin-top: 0.75rem;
-  font-family: var(--reading-font-fira);
-  font-size: 0.95em;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-tertiary);
+  font-weight: 700;
 }
 
 .help-search-syntax dd {
-  margin: 0.15rem 0 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid var(--color-border-light);
+  background: var(--color-bg-secondary);
   color: var(--color-text-secondary);
+}
+
+@media (max-width: 600px) {
+  .help-toc-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .help-choices {
+    grid-template-columns: 1fr;
+  }
+
+  .help-search-syntax {
+    grid-template-columns: 1fr;
+  }
+
+  .help-search-syntax dt {
+    padding-bottom: 0.15rem;
+    border-bottom: 0;
+  }
+
+  .help-search-syntax dd {
+    padding-top: 0.15rem;
+  }
 }
 
 /* Раздел «Вся читальня одним архивом» (/help#offline). Кнопка и подпись к
