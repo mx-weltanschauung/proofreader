@@ -18,14 +18,23 @@ class Model(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         text = body["messages"][-1]["content"]
         seen.append(text)
-        rows = []
-        if text == "кот кот":
-            for start in (0, 4):
-                rows.append(dict(start_rune=start, end_rune=start+3, old="кот",
-                                 new="кит", reason="по скану"))
+        if isinstance(text, str):
+            assert text == "Проверка подключения."
+            result = []
+        else:
+            assert len(text) == 1 and text[0]["type"] == "text"
+            pages = json.loads(text[0]["text"].split("Полосы:\n", 1)[1])
+            result = {"pages": []}
+            for page in pages:
+                rows = []
+                if page["base_markdown"] == "кот кот":
+                    for start in (0, 4):
+                        rows.append(dict(start_rune=start, end_rune=start+3, old="кот",
+                                         new="кит", reason="по скану", scan_bbox=[]))
+                result["pages"].append({"page_id": page["page_id"], "findings": rows})
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(json.dumps({"choices": [{"message": {"content": json.dumps(rows)}}]}).encode())
+        self.wfile.write(json.dumps({"choices": [{"message": {"content": json.dumps(result)}}]}).encode())
 
 
 def api(method, path, data=None):
@@ -56,7 +65,8 @@ with ThreadingHTTPServer(("127.0.0.1", 0), Model) as model:
         model.shutdown()
         thread.join()
 
-assert seen == ["Проверка подключения.", "кот кот", "без ошибок"]
+assert len(seen) == 2 and seen[0] == "Проверка подключения."
+assert "кот кот" in seen[1][0]["text"] and "без ошибок" in seen[1][0]["text"]
 first, second = api("GET", path)["pages"]
 assert all(p["analysis_status"] == "analyzed" for p in (first, second))
 assert not second.get("findings")
