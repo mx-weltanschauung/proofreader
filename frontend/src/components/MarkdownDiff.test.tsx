@@ -89,4 +89,18 @@ describe('MarkdownDiff', () => {
     expect(screen.getByTestId('diff-removed').textContent).toBe('слово0');
     expect(screen.getByTestId('diff-added').textContent).toBe('слов0');
   });
+
+  it('показывает построчный дифф, если пословный падает на пустых строках перед сноской', () => {
+    render(
+      <MarkdownDiff
+        before={'текст\n\n\n[^s31]: Примечание'}
+        after={'тек,ст\n\n\n[^s31]: Примечание'}
+      />,
+    );
+
+    expect(screen.getByText(/пословный дифф не удалось построить/i)).toBeInTheDocument();
+    expect(screen.getByTestId('diff-removed').textContent).toBe('текст\n');
+    expect(screen.getByTestId('diff-added').textContent).toBe('тек,ст\n');
+    expect(screen.getByText(/\[\^s31\]: Примечание/)).toBeInTheDocument();
+  });
 });
