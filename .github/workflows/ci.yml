@@ -9,7 +9,39 @@ permissions:
   contents: read
 
 jobs:
+  helper:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: volunteer/proofread-assist
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pytest certifi pyinstaller==6.16.0
+      - run: python -m pytest -q
+      - run: python packaging/build.py
+      - name: Проверка связки и возобновления в собранной программе
+        shell: bash
+        run: |
+          binary="$PWD/dist/proofread-assist"
+          if [[ "$RUNNER_OS" == Windows ]]; then binary="$(cygpath -w "$binary.exe")"; fi
+          PROOFREAD_ASSIST_BINARY="$binary" python -m pytest -q tests/test_resume.py -k retries_one_failed_page
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proofread-assist-${{ matrix.os }}-${{ runner.arch }}
+          path: |
+            volunteer/proofread-assist/dist/*.tar.gz
+            volunteer/proofread-assist/dist/*.zip
+          if-no-files-found: error
+
   go:
+    needs: helper
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -50,6 +82,14 @@ jobs:
           PGPASSWORD=proofreader createdb -h localhost -U proofreader proofreader_settings_test
           DB_NAME=proofreader_settings_test go run cmd/migrate/main.go up
       - run: go test ./... -count=1
+      - uses: actions/download-artifact@v4
+        with:
+          name: proofread-assist-ubuntu-24.04-X64
+          path: ${{ runner.temp }}/proofread-smoke
+      - name: Вычитка главы до очереди модерации
+        run: |
+          tar -xzf "$RUNNER_TEMP"/proofread-smoke/*.tar.gz -C "$RUNNER_TEMP/proofread-smoke"
+          PROOFREAD_ASSIST_BINARY="$RUNNER_TEMP/proofread-smoke/proofread-assist" go test ./volunteer/proofread-assist/tests -count=1 -v
 
   # Линтер стережёт только новый код: в дереве около сотни старых находок
   # errcheck, они — отдельная работа, а не повод пропускать новые.

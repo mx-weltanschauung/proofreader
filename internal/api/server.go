@@ -256,6 +256,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		readerAdminHandler,
 		authService,
 	).WithMCP(mcpHandler).
+		WithProofread(&ProofreadHandler{limit: suggestionLimit, jwtSecret: cfg.JWT.Secret, trustProxy: cfg.Server.TrustProxyHeaders, runs: repository.NewProofreadRunRepository(pool), chapters: viewChapters, pages: viewPages, closed: closedRepo, scans: closedRepo, storage: scans, ttl: cfg.S3.PresignTTL}).
 		WithSettings(NewSettingsHandler(suggestionLimit)).
 		WithOPDS(opdsHandler).
 		WithClosed(closedRepo).

@@ -11,6 +11,7 @@ import {
   cacheApi,
   closuresApi,
   readerCommentsApi,
+  proofreadAPI,
 } from '../services/api';
 import { findChapterById } from '../utils/chapterTree';
 import { shareFrom, stubShare, unstubShare } from '../test/shareStub';
@@ -1938,4 +1939,39 @@ describe('ChapterView: закрытая глава', () => {
     await waitFor(() => expect(set).toHaveBeenCalledWith(3, 127, false, 'закрыли по ошибке'));
     expect(await screen.findByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
   });
+});
+
+describe('переход к сверке главы', () => {
+  beforeEach(() => {
+    useAuth.setState({ user: { id: 1, role: 'reader' } as User, isAuthenticated: true });
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CHAPTER));
+    vi.spyOn(worksApi, 'get').mockImplementation(() => ok(WORK));
+    vi.spyOn(chaptersApi, 'listPages').mockImplementation(() =>
+      ok({ pages: PAGES, footnotes_html: '' }),
+    );
+    vi.spyOn(chaptersApi, 'list').mockImplementation(() => ok([] as Chapter[]));
+  });
+  afterEach(() => useAuth.setState({ user: null, isAuthenticated: false }));
+  it.each([true, false])(
+    'возобновляет существующую работу либо создаёт первую (есть работа: %s)',
+    async (exists) => {
+      const run = { id: 9, work_id: 3, chapter_id: 127 };
+      const latest = vi.spyOn(proofreadAPI, 'latest').mockResolvedValue(exists ? run : null);
+      const create = vi.spyOn(proofreadAPI, 'create').mockResolvedValue(run);
+      render(
+        <MemoryRouter initialEntries={['/works/3/chapters/127']}>
+          <ReadingPreferencesProvider>
+            <Routes>
+              <Route path="/works/:workId/chapters/:chapterId" element={<ChapterView />} />
+              <Route path="/proofread/runs/:runId" element={<LocationProbe />} />
+            </Routes>
+          </ReadingPreferencesProvider>
+        </MemoryRouter>,
+      );
+      await userEvent.click(await screen.findByRole('button', { name: 'Помочь с вычиткой' }));
+      expect(await screen.findByTestId('location')).toHaveTextContent('/proofread/runs/9');
+      expect(latest).toHaveBeenCalledWith(3, 127);
+      expect(create).toHaveBeenCalledTimes(exists ? 0 : 1);
+    },
+  );
 });

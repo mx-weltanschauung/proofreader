@@ -48,6 +48,7 @@ const SuggestionQueue = lazy(() =>
 const ChapterForm = lazy(() =>
   import('./pages/ChapterForm').then((m) => ({ default: m.ChapterForm })),
 );
+const ProofreadChapter = lazy(() => import('./pages/ProofreadChapter'));
 const ChapterView = lazy(() =>
   import('./pages/ChapterView').then((m) => ({ default: m.ChapterView })),
 );
@@ -288,6 +289,7 @@ function App() {
                   }
                 />
                 <Route path="/works/:workId/read/:pageNumber" element={<WorkRead />} />
+                <Route path="/proofread/runs/:runId" element={<ProofreadChapter />} />
                 <Route path="/works/:workId/chapters/:chapterId" element={<ChapterView />} />
                 <Route path="/documents" element={<DocumentList />} />
                 {/* Создание и правка своего разбора доступны любому вошедшему,

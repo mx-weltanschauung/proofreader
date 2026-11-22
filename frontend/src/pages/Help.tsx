@@ -55,6 +55,20 @@ export const Help: React.FC = () => {
         </p>
       </section>
 
+      <section id="proofread-assist">
+        <h2>Помощник для вычитки главы</h2>
+        <p>
+          <a href="https://github.com/mx-weltanschauung/proofreader/tree/main/volunteer/proofread-assist">
+            Скачать и установить proofread-assist
+          </a>
+          . Распакуйте сборку для своего компьютера и откройте терминал в её папке. В работе над
+          главой нажмите «Подключить помощник для анализа» и получите команду с одноразовым кодом.
+          Укажите адрес и имя OpenAI-совместимой модели или запустите помощник через Codex CLI с
+          флагом <code>--codex</code>. После анализа обновите работу, сверьте находки со сканами и
+          отправьте выбранные правки.
+        </p>
+      </section>
+
       <section>
         <h2>Как читать</h2>
 

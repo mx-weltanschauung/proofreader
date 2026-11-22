@@ -345,3 +345,22 @@ type MarginNoteStore interface {
 	ListByWork(ctx context.Context, ownerID, workID int64, includeClosed bool) ([]*models.MarginNote, error)
 	ListByOwner(ctx context.Context, ownerID int64, workID *int64, limit, offset int, includeClosed bool) ([]*models.MarginNote, int, error)
 }
+
+type ProofreadRunStore interface {
+	LatestForUser(ctx context.Context, userID, workID, chapterID int64) (models.ProofreadRun, error)
+	ListSubmissionPages(ctx context.Context, runID int64, pageIDs []int64) ([]models.ProofreadRunPage, error)
+	SubmitReadyPage(ctx context.Context, runID, userID, pageID int64, accepted map[int64]string, ipHash string, limit int, since time.Time) (models.PageSubmitResult, error)
+	Create(ctx context.Context, userID, workID, chapterID int64) (models.ProofreadRun, error)
+	GetForUser(ctx context.Context, runID, userID int64) (models.ProofreadRun, error)
+	PageForFinding(ctx context.Context, runID, findingID int64) (models.ProofreadRunPage, error)
+	RunPage(ctx context.Context, runID, pageID int64) (models.ProofreadRunPage, error)
+	NextPage(ctx context.Context, runID int64, after int) (models.ProofreadRunPage, error)
+	RefreshPage(ctx context.Context, runID, userID, pageID int64, baseHash, checkedText string) error
+	ListPages(ctx context.Context, runID int64) ([]models.ProofreadRunPage, error)
+	PutFindings(ctx context.Context, runID, pageID int64, baseSHA256 string, findings []models.ProofreadFinding) error
+	SetPageAnalysisError(ctx context.Context, runID, pageID int64, baseSHA256, message string) error
+	SetDecision(ctx context.Context, runID, findingID, userID int64, decision models.FindingDecision, replacement string) error
+	IssuePairCode(ctx context.Context, runID, userID int64) (string, error)
+	ConsumePairCode(ctx context.Context, code string) (models.ProofreadRun, string, error)
+	GetForWorker(ctx context.Context, runID int64, token string) (models.ProofreadRun, error)
+}

@@ -59,7 +59,8 @@ var chapterLeak = regexp.MustCompile(`(?i)(закрыто|zakryto)[^\p{L}\p{N}]{
 type closedSweep struct {
 	readerNick, readerTok, editorTok string
 
-	openEd, closedEd int64
+	openEd, closedEd               int64
+	proofreadOpen, proofreadClosed int64
 	// open — открытый том; self — закрыт сам; front — служебная закрытого
 	// тома; edVol — том закрытого издания; issue — номер закрытого журнала.
 	open, self, front, edVol, issue int64
@@ -575,6 +576,17 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 			f.commentClosed = append(f.commentClosed, id)
 		}
 	}
+	// Оба снимка созданы до закрытия подглавы. Второй должен исчезнуть
+	// даже для владельца, когда сторож позднее закроет главу.
+	runs := repository.NewProofreadRunRepository(pool)
+	for chapter, target := range map[int64]*int64{f.ch.parent: &f.proofreadOpen, f.ch.closed: &f.proofreadClosed} {
+		run, err := runs.Create(ctx, reader, f.ch.work, chapter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*target = run.ID
+	}
+
 	return f
 }
 
@@ -595,7 +607,10 @@ func (sweepStorage) PresignGetAttachment(_ context.Context, key string, _ time.D
 func (sweepStorage) PresignPut(_ context.Context, key, _ string, _ time.Duration) (string, error) {
 	return "https://s3.invalid/" + key, nil
 }
-func (sweepStorage) Head(context.Context, string) (int64, string, error) {
+func (sweepStorage) Head(_ context.Context, key string) (int64, string, error) {
+	if strings.Contains(key, "/pages/") && strings.HasSuffix(key, ".png") {
+		return 10, "fixture", nil
+	}
 	return 0, "", storage.ErrObjectNotFound
 }
 func (sweepStorage) Delete(context.Context, string) error       { return nil }
@@ -663,6 +678,8 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		"references/{refId}":     ids(f.refs...),
 		"audio/{id}":             ids(f.track, f.openTrack, f.ch.track, f.ch.sharedTrack, f.ch.openTrack),
 		"rec/{id}":               ids(f.recording, f.openRecording, f.ch.recording, f.ch.parentRecording),
+		"proofread-runs/{id}":    ids(f.proofreadOpen, f.proofreadClosed),
+		"runs/{id}":              ids(f.proofreadOpen, f.proofreadClosed),
 		"suggestions/{id}":       ids(f.suggestion, f.ch.suggestion),
 		"margin-notes/{id}":      ids(append(append([]int64{}, f.marginClosed...), f.ch.openNote)...),
 		"reader-comments/{id}":   ids(append(append([]int64{}, f.commentClosed...), f.openComment)...),
@@ -690,6 +707,7 @@ func closedSweepQueries(f *closedSweep) map[string][]string {
 	all := strings.Join([]string{itoa(f.open), itoa(f.self), itoa(f.front), itoa(f.edVol), itoa(f.issue), itoa(f.ch.work)}, ",")
 	downloads := []string{"format=md", "format=html", "format=fb2", "format=pdf", "format=m3u"}
 	return map[string][]string{
+		"/api/proofread-runs": {"work_id=" + itoa(f.ch.work) + "&chapter_id=" + itoa(f.ch.parent), "work_id=" + itoa(f.ch.work) + "&chapter_id=" + itoa(f.ch.closed)},
 		"/api/search": {"q=" + q, "q=" + url.QueryEscape("сокровенном"), "q=" + q + "&terms_only=1",
 			"q=" + q + "&editions=" + itoa(f.openEd) + "," + itoa(f.closedEd), "q=" + q + "&works=" + all},
 		"/api/search/pages":        append(searchPages, "q="+url.QueryEscape("сокровенном")+"&work_id="+itoa(f.ch.work)),
@@ -714,6 +732,7 @@ func closedSweepSilent() map[string]string {
 	const admin = "только администратор: анониму 401, читателю 403"
 	const staff = "только сотрудник: анониму 401, читателю 403"
 	return map[string]string{
+		"/api/proofread-worker/runs/{id}/pages":                   "требуется отдельный токен работы: анониму 401, читательскому JWT 403",
 		"/api/reader-comments/banned":                             admin,
 		"/api/reader-comments/review":                             staff,
 		"/api/reader-comments/review/count":                       staff,
@@ -766,14 +785,15 @@ func closedDirectValues(f *closedSweep) map[string]map[string]bool {
 	}
 	works := set(itoa(f.self), itoa(f.front), itoa(f.edVol), itoa(f.issue))
 	return map[string]map[string]bool{
-		"works/{id}":      works,
-		"works/{workId}":  works,
-		"editions/{id}":   set(itoa(f.closedEd)),
-		"journals/{slug}": set(f.journalSlug),
-		"concepts/{slug}": set(f.closedConcept, f.ch.concept),
-		"persons/{slug}":  set(f.person, f.ch.person),
-		"audio/{id}":      set(itoa(f.track), itoa(f.ch.track), itoa(f.ch.sharedTrack)),
-		"rec/{id}":        set(itoa(f.recording), itoa(f.ch.recording), itoa(f.ch.parentRecording)),
+		"proofread-runs/{id}": set(itoa(f.proofreadClosed)),
+		"works/{id}":          works,
+		"works/{workId}":      works,
+		"editions/{id}":       set(itoa(f.closedEd)),
+		"journals/{slug}":     set(f.journalSlug),
+		"concepts/{slug}":     set(f.closedConcept, f.ch.concept),
+		"persons/{slug}":      set(f.person, f.ch.person),
+		"audio/{id}":          set(itoa(f.track), itoa(f.ch.track), itoa(f.ch.sharedTrack)),
+		"rec/{id}":            set(itoa(f.recording), itoa(f.ch.recording), itoa(f.ch.parentRecording)),
 		// Вторая организация и событие 1 видны только закрытым: 404 всем,
 		// кроме сотрудника.
 		"organizations/{slug}":      set(f.orgB, f.ch.org),
@@ -1031,6 +1051,13 @@ func TestClosedNeverReachesOutsiders(t *testing.T) {
 	}
 
 	closeSweepChapter(t, router, f, cache)
+	latestPath := "/api/proofread-runs?work_id=" + itoa(f.ch.work) + "&chapter_id="
+	if res := sweepDo(t, router, latestPath+itoa(f.ch.closed), f.readerTok); res.code != http.StatusNotFound {
+		t.Fatalf("закрытая глава раскрыла черновик: %d", res.code)
+	}
+	if res := sweepDo(t, router, latestPath+itoa(f.ch.parent), f.readerTok); res.code != http.StatusOK || !strings.Contains(res.text, `"id":`+itoa(f.proofreadOpen)) {
+		t.Fatalf("открытая глава: %d %s", res.code, res.text)
+	}
 	checkClosedChapter(t, router, f, cache, pool)
 
 	// Сотрудник видит закрытое — и заодно прогревает кэш главы, который

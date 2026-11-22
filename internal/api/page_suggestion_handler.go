@@ -6,14 +6,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/gorilla/mux"
 
@@ -29,60 +26,7 @@ const (
 	// сделал бы символьную проверку недостижимой — читатель получал бы 413
 	// вместо внятного 422.
 	suggestionMaxBody = 768 << 10
-
-	// Замер корпуса (27.08.2026, 45 495 полос): средняя 2 137 знаков,
-	// 99.99-й процентиль 18 927, длиннее 64 К — ровно две полосы (166 625 и
-	// 165 067 при третьей в 24 943). Абсолютный потолок обязан лишь не мешать
-	// законной правке; работу против залива делает относительный.
-	suggestionMaxChars     = 200000
-	suggestionMaxNoteChars = 2000
-
-	// Относительный потолок (4×основа+2000) получает пол. На пустой полосе
-	// основа нулевая, и без пола формула схлопывается в 2000 знаков — меньше
-	// средней полосы корпуса (2137). Читатель, взявшийся расшифровать пустую
-	// полосу по скану — то есть восстановить отсутствующий текст, самый
-	// ценный вклад, — упирался бы в отказ первым же обычным по длине текстом.
-	// Замер рабочей базы (27.08.2026): 708 полос пусты целиком, ещё 2105
-	// короче 500 знаков. Число пола не с потолка: 99.99-й процентиль корпуса
-	// — 18 927 знаков; 20 000 берёт его с запасом.
-	suggestionRelativeCapFloor = 20000
 )
-
-// hasInvisibleRunes сообщает, есть ли в строке символы, которых на экране не
-// видно: управляющие (категория Cc) и форматирующие (Cf) — переключатели
-// направления письма, нулевая ширина, метка порядка байтов.
-//
-// Cc и Cf отбиваются по разным причинам, и обе настоящие.
-//
-// Cc — потому что нулевой байт в TEXT роняет вставку (см. место вызова).
-//
-// Cf — потому что дифф слов на экране модерации это единственный инструмент
-// редактора, а невидимый символ делает его врущим: правка, отличающаяся от
-// основы ТОЛЬКО невидимыми символами, показывает <ins>/<del> над визуально
-// одинаковыми словами. Редактор видит «слово заменено на то же слово»,
-// принимает — и текст с переключателем направления письма уезжает в EPUB,
-// FB2 и предметный указатель. unicode.IsControl про Cf отвечает false, так
-// что одной проверкой Cc такое не ловится.
-//
-// \n, \r и \t пропускаются: текст полосы многострочный.
-//
-// МЯГКИЙ ПЕРЕНОС (U+00AD) пропускается, хотя он тоже Cf, и это не поблажка,
-// а замер: в корпусе на 27.08.2026 (45 495 полос) он встречается на 24
-// полосах, тогда как нулевая ширина, все переключатели направления,
-// соединители, метка порядка байтов и неразрывный пробел — на нуле полос
-// каждый. Отбить остальное не стоит ни одной законной правки; отбить мягкий
-// перенос — значит закрыть подачу правки для двух десятков живых полос.
-func hasInvisibleRunes(s string) bool {
-	for _, r := range s {
-		if r == '\n' || r == '\r' || r == '\t' || r == '\u00ad' {
-			continue
-		}
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
-			return true
-		}
-	}
-	return false
-}
 
 // pageSHA256 — отпечаток текста полосы. По нему сверяется основа при подаче:
 // хэш, а не метка updated_at, потому что нас интересует «текст, который я
@@ -191,8 +135,8 @@ func (h *PageSuggestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// символами получается неограниченная нагрузка в обход предела.
 	//
 	// Второй, не менее важный повод — врущий дифф на экране модерации; см.
-	// комментарий у hasInvisibleRunes.
-	if hasInvisibleRunes(req.ProposedMarkdown) || hasInvisibleRunes(req.Note) {
+	// комментарий у models.HasInvisibleRunes.
+	if models.HasInvisibleRunes(req.ProposedMarkdown) || models.HasInvisibleRunes(req.Note) {
 		writeError(w, http.StatusUnprocessableEntity, "В тексте есть недопустимые символы")
 		return
 	}
@@ -212,36 +156,8 @@ func (h *PageSuggestionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.ProposedMarkdown == page.ContentMarkdown {
-		writeError(w, http.StatusUnprocessableEntity, "Текст не изменился")
-		return
-	}
-
-	// Длины — в символах: len() на кириллице вдвое больше и отрезал бы вдвое
-	// раньше, чем обещано читателю.
-	proposedLen := utf8.RuneCountInString(req.ProposedMarkdown)
-	baseLen := utf8.RuneCountInString(page.ContentMarkdown)
-
-	relativeCap := 4*baseLen + 2000
-	if relativeCap < suggestionRelativeCapFloor {
-		relativeCap = suggestionRelativeCapFloor
-	}
-
-	// Два разных отказа с двумя разными числами: читатель, упёршийся в
-	// потолок, должен понять, что произошло, а не гадать по фразе без цифр.
-	if proposedLen > suggestionMaxChars {
-		writeError(w, http.StatusUnprocessableEntity,
-			fmt.Sprintf("Правка слишком велика: не больше %d знаков", suggestionMaxChars))
-		return
-	}
-	if proposedLen > relativeCap {
-		writeError(w, http.StatusUnprocessableEntity,
-			fmt.Sprintf("Правка слишком велика для этой полосы: не больше %d знаков", relativeCap))
-		return
-	}
-	if utf8.RuneCountInString(req.Note) > suggestionMaxNoteChars {
-		writeError(w, http.StatusUnprocessableEntity,
-			fmt.Sprintf("Записка слишком длинная: не больше %d знаков", suggestionMaxNoteChars))
+	if err := models.ValidateSuggestion(page.ContentMarkdown, req.ProposedMarkdown, req.Note); err != nil {
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
 

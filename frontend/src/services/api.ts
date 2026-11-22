@@ -968,3 +968,68 @@ export const statsApi = {
 };
 
 export default api;
+
+export type ProofreadDecision = 'pending' | 'accepted' | 'rejected';
+export type ScanBox = [number, number, number, number];
+export interface ProofreadFinding {
+  id: number;
+  start_rune: number;
+  end_rune: number;
+  old: string;
+  new: string;
+  reason: string;
+  source: string;
+  decision: ProofreadDecision;
+  replacement: string;
+  scan_bbox?: ScanBox;
+}
+export interface ProofreadPage {
+  page_id: number;
+  page_number: number;
+  base_markdown: string;
+  analysis_status: '' | 'pending' | 'failed' | 'analyzed';
+  analysis_error?: string;
+  stale?: boolean;
+  skip_reason?: string;
+  scan_url?: string;
+  submitted_at?: string;
+  findings: ProofreadFinding[] | null;
+}
+interface RunAddress {
+  id: number;
+  work_id: number;
+  chapter_id: number;
+}
+export interface ProofreadRun extends RunAddress {
+  pages: ProofreadPage[];
+}
+export interface SubmitResult {
+  page_id: number;
+  status: string;
+}
+export const proofreadAPI = {
+  async latest(work_id: number, chapter_id: number) {
+    return (
+      await api.get<RunAddress | null>('/proofread-runs', { params: { work_id, chapter_id } })
+    ).data;
+  },
+  async create(work_id: number, chapter_id: number) {
+    return (await api.post<RunAddress>('/proofread-runs', { work_id, chapter_id })).data;
+  },
+  async get(id: number) {
+    return (await api.get<ProofreadRun>(`/proofread-runs/${id}`)).data;
+  },
+  async refreshPage(id: number, page: number) {
+    await api.post(`/proofread-runs/${id}/pages/${page}/refresh`);
+  },
+  async decide(id: number, finding: number, decision: ProofreadDecision, replacement: string) {
+    await api.patch(`/proofread-runs/${id}/findings/${finding}`, { decision, replacement });
+  },
+  async pair(id: number) {
+    return (await api.post<{ code: string }>(`/proofread-runs/${id}/pair-code`)).data;
+  },
+  async submit(id: number, pages: { page_id: number; accepted: Record<string, string> }[]) {
+    return (await api.post<{ pages: SubmitResult[] }>(`/proofread-runs/${id}/submit`, { pages }))
+      .data;
+  },
+};
