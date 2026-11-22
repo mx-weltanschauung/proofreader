@@ -87,7 +87,7 @@ export const Help: React.FC = () => {
       </section>
 
       <section id="reading">
-        <h2>Как читать</h2>
+        <h2>Чтение</h2>
 
         <h3 id="page-numbers">
           <Key>№</Key> Номера страниц
