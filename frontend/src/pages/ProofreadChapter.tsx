@@ -211,43 +211,122 @@ function Review({ id }: { id: number }) {
       {run && (
         <>
           <details className="proof-helper">
-            <summary>Подключить помощник для анализа</summary>
-            <p>
-              <Link to="/help#proofread-assist">Установите proofread-assist</Link> на своём
-              компьютере. Получите одноразовый код и выполните команду подключения.
-            </p>
-            <button
-              disabled={busy}
-              onClick={() => act(async () => setCode((await proofreadAPI.pair(id)).code))}
-            >
-              Получить одноразовый код
-            </button>
-            {code && (
-              <pre>
-                proofread-assist pair {code} --site-url {API_BASE_URL || window.location.origin}
-              </pre>
-            )}
-            <p>
-              Для OpenAI-совместимой модели при первом запуске подставьте адрес API вместо URL и имя
-              модели вместо MODEL. Помощник проверит подключение и сохранит настройки на вашем
-              компьютере.
-            </p>
-            <pre>proofread-assist configure {id} --model-url URL --model MODEL</pre>
-            <p>
-              Запустите анализ. Чтобы продолжить после перерыва, повторите команду и обновите
-              работу.
-            </p>
-            <pre>proofread-assist run {id}</pre>
-            <p>
-              Если вы вошли в Codex CLI через ChatGPT, можно проанализировать полосы главы без
-              отдельного ключа API. Флаг --vision передаёт сканы: Codex сможет указать места находок
-              на них. Этот способ расходует лимит вашего плана Codex.
-            </p>
-            <pre>proofread-assist run {id} --codex --vision</pre>
-            <p>
-              Claude Code и Anthropic API тоже поддерживаются. Команды и настройка числа полос за
-              один вызов модели — в <Link to="/help#proofread-assist">справке</Link>.
-            </p>
+            <summary>
+              <span className="proof-helper-summary-title">Подключить помощник для анализа</span>
+              <span className="proof-helper-summary-note">Вычитка главы с моделью</span>
+            </summary>
+            <div className="proof-helper-content">
+              <p className="proof-helper-intro">
+                Помощник предложит правки, а вы проверите каждую из них по скану перед отправкой
+                редактору.
+              </p>
+              <ol className="proof-helper-steps">
+                <li className="proof-helper-step">
+                  <span className="proof-helper-step-number" aria-hidden="true">
+                    1
+                  </span>
+                  <div className="proof-helper-step-content">
+                    <h3>Свяжите помощник с этой работой</h3>
+                    <p>
+                      <Link to="/help#proofread-assist">Установите proofread-assist</Link> на своём
+                      компьютере, получите одноразовый код и выполните команду в терминале.
+                    </p>
+                    <button
+                      className="proof-helper-pair-button"
+                      disabled={busy}
+                      onClick={() => act(async () => setCode((await proofreadAPI.pair(id)).code))}
+                    >
+                      Получить одноразовый код
+                    </button>
+                    {code && (
+                      <pre className="proof-helper-command">
+                        <code>
+                          proofread-assist pair {code} --site-url{' '}
+                          {API_BASE_URL || window.location.origin}
+                        </code>
+                      </pre>
+                    )}
+                  </div>
+                </li>
+                <li className="proof-helper-step">
+                  <span className="proof-helper-step-number" aria-hidden="true">
+                    2
+                  </span>
+                  <div className="proof-helper-step-content">
+                    <h3>Выберите способ анализа</h3>
+                    <p>
+                      Запустите один из вариантов ниже. Для каждого используется тот же номер
+                      работы.
+                    </p>
+                    <div className="proof-helper-methods">
+                      <article className="proof-helper-method proof-helper-method--claude">
+                        <h4>Claude Code</h4>
+                        <p>
+                          Войдите в Claude Code через свой аккаунт. Отдельный ключ API не нужен;
+                          сканы передаются с флагом <code>--vision</code>.
+                        </p>
+                        <pre className="proof-helper-command">
+                          <code>proofread-assist run {id} --claude --vision</code>
+                        </pre>
+                      </article>
+                      <article className="proof-helper-method">
+                        <h4>Anthropic API</h4>
+                        <p>
+                          Укажите <code>ANTHROPIC_API_KEY</code> в терминале и имя модели. API
+                          оплачивается отдельно; ключ сайту не передаётся.
+                        </p>
+                        <pre className="proof-helper-command">
+                          <code>
+                            proofread-assist run {id} --claude-api --model ИМЯ_МОДЕЛИ --vision
+                          </code>
+                        </pre>
+                      </article>
+                      <article className="proof-helper-method">
+                        <h4>Codex CLI</h4>
+                        <p>
+                          Войдите через ChatGPT. Используется лимит вашего плана Codex; отдельный
+                          ключ API не нужен.
+                        </p>
+                        <pre className="proof-helper-command">
+                          <code>proofread-assist run {id} --codex --vision</code>
+                        </pre>
+                      </article>
+                      <article className="proof-helper-method">
+                        <h4>Другая модель</h4>
+                        <p>
+                          Для локального или внешнего OpenAI-совместимого API сначала сохраните
+                          адрес и имя модели.
+                        </p>
+                        <pre className="proof-helper-command">
+                          <code>proofread-assist configure {id} --model-url URL --model MODEL</code>
+                        </pre>
+                        <pre className="proof-helper-command">
+                          <code>proofread-assist run {id}</code>
+                        </pre>
+                      </article>
+                    </div>
+                    <p className="proof-helper-batch-note">
+                      Модель получает до 10 полос за вызов. Добавьте <code>--batch-size 15</code>,
+                      чтобы изменить размер пакета; допустимо от 1 до 20.
+                    </p>
+                  </div>
+                </li>
+                <li className="proof-helper-step">
+                  <span className="proof-helper-step-number" aria-hidden="true">
+                    3
+                  </span>
+                  <div className="proof-helper-step-content">
+                    <h3>Проверьте находки</h3>
+                    <p>
+                      После анализа нажмите «Обновить работу», сверьте предложения со сканами и
+                      решите, какие правки отправить редактору. Если анализ прервётся, повторите
+                      команду <code>run</code>. Подробнее — в{' '}
+                      <Link to="/help#proofread-assist">справке</Link>.
+                    </p>
+                  </div>
+                </li>
+              </ol>
+            </div>
           </details>
           <p>
             Анализ завершён для{' '}
