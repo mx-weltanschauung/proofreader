@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { collectionsApi, chaptersApi } from '../services/api';
-import type { Chapter, Collection, CollectionEntry, Shelf } from '../types';
+import type { Chapter, Collection, CollectionEntry, CollectionProgramInput, Shelf } from '../types';
 import { FilterCombobox, type ComboOption } from '../components/FilterCombobox';
 import { loadShelfOnce } from '../utils/shelfCache';
 import { apiErrorMessage } from '../utils/apiError';
@@ -11,6 +11,7 @@ import { sourceLabel } from '../utils/sourceLabel';
 import { useAuth, isReader } from '../hooks/useAuth';
 import { joinPathFor } from '../utils/returnUrl';
 import { collectionPath } from '../utils/paths';
+import { CollectionProgramForm } from './CollectionProgramForm';
 import './CollectionForm.css';
 
 /** Плоский список глав дерева с отступом по уровню вложенности — приём из
@@ -91,6 +92,7 @@ export const CollectionForm: React.FC = () => {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [selectedChapterId, setSelectedChapterId] = useState<number | ''>('');
   const [isAdding, setIsAdding] = useState(false);
+  const [isEditingProgram, setIsEditingProgram] = useState(false);
 
   // Порядок и номера строк — забота сервера: после любой правки состава
   // подборка перечитывается заново, а не пересчитывается в браузере.
@@ -281,12 +283,36 @@ export const CollectionForm: React.FC = () => {
     }
   };
 
+  const handleEditProgram = async () => {
+    if (!routeSlug) return;
+    try {
+      await reloadCollection(routeSlug);
+      setIsEditingProgram(true);
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Не удалось загрузить программу'));
+    }
+  };
+
+  const handleSaveProgram = async (input: CollectionProgramInput) => {
+    if (!routeSlug) return;
+    try {
+      await collectionsApi.saveProgram(routeSlug, input, nickname);
+      await reloadCollection(routeSlug);
+      setIsEditingProgram(false);
+      toast.success('Программа сохранена');
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Не удалось сохранить программу'));
+    }
+  };
+
   const handlePublish = async () => {
     if (!routeSlug) return;
     setIsPublishing(true);
     try {
       const response = await collectionsApi.publish(routeSlug, nickname);
-      setCollection(response.data);
+      setCollection((current) =>
+        current ? { ...current, published_at: response.data.published_at } : current,
+      );
       toast.success('Подборка опубликована');
     } catch (err: unknown) {
       toast.error(apiErrorMessage(err, 'Не удалось опубликовать подборку'));
@@ -300,7 +326,9 @@ export const CollectionForm: React.FC = () => {
     setIsPublishing(true);
     try {
       const response = await collectionsApi.unpublish(routeSlug, nickname);
-      setCollection(response.data);
+      setCollection((current) =>
+        current ? { ...current, published_at: response.data.published_at } : current,
+      );
       toast.success('Подборка снята с публикации');
     } catch (err: unknown) {
       toast.error(apiErrorMessage(err, 'Не удалось снять подборку с публикации'));
@@ -422,7 +450,7 @@ export const CollectionForm: React.FC = () => {
             <button
               type="button"
               className="cancel-button"
-              disabled={isPublishing}
+              disabled={isPublishing || isEditingProgram}
               onClick={() => void handleUnpublish()}
             >
               {isPublishing ? 'Снимаем…' : 'Снять с публикации'}
@@ -431,7 +459,7 @@ export const CollectionForm: React.FC = () => {
             <button
               type="button"
               className="submit-button"
-              disabled={isPublishing}
+              disabled={isPublishing || isEditingProgram}
               onClick={() => void handlePublish()}
             >
               {isPublishing ? 'Публикуем…' : 'Опубликовать'}
@@ -440,7 +468,28 @@ export const CollectionForm: React.FC = () => {
         </div>
       )}
 
-      {isEditMode && routeSlug && (
+      {isEditMode && collection && (
+        <div className="collection-form-card">
+          <h2>Программа встреч</h2>
+          {isEditingProgram ? (
+            <CollectionProgramForm
+              collection={collection}
+              onSave={handleSaveProgram}
+              onCancel={() => setIsEditingProgram(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void handleEditProgram()}
+            >
+              {collection.meetings?.length ? 'Изменить программу' : 'Составить программу'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {isEditMode && routeSlug && !isEditingProgram && (
         <div className="collection-form-card collection-composition">
           <h2>Состав</h2>
 
@@ -450,26 +499,28 @@ export const CollectionForm: React.FC = () => {
             <ol className="composition-list">
               {items.map((entry, index) => (
                 <li key={entry.id} className="composition-row">
-                  <div className="composition-arrows">
-                    <button
-                      type="button"
-                      className="arrow-button"
-                      aria-label={`Переместить «${entry.title}» вверх`}
-                      disabled={index === 0}
-                      onClick={() => void handleMove(entry, items[index - 1].order_number)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="arrow-button"
-                      aria-label={`Переместить «${entry.title}» вниз`}
-                      disabled={index === items.length - 1}
-                      onClick={() => void handleMove(entry, items[index + 1].order_number)}
-                    >
-                      ↓
-                    </button>
-                  </div>
+                  {!collection?.meetings?.length && (
+                    <div className="composition-arrows">
+                      <button
+                        type="button"
+                        className="arrow-button"
+                        aria-label={`Переместить «${entry.title}» вверх`}
+                        disabled={index === 0}
+                        onClick={() => void handleMove(entry, items[index - 1].order_number)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="arrow-button"
+                        aria-label={`Переместить «${entry.title}» вниз`}
+                        disabled={index === items.length - 1}
+                        onClick={() => void handleMove(entry, items[index + 1].order_number)}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  )}
 
                   <div className="composition-body">
                     <div className="composition-head">

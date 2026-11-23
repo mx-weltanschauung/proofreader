@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -242,13 +243,13 @@ func (h *CollectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := h.collectionStore.ItemRows(ctx, collection.ID)
+	composition, err := h.collectionStore.Composition(ctx, collection.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить состав подборки")
 		return
 	}
 
-	chapters, err := h.collectionStore.ChaptersForWorks(ctx, collectionWorkIDs(rows))
+	chapters, err := h.collectionStore.ChaptersForWorks(ctx, collectionWorkIDs(composition.Items))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить главы")
 		return
@@ -263,7 +264,11 @@ func (h *CollectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить состав подборки")
 		return
 	}
-	collection.Items = buildCollectionTOC(rows, chapters, closed, !isStaffRequest(r))
+	collection.Meetings = composition.Meetings
+	if mayEdit(claims, collection) {
+		collection.ProgramRevision = &composition.Revision
+	}
+	collection.Items = buildCollectionTOC(composition.Items, chapters, closed, !isStaffRequest(r))
 
 	writeJSON(w, collection)
 }
@@ -356,6 +361,61 @@ func (h *CollectionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, collection)
+}
+
+// SaveProgram replaces the meeting layout for the current composition.
+func (h *CollectionHandler) SaveProgram(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	nickname, slug := collectionKey(r)
+	collection, err := h.collectionStore.GetByAuthorSlug(ctx, nickname, slug)
+	if err != nil || collection == nil {
+		writeError(w, http.StatusNotFound, "Подборка не найдена")
+		return
+	}
+	claims, _ := middleware.GetUserFromContext(ctx)
+	if !mayEdit(claims, collection) {
+		writeError(w, http.StatusForbidden, "Правка чужой подборки недоступна")
+		return
+	}
+
+	var req struct {
+		Revision   *int64                          `json:"revision"`
+		Meetings   []models.CollectionMeetingInput `json:"meetings"`
+		Unassigned []int64                         `json:"unassigned_item_ids"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "Программа слишком велика")
+		} else {
+			writeError(w, http.StatusBadRequest, "Некорректное тело запроса")
+		}
+		return
+	}
+	if req.Revision == nil || req.Meetings == nil || req.Unassigned == nil {
+		writeError(w, http.StatusBadRequest, "Укажите версию программы, занятия и тексты вне занятий")
+		return
+	}
+	for i := range req.Meetings {
+		meeting := &req.Meetings[i]
+		meeting.Title = strings.TrimSpace(meeting.Title)
+		meeting.Question = strings.TrimSpace(meeting.Question)
+		if meeting.Title == "" {
+			writeError(w, http.StatusBadRequest, "Укажите название каждого занятия")
+			return
+		}
+	}
+
+	err = h.collectionStore.SaveProgram(ctx, collection.ID, *req.Revision, req.Meetings, req.Unassigned)
+	switch {
+	case errors.Is(err, repository.ErrCollectionCompositionChanged):
+		writeError(w, http.StatusConflict, "Программа или состав изменились. Откройте программу заново.")
+	case err != nil:
+		log.Printf("save collection program: %v", err)
+		writeError(w, http.StatusInternalServerError, "Не удалось сохранить программу")
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 // Delete deletes a collection. Администратору доступно удаление чужой

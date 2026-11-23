@@ -264,6 +264,32 @@ describe('CollectionView: Поделиться', () => {
     expect(screen.queryByRole('button', { name: 'Поделиться' })).toBeNull();
   });
 
+  it('показывает вопрос и ссылку на прежний адрес элемента в раскрытом занятии', async () => {
+    const [chapter] = COLLECTION.items!;
+    vi.mocked(collectionsApi.get).mockReturnValue(
+      ok({
+        ...COLLECTION,
+        meetings: [
+          { position: 1, title: 'Первая встреча', question: '' },
+          { position: 2, title: 'Вторая встреча', question: 'В чём отличие?' },
+        ],
+        items: [{ ...chapter, meeting_position: 2 }],
+      }),
+    );
+    renderView();
+
+    const second = await screen.findByText('Вторая встреча');
+    const meeting = second.closest('details');
+    expect(meeting).not.toHaveAttribute('open');
+    await userEvent.click(second);
+    expect(meeting).toHaveAttribute('open');
+    expect(screen.getByText('В чём отличие?')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Людвиг Фейербах' })).toHaveAttribute(
+      'href',
+      '/collections/materializm/read/1',
+    );
+  });
+
   it('недоступную строку показывает без ссылки и с примечанием', async () => {
     vi.mocked(collectionsApi.get).mockReturnValue(
       ok({

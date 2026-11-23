@@ -754,23 +754,41 @@ type Collection struct {
 	// проект избегает. Из-за него же у пустой подборки (Items == []*CollectionEntry{})
 	// ключ "items" в ответе отсутствует вовсе — это ожидаемый контракт, а не баг:
 	// потребитель обязан читать отсутствие ключа как пустой состав.
-	Items []*CollectionEntry `json:"items,omitempty" db:"-"`
+	Items           []*CollectionEntry  `json:"items,omitempty" db:"-"`
+	Meetings        []CollectionMeeting `json:"meetings,omitempty" db:"-"`
+	ProgramRevision *int64              `json:"program_revision,omitempty" db:"-"`
+}
+
+// CollectionMeeting — занятие в программе. Position задаёт место в программе
+// и связывает занятие со строками состава.
+type CollectionMeeting struct {
+	Position int    `json:"position"`
+	Title    string `json:"title"`
+	Question string `json:"question"`
+}
+
+// CollectionMeetingInput содержит тексты занятия в порядке чтения.
+type CollectionMeetingInput struct {
+	Title    string  `json:"title"`
+	Question string  `json:"question"`
+	ItemIDs  []int64 `json:"item_ids"`
 }
 
 // CollectionItem — строка состава как она лежит в базе. Для чтения наружу
 // служит CollectionEntry: там заголовок уже разрешён, а номера печатные.
 type CollectionItem struct {
-	ID             int64     `json:"id" db:"id"`
-	CollectionID   int64     `json:"collection_id" db:"collection_id"`
-	Kind           string    `json:"kind" db:"kind"`
-	ChapterID      *int64    `json:"chapter_id,omitempty" db:"chapter_id"`
-	WorkID         *int64    `json:"work_id,omitempty" db:"work_id"`
-	SnapshotTitle  string    `json:"snapshot_title" db:"snapshot_title"`
-	SnapshotAuthor string    `json:"snapshot_author" db:"snapshot_author"`
-	AuthorOverride string    `json:"author_override" db:"author_override"`
-	OrderNumber    int       `json:"order_number" db:"order_number"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	ID              int64     `json:"id" db:"id"`
+	CollectionID    int64     `json:"collection_id" db:"collection_id"`
+	Kind            string    `json:"kind" db:"kind"`
+	ChapterID       *int64    `json:"chapter_id,omitempty" db:"chapter_id"`
+	WorkID          *int64    `json:"work_id,omitempty" db:"work_id"`
+	SnapshotTitle   string    `json:"snapshot_title" db:"snapshot_title"`
+	SnapshotAuthor  string    `json:"snapshot_author" db:"snapshot_author"`
+	AuthorOverride  string    `json:"author_override" db:"author_override"`
+	OrderNumber     int       `json:"order_number" db:"order_number"`
+	MeetingPosition *int      `json:"meeting_position,omitempty" db:"meeting_position"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // CollectionSource — откуда взят элемент. Номера страниц печатные.
@@ -804,9 +822,10 @@ type CollectionTocNode struct {
 
 // CollectionEntry — строка оглавления, собранная на чтении.
 type CollectionEntry struct {
-	ID          int64  `json:"id"`
-	Kind        string `json:"kind"`
-	OrderNumber int    `json:"order_number"`
+	ID              int64  `json:"id"`
+	Kind            string `json:"kind"`
+	OrderNumber     int    `json:"order_number"`
+	MeetingPosition *int   `json:"meeting_position,omitempty"`
 	// Title живой, из chapters/works; у битого элемента — снимок.
 	Title string `json:"title"`
 	// WorkAuthor и AuthorOverride отдаются наружу обе: форме состава нужна

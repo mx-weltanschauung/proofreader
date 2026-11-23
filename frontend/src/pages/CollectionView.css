@@ -121,3 +121,30 @@ a.collection-subtree-title:hover {
 .collection-subtree-page {
   color: var(--color-text-tertiary);
 }
+
+.collection-meeting {
+  margin: 0 0 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.collection-meeting summary {
+  cursor: pointer;
+  padding: 0.8rem 1rem;
+  font-weight: 600;
+}
+
+.collection-meeting-content {
+  padding: 0 1rem 0.75rem;
+}
+
+.collection-meeting-question {
+  margin: 0 0 0.75rem;
+  white-space: pre-wrap;
+}
+
+.collection-meeting-question strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}

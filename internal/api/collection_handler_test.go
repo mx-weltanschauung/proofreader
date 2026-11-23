@@ -189,6 +189,14 @@ func (f *fakeCollectionStore) ItemRows(ctx context.Context, collectionID int64) 
 	return f.rows, nil
 }
 
+func (f *fakeCollectionStore) Composition(context.Context, int64) (repository.CollectionComposition, error) {
+	return repository.CollectionComposition{Items: f.rows}, nil
+}
+
+func (f *fakeCollectionStore) SaveProgram(context.Context, int64, int64, []models.CollectionMeetingInput, []int64) error {
+	return nil
+}
+
 func (f *fakeCollectionStore) ChaptersForWorks(ctx context.Context, ids []int64) ([]*models.Chapter, error) {
 	return f.chapters, nil
 }
@@ -1184,5 +1192,34 @@ func TestUpdateCollectionDuplicateSlugConflicts(t *testing.T) {
 	}
 	if got["message"] == "" {
 		t.Errorf("тело ответа не несёт понятного сообщения: %v", got)
+	}
+}
+
+func TestCollectionProgramRequiresOwnerAndTitle(t *testing.T) {
+	store := collectionFixture()
+	owner := testCollectionOwnerClaims.UserID
+	store.collections[0].AuthorNickname = testCollectionOwnerClaims.Nickname
+	store.collections[0].OwnerID = &owner
+	h := NewCollectionHandler(store, nil, nil, nil, "", false)
+	for _, tc := range []struct {
+		name   string
+		claims *auth.Claims
+		body   string
+		status int
+	}{
+		{"посторонний", testCollectionStrangerClaims, `{"revision":4,"meetings":[],"unassigned_item_ids":[1]}`, http.StatusForbidden},
+		{"пустое название", testCollectionOwnerClaims, `{"revision":4,"meetings":[{"title":"  ","item_ids":[1]}],"unassigned_item_ids":[]}`, http.StatusBadRequest},
+		{"слишком большой запрос", testCollectionOwnerClaims, `{"revision":4,"meetings":[{"title":"` + strings.Repeat("x", 1<<20) + `"}],"unassigned_item_ids":[1]}`, http.StatusRequestEntityTooLarge},
+		{"владелец", testCollectionOwnerClaims, `{"revision":4,"meetings":[{"title":"Первая встреча","item_ids":[1]}],"unassigned_item_ids":[]}`, http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPatch, "/api/collections/author/materializm/program", strings.NewReader(tc.body))
+			req = mux.SetURLVars(req, map[string]string{"nickname": testCollectionOwnerClaims.Nickname, "slug": "materializm"})
+			rec := httptest.NewRecorder()
+			withClaims(tc.claims, h.SaveProgram)(rec, req)
+			if rec.Code != tc.status {
+				t.Fatalf("статус %d, нужен %d: %s", rec.Code, tc.status, rec.Body.String())
+			}
+		})
 	}
 }

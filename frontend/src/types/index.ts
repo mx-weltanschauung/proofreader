@@ -280,6 +280,7 @@ export interface CollectionEntry {
   id: number;
   kind: 'chapter' | 'work';
   order_number: number;
+  meeting_position?: number;
   title: string;
   /** Автор работы — подсказка рядом с полем переопределения в форме состава. */
   work_author: string;
@@ -291,6 +292,18 @@ export interface CollectionEntry {
   unavailable?: boolean;
   source?: CollectionSource;
   children?: CollectionTocNode[];
+}
+
+export interface CollectionMeeting {
+  position: number;
+  title: string;
+  question: string;
+}
+
+export interface CollectionProgramInput {
+  revision: number;
+  meetings: { title: string; question: string; item_ids: number[] }[];
+  unassigned_item_ids: number[];
 }
 
 export interface Collection {
@@ -309,6 +322,8 @@ export interface Collection {
   updated_at: string;
   /** Заполнено только при чтении одной подборки. */
   items?: CollectionEntry[];
+  meetings?: CollectionMeeting[];
+  program_revision?: number;
 }
 
 /** Строка состава как её возвращает добавление элемента. */

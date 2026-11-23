@@ -62,6 +62,7 @@ import type {
   ConceptExpandedPage,
   WorkUpdatePayload,
   Collection,
+  CollectionProgramInput,
   CollectionItem,
   ReadingWindow,
   SuggestionRow,
@@ -694,6 +695,9 @@ export const collectionsApi = {
 
   unpublish: (slug: string, nickname?: string) =>
     api.post<Collection>(collectionUrl(nickname, slug, '/unpublish')),
+
+  saveProgram: (slug: string, data: CollectionProgramInput, nickname?: string) =>
+    api.patch<void>(collectionUrl(nickname, slug, '/program'), data),
 
   addItem: (
     slug: string,

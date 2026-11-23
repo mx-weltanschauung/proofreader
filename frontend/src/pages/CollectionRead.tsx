@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { collectionsApi } from '../services/api';
-import type { ChapterPage, Collection } from '../types';
+import type { ChapterPage, Collection, CollectionEntry } from '../types';
 import { ReadingSurface } from '../components/ReadingSurface';
 import { ReadingProgressBar } from '../components/ProgressTicks';
 import './CollectionRead.css';
@@ -12,6 +12,15 @@ import { sourceLabel } from '../utils/sourceLabel';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { pageAnchorId } from '../utils/pageAnchor';
 import { collectionPath, collectionReadPath } from '../utils/paths';
+
+function adjacentIndex(items: readonly CollectionEntry[], index: number, step: -1 | 1) {
+  if (index < 0) return -1;
+  for (let i = index + step; i >= 0 && i < items.length; i += step) {
+    const entry = items[i];
+    if (!entry.unavailable && !entry.broken) return i;
+  }
+  return -1;
+}
 
 export const CollectionRead: React.FC = () => {
   // nickname есть только у длинного (читательского) адреса — см. paths.ts.
@@ -80,8 +89,8 @@ export const CollectionRead: React.FC = () => {
   // Соседи — по позиции в составе подборки, а не по главам тома-источника:
   // «дальше» может увести в другую книгу другого автора, в этом и смысл
   // подборки.
-  const prevEntry = index > 0 ? items[index - 1] : null;
-  const nextEntry = index >= 0 && index < items.length - 1 ? items[index + 1] : null;
+  const prevEntry = items[adjacentIndex(items, index, -1)];
+  const nextEntry = items[adjacentIndex(items, index, 1)];
 
   // Работа-источник и адрес маркера страницы держатся стабильными: по ним
   // мемоизирована склейка полос в ReadingSurface, а она разбирает html всей
