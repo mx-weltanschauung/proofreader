@@ -44,6 +44,7 @@ describe('Страницы комментариев', () => {
     vi.spyOn(readerCommentsApi, 'mine').mockResolvedValue({
       data: [{ ...comment, status: 'отклонено', reject_reason: 'Не по теме', can_edit: true }],
     } as never);
+    vi.spyOn(readerCommentsApi, 'incomingReplies').mockResolvedValue({ data: [] } as never);
     render(
       <MemoryRouter>
         <MyComments />
@@ -51,5 +52,38 @@ describe('Страницы комментариев', () => {
     );
     expect(await screen.findByText('Отклонён: Не по теме')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Книга' })).toHaveAttribute('href', '/works/7');
+  });
+  it('ссылка входящего ответа содержит номер ветки без текста цитаты и не гасит его в списке', async () => {
+    useAuth.setState({ user: { id: 3, role: 'reader' } as never });
+    vi.spyOn(readerCommentsApi, 'mine').mockResolvedValue({ data: [] } as never);
+    vi.spyOn(readerCommentsApi, 'incomingReplies').mockResolvedValue({
+      data: [
+        {
+          ...comment,
+          id: 20,
+          thread_id: 12,
+          target: 'quote',
+          quote_key: 'отрывок',
+          quote_tail: 'книги',
+          quote_text: 'отрывок книги',
+          body: 'Входящий ответ',
+          start_page: 5,
+          unread: true,
+        },
+      ],
+    } as never);
+    const markRead = vi.spyOn(readerCommentsApi, 'markThreadRead');
+    render(
+      <MemoryRouter>
+        <MyComments />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText('Входящий ответ')).toBeInTheDocument();
+    expect(screen.getByText('Новый ответ')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Открыть обсуждение' })).toHaveAttribute(
+      'href',
+      '/works/7/pages/5?thread=12',
+    );
+    expect(markRead).not.toHaveBeenCalled();
   });
 });

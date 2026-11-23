@@ -20,7 +20,20 @@ type ReaderComment struct {
 	CanEdit           bool       `json:"can_edit"`
 	CanManage         bool       `json:"can_manage"`
 	Rejections        int        `json:"rejections,omitempty"`
+	Published         bool       `json:"published"`
+	ThreadID          int64      `json:"thread_id,omitempty"`
+	ReplyToNickname   *string    `json:"reply_to_nickname,omitempty"`
+	ReplyCount        int        `json:"reply_count,omitempty"`
+	Removed           string     `json:"removed,omitempty"`
+	Unread            bool       `json:"unread,omitempty"`
+	RecipientID       *int64     `json:"-"`
+	ReplyReadAt       *time.Time `json:"-"`
 	AuthorID          *int64     `json:"author_id,omitempty"` // только в очереди сотрудников
+}
+
+type CommentThread struct {
+	Root    *ReaderComment   `json:"root"`
+	Replies []*ReaderComment `json:"replies"`
 }
 
 type CommentRevision struct {

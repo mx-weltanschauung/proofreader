@@ -58,6 +58,7 @@ import { ChapterEvents } from '../components/ChapterEvents';
 import { TargetNotes } from '../components/TargetNotes';
 import { useMarginNotes } from '../hooks/useMarginNotes';
 import { useReaderComments } from '../hooks/useReaderComments';
+import { commentThreadId } from '../utils/marginNoteHref';
 import { useVisiblePageHit } from '../hooks/useVisiblePageHit';
 
 export const ChapterView: React.FC = () => {
@@ -97,7 +98,8 @@ export const ChapterView: React.FC = () => {
   // Заметки читателя тома грузятся здесь одним запросом: ими пользуются и
   // блок «к главе», и слой полей ReadingSurface (пропом marginNotes).
   const marginNotes = useMarginNotes(workId);
-  const readerComments = useReaderComments(workId);
+  const threadId = commentThreadId(searchParams);
+  const readerComments = useReaderComments(workId, threadId);
   const { audio, failed: audioFailed, reload: reloadAudio } = useWorkAudio(workId);
   // Звук тома неизвестен вовсе (первое чтение упало) — в отличие от упавшего
   // перечитывания, при котором прежний звук остаётся на экране.
@@ -690,6 +692,7 @@ export const ChapterView: React.FC = () => {
             {workId != null && chapterId != null && (
               <TargetNotes
                 readerComments={readerComments}
+                threadId={threadId}
                 workId={workId}
                 chapterId={chapterId}
                 notes={marginNotes.notes}

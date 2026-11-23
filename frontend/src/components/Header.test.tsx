@@ -18,7 +18,10 @@ vi.mock('../services/api', () => ({
   feedbackApi: {
     unreadCount: vi.fn(),
   },
-  readerCommentsApi: { pendingCount: vi.fn().mockResolvedValue({ data: { count: 0 } }) },
+  readerCommentsApi: {
+    pendingCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+    unreadReplyCount: vi.fn().mockResolvedValue({ data: { count: 0 } }),
+  },
   suggestionsApi: {
     queue: vi.fn(),
   },
@@ -64,6 +67,50 @@ function renderHeaderWithNav(initialEntry: string, to: string) {
   );
 }
 
+describe('счётчик входящих ответов', () => {
+  afterEach(() => {
+    useAuth.setState({ user: null, isAuthenticated: false });
+    vi.mocked(readerCommentsApi.unreadReplyCount).mockReset();
+    vi.mocked(readerCommentsApi.unreadReplyCount).mockResolvedValue({
+      data: { count: 0 },
+    } as never);
+  });
+
+  it('сверяется с сервером при переходе, возвращении во вкладку и прочтении', async () => {
+    useAuth.setState({
+      isAuthenticated: true,
+      user: { id: 4, nickname: 'Вася', role: 'reader' } as never,
+    });
+    const count = vi
+      .mocked(readerCommentsApi.unreadReplyCount)
+      .mockResolvedValueOnce({ data: { count: 3 } } as never)
+      .mockResolvedValueOnce({ data: { count: 2 } } as never)
+      .mockResolvedValueOnce({ data: { count: 1 } } as never)
+      .mockResolvedValueOnce({ data: { count: 0 } } as never);
+    renderHeaderWithNav('/', '/mine/comments');
+    expect(await screen.findByRole('link', { name: 'Непрочитанные ответы: 3' })).toHaveAttribute(
+      'href',
+      '/mine/comments#replies',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'перейти' }));
+    expect(
+      await screen.findByRole('link', { name: 'Непрочитанные ответы: 2' }),
+    ).toBeInTheDocument();
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    try {
+      await act(async () => document.dispatchEvent(new Event('visibilitychange')));
+      expect(
+        await screen.findByRole('link', { name: 'Непрочитанные ответы: 1' }),
+      ).toBeInTheDocument();
+      await act(async () => window.dispatchEvent(new Event('reader-comment-replies-read')));
+      expect(screen.queryByRole('link', { name: /Непрочитанные ответы/ })).toBeNull();
+      expect(count).toHaveBeenCalledTimes(4);
+    } finally {
+      visibility.mockRestore();
+    }
+  });
+});
+
 // Подпись под именем — свойство экземпляра: у чужого корпуса «собрания
 // сочинений» врали бы, поэтому без SITE_TAGLINE подписи нет вовсе.
 describe('подпись под именем', () => {
@@ -98,6 +145,10 @@ describe('Header', () => {
   beforeEach(() => {
     vi.mocked(readerCommentsApi.pendingCount).mockReset();
     vi.mocked(readerCommentsApi.pendingCount).mockResolvedValue({ data: { count: 0 } } as never);
+    vi.mocked(readerCommentsApi.unreadReplyCount).mockReset();
+    vi.mocked(readerCommentsApi.unreadReplyCount).mockResolvedValue({
+      data: { count: 0 },
+    } as never);
     useAuth.setState({ user: null, token: null, isAuthenticated: false, isLoading: false });
     // Значок очереди спрашивает suggestionsApi.queue у любого редактора или
     // администратора — без заглушки тесты били бы реальным axios-запросом.

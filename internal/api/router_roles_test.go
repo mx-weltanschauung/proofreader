@@ -60,6 +60,11 @@ var routeAccess = map[string]access{
 
 	"GET /api/works/{workId}/reader-comments":    accessPublic,
 	"POST /api/works/{workId}/reader-comments":   accessReader,
+	"GET /api/reader-comments/{id}/thread":       accessPublic,
+	"POST /api/reader-comments/{id}/replies":     accessReader,
+	"GET /api/reader-comments/replies":           accessReader,
+	"GET /api/reader-comments/replies/count":     accessReader,
+	"PUT /api/reader-comments/{id}/thread/read":  accessReader,
 	"GET /api/reader-comments/mine":              accessReader,
 	"POST /api/reader-comments/from-note":        accessReader,
 	"PUT /api/reader-comments/{id}":              accessReader,

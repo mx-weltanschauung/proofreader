@@ -21,6 +21,7 @@ export interface MarginNotesProps {
   onChange(n: MarginNote): void;
   onDelete(id: number): void;
   renderCard?(note: MarginNote): React.ReactNode;
+  scrollToId?: number;
 }
 
 /** Класс подсветки цитат заметок; его же снимает слой перед новым проходом. */
@@ -168,6 +169,7 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
   onChange,
   onDelete,
   renderCard,
+  scrollToId,
 }) => {
   const layerRef = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<Mode>('narrow');
@@ -178,6 +180,7 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
   // абзацами надо поставить или снять.
   const [rerun, setRerun] = useState(0);
   const cards = useRef(new Map<number, HTMLElement>());
+  const scrolledTo = useRef<number>();
   // Хосты прежнего прохода — по месту: тот же абзац получает тот же хост, и
   // открытое поле правки не пересоздаётся на догрузке соседних полос.
   const hostPool = useRef(new Map<Element, HostSet>());
@@ -214,25 +217,17 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
       // Подсветка — украшение чтения, а не его условие: если вёрстка полосы
       // окажется такой, что обернуть кусок нельзя, заметки встают в начало
       // своих полос, а текст главы остаётся читаемым.
-      let found = new Set<number>();
+      let anchors = new Map<number, HTMLElement>();
       try {
-        found = markQuotes(root, reqs, HIT);
+        anchors = markQuotes(root, reqs, HIT);
       } catch (err) {
         console.error('margin notes: подсветка не удалась', err);
         unwrapHits(root);
       }
 
-      const firstMark = new Map<number, HTMLElement>();
-      for (const m of Array.from(root.querySelectorAll<HTMLElement>(`mark.${HIT}`))) {
-        for (const id of (m.dataset.noteIds ?? '').split(' ')) {
-          const n = Number(id);
-          if (!firstMark.has(n)) firstMark.set(n, m);
-        }
-      }
-
       const next: Placed[] = [];
       for (const n of own) {
-        const mark = found.has(n.id) ? firstMark.get(n.id) : undefined;
+        const mark = anchors.get(n.id);
         const start = pageStart(root, pageOfNote(n)!);
         const startSlot = start ? slotAtStart(start) : null;
         if (mark) {
@@ -327,6 +322,22 @@ export const MarginNotes: React.FC<MarginNotesProps> = ({
   useLayoutEffect(() => {
     layout();
   }, [layout, editing]);
+
+  useEffect(() => {
+    if (scrollToId === undefined) {
+      scrolledTo.current = undefined;
+      return;
+    }
+    if (scrolledTo.current === scrollToId) return;
+    const destination = placed.find((p) => p.note.id === scrollToId);
+    if (!destination || !cards.current.has(scrollToId)) return;
+    const frame = requestAnimationFrame(() => {
+      if (!destination.anchor.isConnected) return;
+      destination.anchor.scrollIntoView({ block: 'start' });
+      scrolledTo.current = scrollToId;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [placed, scrollToId]);
 
   // Пересчёт на смену окна: перешли порог полей — проход заново (хосты
   // ставятся или снимаются), остались по ту же сторону — только раскладка.

@@ -572,6 +572,9 @@ func seedClosedSweep(t *testing.T, pool *pgxpool.Pool, authService *auth.Service
 		id := one(`INSERT INTO reader_comments(owner_id,author_nickname,work_id,target,chapter_id,chapter_title,start_page_id,end_page_id,start_page_number,end_page_number,quote_key,quote_text,body,status,published_body,published_revision)
 	 SELECT owner_id,$2,work_id,target,chapter_id,chapter_title,start_page_id,end_page_id,start_page_number,end_page_number,quote_key,quote_text,body,'одобрено',body,1 FROM margin_notes WHERE id=$1 RETURNING id`, noteID, f.readerNick)
 		one(`INSERT INTO reader_comment_revisions(comment_id,revision,body,status) SELECT id,1,body,status FROM reader_comments WHERE id=$1 RETURNING comment_id`, id)
+		one(`INSERT INTO reader_comments(owner_id,author_nickname,work_id,target,chapter_id,chapter_title,start_page_id,end_page_id,start_page_number,end_page_number,quote_key,quote_tail,quote_text,body,status,published_body,published_revision,thread_id,recipient_id)
+		SELECT 1,'',work_id,target,chapter_id,chapter_title,start_page_id,end_page_id,start_page_number,end_page_number,quote_key,quote_tail,quote_text,
+			'Ответ: ' || body,'одобрено','Ответ: ' || body,1,id,owner_id FROM reader_comments WHERE id=$1 RETURNING id`, id)
 		if noteID == f.ch.openNote {
 			f.openComment = id
 		} else {
@@ -1429,7 +1432,25 @@ func checkClosedChapter(t *testing.T, router http.Handler, f *closedSweep, cache
 			}
 		}
 	}
+	incoming := sweepDo(t, router, "/api/reader-comments/replies", f.readerTok)
+	if incoming.code != 200 || !strings.Contains(incoming.text, "Ответ: Открытая заметка") ||
+		leakIn(f, incoming.text) != "" || chapterLeak.FindString(incoming.text) != "" {
+		t.Errorf("входящие ответы: %d %s", incoming.code, incoming.text)
+	}
+	if res := sweepDo(t, router, "/api/reader-comments/replies/count", f.readerTok); res.code != 200 || strings.TrimSpace(res.text) != `{"count":1}` {
+		t.Errorf("счётчик ответов учитывает закрытое: %d %s", res.code, res.text)
+	}
+	openThread := sweepDo(t, router, "/api/reader-comments/"+itoa(f.openComment)+"/thread", "")
+	if openThread.code != 200 || !strings.Contains(openThread.text, "Ответ: Открытая заметка") {
+		t.Errorf("публичная открытая ветка: %d %s", openThread.code, openThread.text)
+	}
 	for _, id := range f.commentClosed {
+		thread := "/api/reader-comments/" + itoa(id) + "/thread"
+		for _, token := range []string{"", f.readerTok} {
+			if res := sweepDo(t, router, thread, token); res.code != 404 {
+				t.Errorf("закрытая ветка: %s код %d", thread, res.code)
+			}
+		}
 		path := "/api/reader-comments/" + itoa(id) + "/history"
 		if res := sweepDo(t, router, path, f.readerTok); res.code != 404 {
 			t.Errorf("закрытая история: %s код %d", path, res.code)

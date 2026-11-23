@@ -543,6 +543,11 @@ func (rt *Router) Setup() *mux.Router {
 
 	public.HandleFunc("/works/{workId}/reader-comments", rt.readerCommentHandler.ListByWork).Methods("GET")
 	reader.HandleFunc("/works/{workId}/reader-comments", rt.readerCommentHandler.Create).Methods("POST")
+	public.HandleFunc("/reader-comments/{id}/thread", rt.readerCommentHandler.Thread).Methods("GET")
+	reader.HandleFunc("/reader-comments/{id}/replies", rt.readerCommentHandler.Reply).Methods("POST")
+	reader.HandleFunc("/reader-comments/replies", rt.readerCommentHandler.IncomingReplies).Methods("GET")
+	reader.HandleFunc("/reader-comments/replies/count", rt.readerCommentHandler.UnreadReplies).Methods("GET")
+	reader.HandleFunc("/reader-comments/{id}/thread/read", rt.readerCommentHandler.MarkRepliesRead).Methods("PUT")
 	reader.HandleFunc("/reader-comments/mine", rt.readerCommentHandler.Mine).Methods("GET")
 	reader.HandleFunc("/reader-comments/{id}", rt.readerCommentHandler.Update).Methods("PUT")
 	reader.HandleFunc("/reader-comments/{id}", rt.readerCommentHandler.Delete).Methods("DELETE")

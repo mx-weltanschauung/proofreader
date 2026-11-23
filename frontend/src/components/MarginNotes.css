@@ -20,6 +20,7 @@ mark.margin-hit {
   text-underline-offset: 0.2em;
   text-decoration-skip-ink: none;
   cursor: pointer;
+  scroll-margin-top: calc(var(--site-header-height) + 3.5rem);
 }
 
 /* Наведение — заливка той же парой, что вычитана contrast.test.ts. */

@@ -253,9 +253,7 @@
   vertical-align: middle;
 }
 
-/* --color-accent + --color-accent-on: вычитанная пара (contrast.test.ts).
-   Число в шапке осталось только у предложений; точные числа обращений и
-   комментариев находятся на странице «Все разделы». */
+/* --color-accent + --color-accent-on: вычитанная пара (contrast.test.ts). */
 .header-badge {
   display: inline-block;
   margin-left: 5px;
@@ -317,6 +315,10 @@
 .login-link:hover {
   color: var(--color-link-hover);
   text-decoration: underline;
+}
+
+.header-replies {
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {

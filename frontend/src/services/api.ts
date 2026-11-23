@@ -4,6 +4,7 @@ import { EMPTY_SCOPE, type SearchScope } from '../utils/searchScope';
 import type {
   MarginNote,
   ReaderComment,
+  ReaderCommentThread,
   CommentRevision,
   CreateMarginNote,
   ArticleCredit,
@@ -893,6 +894,17 @@ export const marginNotesApi = {
 
 export const readerCommentsApi = {
   pendingCount: () => api.get<{ count: number }>('/reader-comments/review/count', KEEP_PAGE),
+  unreadReplyCount: () => api.get<{ count: number }>('/reader-comments/replies/count', KEEP_PAGE),
+  incomingReplies: (offset = 0) =>
+    api.get<ReaderComment[]>('/reader-comments/replies', {
+      ...KEEP_PAGE,
+      params: { limit: 50, offset },
+    }),
+  thread: (id: number) => api.get<ReaderCommentThread>(`/reader-comments/${id}/thread`, KEEP_PAGE),
+  reply: (id: number, body: string) =>
+    api.post<ReaderComment>(`/reader-comments/${id}/replies`, { body }, KEEP_PAGE),
+  markThreadRead: (id: number, ids: number[]) =>
+    api.put<void>(`/reader-comments/${id}/thread/read`, { ids }, KEEP_PAGE),
   banned: () => api.get<{ id: number; nickname: string }[]>('/reader-comments/banned', KEEP_PAGE),
   ofWork: (workId: number, showPublic: boolean, offset = 0) =>
     api.get<ReaderComment[]>(`/works/${workId}/reader-comments`, {

@@ -5,7 +5,7 @@ import { useAuth, canEdit, isAdmin } from '../hooks/useAuth';
 import { readerCommentsApi } from '../services/api';
 import type { ReaderComment } from '../types';
 import { ReaderCommentCard } from '../components/ReaderComments';
-import { noteHref } from '../utils/marginNoteHref';
+import { commentThreadHref, noteHref } from '../utils/marginNoteHref';
 import { apiErrorMessage } from '../utils/apiError';
 
 function ReviewActions({ comment: c, onDone }: { comment: ReaderComment; onDone(): void }) {
@@ -127,6 +127,83 @@ function BannedCommenters() {
   );
 }
 
+function IncomingReplies() {
+  const [items, setItems] = useState<ReaderComment[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [refresh, setRefresh] = useState(0);
+  const more = items.length === offset + 50;
+
+  useEffect(() => {
+    let alive = true;
+    void readerCommentsApi
+      .incomingReplies(offset)
+      .then(({ data }) => {
+        if (!alive) return;
+        const page = data ?? [];
+        setItems((previous) => (offset === 0 ? page : [...previous, ...page]));
+        setStatus('ready');
+      })
+      .catch(() => {
+        if (alive) setStatus('error');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [offset, refresh]);
+
+  useEffect(() => {
+    const refreshVisible = () => {
+      if (document.visibilityState === 'hidden') return;
+      setItems([]);
+      setOffset(0);
+      setStatus('loading');
+      setRefresh((value) => value + 1);
+    };
+    document.addEventListener('visibilitychange', refreshVisible);
+    window.addEventListener('reader-comment-replies-read', refreshVisible);
+    return () => {
+      document.removeEventListener('visibilitychange', refreshVisible);
+      window.removeEventListener('reader-comment-replies-read', refreshVisible);
+    };
+  }, []);
+
+  return (
+    <section className="comment-inbox" id="replies">
+      <h2>Ответы на ваши комментарии</h2>
+      {status === 'loading' && <p role="status">Загрузка ответов…</p>}
+      {status === 'error' && <p role="alert">Не удалось загрузить ответы</p>}
+      {status === 'ready' && items.length === 0 && <p>Ответов пока нет</p>}
+      {items.map((reply) => (
+        <article key={reply.id} className="comment-review">
+          <div className="reader-comment-author">{reply.author_nickname || 'Редакция'}</div>
+          {reply.unread && <div className="reader-comment-status">Новый ответ</div>}
+          <p className="reader-comment-body">{reply.body}</p>
+          {reply.quote_text && <blockquote>{reply.quote_text}</blockquote>}
+          <div>
+            {reply.work_title}
+            {reply.chapter_title && ` — ${reply.chapter_title}`}
+          </div>
+          <Link to={commentThreadHref(reply)}>Открыть обсуждение</Link>
+        </article>
+      ))}
+      {more && (
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={status === 'loading'}
+          onClick={() => {
+            setStatus('loading');
+            setOffset((value) => value + 50);
+          }}
+        >
+          Ещё ответы
+        </button>
+      )}
+    </section>
+  );
+}
+
 function CommentListInner({ queue }: { queue: boolean }) {
   const user = useAuth((s) => s.user);
   const [items, setItems] = useState<ReaderComment[]>([]);
@@ -175,9 +252,13 @@ function CommentListInner({ queue }: { queue: boolean }) {
     <main className="comment-list">
       <h1>{queue ? 'Комментарии на проверку' : 'Мои комментарии'}</h1>
       {!queue && (
-        <p>
-          <Link to="/mine/notes">Мои заметки</Link>
-        </p>
+        <>
+          <p>
+            <Link to="/mine/notes">Мои заметки</Link>
+          </p>
+          <IncomingReplies />
+          <h2>Отправленные комментарии</h2>
+        </>
       )}
       {queue && isAdmin(user) && <BannedCommenters key={refresh} />}
       {failure && <p role="alert">{failure}</p>}
@@ -187,11 +268,12 @@ function CommentListInner({ queue }: { queue: boolean }) {
       )}
       {items.map((c) => (
         <section key={`${c.id}:${c.revision}`} className="comment-review">
-          <Link to={noteHref(c).to}>
+          <Link to={c.thread_id ? commentThreadHref(c) : noteHref(c).to}>
             {c.work_title || 'К тексту'}
             {c.chapter_title && ` — ${c.chapter_title}`}
           </Link>
           {c.quote_text && <blockquote>{c.quote_text}</blockquote>}
+          {c.thread_id && <small>Ответ</small>}
           <ReaderCommentCard
             comment={c}
             onChange={(saved) => {
