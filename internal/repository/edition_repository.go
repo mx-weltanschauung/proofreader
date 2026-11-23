@@ -211,7 +211,21 @@ func (r *EditionRepository) ListWorks(ctx context.Context, editionID int64) ([]*
 // не двумя копиями, обязательно: шестьдесят строк CTE, разъехавшиеся между
 // главной и страницей собрания, дали бы разные цифры в двух местах читальни.
 const workSummariesQueryTemplate = `
-	WITH page_stats AS (
+	WITH RECURSIVE scan_restriction_sources (work_id, source_id) AS (
+	    -- Как в scans_hidden_works, идём от скрытых сканов к потомкам.
+	    -- Источник нужен, чтобы собственное ограничение, пришедшее через
+	    -- цикл родителей, не считалось унаследованным. UNION гасит циклы.
+	    SELECT w.id, w.id
+	    FROM works w
+	    LEFT JOIN editions e ON e.id = w.edition_id
+	    LEFT JOIN journal_issues ji ON ji.work_id = w.id
+	    LEFT JOIN journals j ON j.id = ji.journal_id
+	    WHERE w.scans_hidden OR e.scans_hidden OR j.scans_hidden
+	    UNION
+	    SELECT w.id, s.source_id
+	    FROM works w JOIN scan_restriction_sources s ON w.parent_work_id = s.work_id
+	),
+	page_stats AS (
 	    SELECT work_id,
 	           SUM(cnt)::int AS pages_total,
 	           jsonb_object_agg(status, cnt) AS by_status
@@ -269,7 +283,14 @@ const workSummariesQueryTemplate = `
 	       w.page_offset, w.role, w.precedes_volume, w.shelf_label,
 	       w.owner_id, w.created_at, w.updated_at,
 	       %[3]s,
-	       w.closed, %[4]s, w.scans_hidden, work_scans_hidden_by(w.id),
+	       w.closed, %[4]s, w.scans_hidden,
+	       CASE
+	           WHEN w.scans_hidden THEN 'work'
+	           WHEN w.id IN (SELECT work_id FROM scan_restriction_sources WHERE work_id <> source_id) THEN 'parent'
+	           WHEN cb_e.scans_hidden THEN 'edition'
+	           WHEN cb_j.scans_hidden THEN 'journal'
+	           ELSE ''
+	       END,
 	       COALESCE(ps.pages_total, 0),
 	       COALESCE(ps.by_status, '{}'::jsonb),
 	       COALESCE(cs.chapters_total, 0),
