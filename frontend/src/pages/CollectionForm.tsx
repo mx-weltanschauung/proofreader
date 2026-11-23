@@ -379,14 +379,15 @@ export const CollectionForm: React.FC = () => {
   const readerProgram = Boolean(collection?.author_nickname && collection.meetings?.length);
   const pending = collection?.program_review_status === 'pending';
   const rejected = readerProgram && collection?.program_review_status === 'rejected';
-  const locked = pending || (readerProgram && Boolean(collection?.published_at));
+  const publishedReaderProgram = readerProgram && Boolean(collection?.published_at);
+  const locked = pending || publishedReaderProgram;
   const publishedReaderCollection = Boolean(collection?.author_nickname && collection.published_at);
   let publicationStatus = 'Подборка сейчас черновик — её видите только вы.';
   if (pending) publicationStatus = 'Программа на проверке. Для правки отзовите её.';
   if (rejected) publicationStatus = 'Редактор вернул программу на доработку.';
   if (collection?.published_at) {
-    publicationStatus = readerProgram
-      ? 'Программа опубликована. Для правки снимите её с публикации.'
+    publicationStatus = publishedReaderProgram
+      ? 'При начале правки программа будет снята с публикации. После изменений её нужно снова отправить на проверку.'
       : 'Подборка опубликована.';
   }
 
@@ -464,23 +465,29 @@ export const CollectionForm: React.FC = () => {
 
       {isEditMode && collection && (
         <div className="collection-form-card collection-publish-card">
-          <h2>Публикация</h2>
+          <h2>{publishedReaderProgram ? 'Начало правки' : 'Публикация'}</h2>
           <p className="collection-publish-status">{publicationStatus}</p>
           {rejected && (
             <p className="collection-publish-status">{collection.program_reject_reason}</p>
           )}
-          <p className="collection-publish-note">
-            Опубликованная подборка живёт по своей ссылке — её можно переслать. В общий список
-            подборок читальни она не попадает.
-          </p>
+          {!publishedReaderProgram && (
+            <p className="collection-publish-note">
+              Опубликованная подборка живёт по своей ссылке — её можно переслать. В общий список
+              подборок читальни она не попадает.
+            </p>
+          )}
           {collection.published_at || pending ? (
             <button
               type="button"
-              className="cancel-button"
+              className={publishedReaderProgram ? 'submit-button' : 'cancel-button'}
               disabled={isPublishing || isEditingProgram}
               onClick={() => void handleUnpublish()}
             >
-              {pending ? 'Отозвать с проверки' : 'Снять с публикации'}
+              {pending
+                ? 'Отозвать с проверки'
+                : publishedReaderProgram
+                  ? 'Начать правку'
+                  : 'Снять с публикации'}
             </button>
           ) : (
             <button

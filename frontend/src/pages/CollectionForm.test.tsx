@@ -196,6 +196,42 @@ describe('CollectionForm', () => {
     expect(screen.queryByRole('button', { name: 'Изменить программу' })).toBeNull();
   });
 
+  it('снимает опубликованную программу только после подтверждения начала правки', async () => {
+    const program: Collection = {
+      ...COLLECTION,
+      author_nickname: 'читатель',
+      published_at: '2026-09-18T00:00:00Z',
+      meetings: [{ position: 1, title: 'Занятие', question: '' }],
+      program_revision: 4,
+    };
+    useAuth.setState({
+      user: { id: 1, email: '', role: 'reader', nickname: 'читатель' },
+      isAuthenticated: true,
+    });
+    vi.mocked(collectionsApi.get)
+      .mockReturnValueOnce(ok(program))
+      .mockReturnValue(ok({ ...program, published_at: undefined, program_revision: 5 }));
+
+    renderForm();
+    const start = await screen.findByRole('button', { name: 'Начать правку' });
+    expect(screen.getByText(/программа будет снята с публикации/i)).toBeVisible();
+    expect(screen.getByText(/снова отправить.*на проверку/i)).toBeVisible();
+    expect(screen.getByRole('link', { name: '← К подборке' })).toHaveAttribute(
+      'href',
+      '/collections/читатель/materializm',
+    );
+    expect(collectionsApi.unpublish).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText(/^Название/)).toBeNull();
+
+    await userEvent.click(start);
+
+    expect(collectionsApi.unpublish).toHaveBeenCalledTimes(1);
+    expect(collectionsApi.unpublish).toHaveBeenCalledWith('materializm', 'читатель');
+    expect(await screen.findByLabelText(/^Название/)).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Изменить программу' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Отправить на проверку' })).toBeVisible();
+  });
+
   it('показывает кнопку «Опубликовать» у черновика владельца', async () => {
     renderForm();
 
