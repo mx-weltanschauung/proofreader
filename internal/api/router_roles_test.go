@@ -205,6 +205,11 @@ var routeAccess = map[string]access{
 	"GET /api/works/{workId}/chapters/{id}/download":             accessPublic,
 	"GET /api/works/{workId}/reading":                            accessPublic,
 
+	"GET /api/cross-references/{referenceId}/open":                           accessPublic,
+	"GET /api/editions/{id}/works/{workId}/cross-references":                 accessStaff,
+	"POST /api/editions/{id}/works/{workId}/cross-references/scan":           accessStaff,
+	"PATCH /api/editions/{id}/works/{workId}/cross-references/{referenceId}": accessStaff,
+
 	// Озвучка: чтение и редиректы публичны, очередь — сотруднику (worker
 	// входит учёткой редактора/администратора боевого).
 	"GET /api/works/{id}/audio":                                 accessPublic,

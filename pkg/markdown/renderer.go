@@ -5,10 +5,8 @@
 // XHTML-фрагменты. Обёртка html.CompletePage, которую ставят конструкторы
 // рендерера, — внутреннее устройство: на неё опирается извлечение сносок
 // (footnotesBlockRe), и снимается она на каждом публичном выходе помощником
-// fragment. Публичных выходов пять — Render, CollectPages,
-// CollectPagesScoped, RenderNotes, RenderNotesWith, — и все они перечислены
-// поимённо в сторожевом тесте TestPublicOutputsCarryNoDocumentWrapper.
-// Появился шестой — его место там же.
+// fragment. Публичные выходы проверяет
+// TestPublicOutputsCarryNoDocumentWrapper.
 package markdown
 
 import (
@@ -40,7 +38,8 @@ func linkNoteCrossRefs(htmlStr string) string {
 
 // footnoteRefRe matches gomarkdown's in-text footnote reference so the ordinal
 // can be replaced by the real marker. gomarkdown emits, e.g.:
-//   <sup class="footnote-ref" id="fnref:r2"><a href="#fn:r2">2</a></sup>
+//
+//	<sup class="footnote-ref" id="fnref:r2"><a href="#fn:r2">2</a></sup>
 var footnoteRefRe = regexp.MustCompile(
 	`<sup class="footnote-ref" id="fnref:([^"]+)"><a href="(#fn:[^"]+)">[^<]*</a></sup>`)
 
@@ -264,7 +263,18 @@ func (r *Renderer) Render(markdownText string) string {
 // Определение без ссылки (сирота) отбрасывается, как и в Render: подбирать
 // сирот умеет только CollectPagesScoped.
 func (r *Renderer) RenderWithNotes(scope string, pageNumber int, markdownText string) string {
-	mainHTML, items := r.renderPageNotes(scope, pageNumber, markdownText)
+	return r.RenderPageWithNotes(scope, PageContent{PageNumber: pageNumber, Content: markdownText})
+}
+
+// RenderPageWithNotes renders one page with an optional per-fragment decorator.
+func (r *Renderer) RenderPageWithNotes(scope string, page PageContent) string {
+	mainHTML, items := r.renderPageNotes(scope, page.PageNumber, page.Content)
+	if page.Decorate != nil {
+		mainHTML = page.Decorate("", mainHTML)
+		for i := range items {
+			items[i].BodyHTML = page.Decorate(items[i].RefID, items[i].BodyHTML)
+		}
+	}
 
 	var subscript, endnote []*Note
 	for _, it := range items {
@@ -380,6 +390,9 @@ func (r *Renderer) renderPageNotes(scope string, pageNumber int, markdownText st
 
 // PageContent represents a page's content for rendering
 type PageContent struct {
+	// Decorate получает тело полосы (note == "") и тела её сносок по
+	// отдельности, пока они ещё привязаны к исходной полосе.
+	Decorate   func(note, html string) string
 	PageNumber int
 	Content    string
 }
@@ -427,4 +440,3 @@ func noteMarker(name string) (text string, kind string) {
 	}
 	return base, "endnote"
 }
-

@@ -14,13 +14,10 @@ import (
 // Область нумерации подстрочных сносок — весь переданный срез: маркеры
 // (1), (2), … идут сквозняком. Кому нужна постраничная нумерация, тот зовёт
 // функцию на срезе из одной страницы.
-func renderPageRange(r *markdown.Renderer, pages []*models.Page) ([]string, markdown.NoteSet) {
+func renderPageRange(r *markdown.Renderer, pages []*models.Page, refs publishedByPage) ([]string, markdown.NoteSet) {
 	contents := make([]markdown.PageContent, len(pages))
 	for i, page := range pages {
-		contents[i] = markdown.PageContent{
-			PageNumber: page.PageNumber,
-			Content:    page.ContentMarkdown,
-		}
+		contents[i] = refs.content(page)
 	}
 	return r.CollectPages(contents)
 }

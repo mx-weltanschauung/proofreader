@@ -243,6 +243,14 @@ export const EditionDetail: React.FC = () => {
               <Link to={`${editionPath(edition)}/highlights`} className="btn btn-secondary btn-sm">
                 Избранное
               </Link>
+              {edition.cross_references_enabled && (
+                <Link
+                  to={`${editionPath(edition)}/cross-references`}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Сверка отсылок
+                </Link>
+              )}
               <button
                 type="button"
                 className="btn btn-danger btn-sm"

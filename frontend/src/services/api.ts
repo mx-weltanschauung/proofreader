@@ -50,6 +50,9 @@ import type {
   Shelf,
   StaticArchive,
   EditionHighlight,
+  CrossReferenceDecision,
+  CrossReferencesPage,
+  CrossReferenceStatus,
   VolumeSummary,
   Concept,
   ConceptSummary,
@@ -538,6 +541,23 @@ export const editionsApi = {
       scans_hidden: scansHidden,
       reason,
     }),
+};
+
+function crossReferencesPath(editionId: number, workId: number): string {
+  return `/editions/${editionId}/works/${workId}/cross-references`;
+}
+
+export const crossReferencesApi = {
+  list: (editionId: number, workId: number, status: CrossReferenceStatus, after: number) =>
+    api.get<CrossReferencesPage>(crossReferencesPath(editionId, workId), {
+      params: { status, after },
+    }),
+
+  scan: (editionId: number, workId: number) =>
+    api.post<{ detected: number; added: number }>(crossReferencesPath(editionId, workId) + '/scan'),
+
+  decide: (editionId: number, workId: number, referenceId: number, data: CrossReferenceDecision) =>
+    api.patch<void>(`${crossReferencesPath(editionId, workId)}/${referenceId}`, data),
 };
 
 // Главная целиком — собрания со своими томами и работы вне собраний.

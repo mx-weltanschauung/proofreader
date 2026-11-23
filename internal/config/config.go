@@ -77,6 +77,8 @@ type ServerConfig struct {
 	// бэкенд читает manifest.json для /help#offline. Пусто — архива нет:
 	// /api/static-archive отвечает 404 (make run, тесты).
 	StaticArchiveURL string
+	// CrossReferenceEditionID включает сверку отсылок в одном собрании.
+	CrossReferenceEditionID int64
 }
 
 // DatabaseConfig holds database configuration
@@ -155,12 +157,13 @@ type CacheConfig struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		Server: ServerConfig{
-			Host:              getEnv("SERVER_HOST", "0.0.0.0"),
-			Port:              getEnvAsInt("SERVER_PORT", 8080),
-			PublicBaseURL:     getEnv("PUBLIC_BASE_URL", "http://localhost:3100"),
-			TrustProxyHeaders: getEnvAsBool("TRUST_PROXY_HEADERS", false),
-			MetricsAddr:       getEnv("METRICS_ADDR", ""),
-			StaticArchiveURL:  getEnv("STATIC_ARCHIVE_URL", ""),
+			Host:                    getEnv("SERVER_HOST", "0.0.0.0"),
+			Port:                    getEnvAsInt("SERVER_PORT", 8080),
+			PublicBaseURL:           getEnv("PUBLIC_BASE_URL", "http://localhost:3100"),
+			TrustProxyHeaders:       getEnvAsBool("TRUST_PROXY_HEADERS", false),
+			MetricsAddr:             getEnv("METRICS_ADDR", ""),
+			StaticArchiveURL:        getEnv("STATIC_ARCHIVE_URL", ""),
+			CrossReferenceEditionID: getEnvAsInt64("CROSS_REFERENCE_EDITION_ID", 0),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),

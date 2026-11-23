@@ -18,6 +18,7 @@ import (
 
 // PageHandler handles page endpoints
 type PageHandler struct {
+	crossReferences *CrossReferenceHandler
 	pageRepo        PageStore
 	pageVersionRepo PageVersionStore
 	fragments       FragmentStore
@@ -264,7 +265,8 @@ func (h *PageHandler) Render(w http.ResponseWriter, r *http.Request) {
 
 	// Со сносками в разметке главы, а не <ol> gomarkdown, — см.
 	// RenderWithNotes. Полоса одна, область имён не нужна.
-	html := h.renderer.RenderWithNotes("", page.PageNumber, page.ContentMarkdown)
+	refs := h.crossReferences.published(w, r, page.WorkID, page.PageNumber, page.PageNumber)
+	html := h.renderer.RenderPageWithNotes("", refs.content(page))
 
 	response := map[string]interface{}{
 		"html": html,

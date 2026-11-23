@@ -238,6 +238,8 @@ export interface Edition {
    * поля не присылает — это `printed`.
    */
   volume_numbering?: VolumeNumbering;
+  /** Для собрания разрешена сверка библиографических отсылок. */
+  cross_references_enabled?: boolean;
   /**
    * Раздел главной, под которым стоит полка собрания; пусто — «Собрания
    * сочинений». Старый сервер поля не присылает.
@@ -361,6 +363,48 @@ export interface EditionHighlight {
   volume_order_only?: boolean;
   label: string;
 }
+
+export type CrossReferenceStatus = 'pending' | 'confirmed' | 'rejected';
+
+export type CrossReferenceIssue =
+  | 'edition_mismatch'
+  | 'edition_uncertain'
+  | 'missing'
+  | 'ambiguous'
+  | 'stale';
+
+export interface CrossReferenceLocation {
+  work_id: number;
+  page_id: number;
+  page_number: number;
+  printed_page: number;
+  work_title: string;
+  volume_part?: string | null;
+  closed?: boolean;
+}
+
+export interface CrossReferenceCandidate {
+  id: number;
+  quote: string;
+  context: string;
+  volume: number;
+  printed_page: number;
+  edition_number?: number;
+  status: CrossReferenceStatus;
+  issue?: CrossReferenceIssue;
+  source: CrossReferenceLocation;
+  targets: CrossReferenceLocation[];
+  target_page_id?: number;
+}
+
+export interface CrossReferencesPage {
+  items: CrossReferenceCandidate[];
+  next_after?: number;
+}
+
+export type CrossReferenceDecision =
+  | { decision: 'confirmed'; target_page_id: number }
+  | { decision: 'rejected' };
 
 /** Работа вне собраний, как её показывает главная: имя да ссылка. */
 export interface ShelfWork {

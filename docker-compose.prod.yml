@@ -35,6 +35,7 @@ x-prod-backend-env: &prod_backend_env
   STATIC_ARCHIVE_URL: ${STATIC_ARCHIVE_URL:-}
   # Экземпляр: имя, описание, ссылки подвала, занятые ники —
   # из .env рядом с compose (docs/SELF_HOSTING.md). Пусто — умолчания.
+  CROSS_REFERENCE_EDITION_ID: ${CROSS_REFERENCE_EDITION_ID:-}
   SITE_NAME: ${SITE_NAME:-}
   SITE_DESCRIPTION: ${SITE_DESCRIPTION:-}
   SITE_SUPPORT_URL: ${SITE_SUPPORT_URL:-}

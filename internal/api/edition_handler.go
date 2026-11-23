@@ -16,7 +16,8 @@ import (
 
 // EditionHandler handles edition endpoints
 type EditionHandler struct {
-	editionStore EditionStore
+	editionStore            EditionStore
+	crossReferenceEditionID int64
 }
 
 // NewEditionHandler creates a new edition handler
@@ -130,8 +131,10 @@ func (h *EditionHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(edition)
+	writeJSON(w, struct {
+		*models.Edition
+		CrossReferencesEnabled bool `json:"cross_references_enabled,omitempty"`
+	}{edition, edition.ID == h.crossReferenceEditionID && edition.VolumeNumbering == models.VolumeNumberingPrinted})
 }
 
 // Create creates a new edition

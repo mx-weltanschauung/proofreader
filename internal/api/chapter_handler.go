@@ -21,6 +21,7 @@ import (
 
 // ChapterHandler handles chapter endpoints
 type ChapterHandler struct {
+	crossReferences *CrossReferenceHandler
 	// chapterRepo — голое хранилище: запись и охрана закрытого (409) обязаны
 	// видеть закрытые главы на любом контексте. Чтение для ответа — через
 	// reads().
@@ -614,12 +615,16 @@ func (h *ChapterHandler) ListPages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := pagecache.Key{WorkID: chapter.WorkID, Start: chapter.StartPage, End: chapter.EndPage}
+	refs := h.crossReferences.published(w, r, chapter.WorkID, chapter.StartPage, chapter.EndPage)
+	if len(refs) > 0 {
+		cache = nil
+	}
 	cache.Serve(w, r, key, func() (any, error) {
 		pages, err := h.pageRepo.GetPageRange(ctx, chapter.WorkID, chapter.StartPage, chapter.EndPage)
 		if err != nil {
 			return nil, err
 		}
-		pageHTML, notes := renderPageRange(h.renderer, pages)
+		pageHTML, notes := renderPageRange(h.renderer, pages, refs)
 		return ChapterPagesResponse{
 			Pages:         chapterPagesFromRange(pages, pageHTML, mark),
 			FootnotesHTML: markdown.RenderNotes(notes),
