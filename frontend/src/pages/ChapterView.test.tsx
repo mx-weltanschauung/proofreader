@@ -1990,6 +1990,8 @@ describe('ChapterView reading time', () => {
       this: HTMLElement,
     ) {
       if (this.classList.contains('chapter-view-header')) return new DOMRect(0, 0, 500, 50);
+      if (this.classList.contains('chapter-pages-content'))
+        return new DOMRect(0, 100 - scrollY, 500, 400);
       if (this.classList.contains('chapter-page-section'))
         return new DOMRect(0, 100 - scrollY, 500, 400);
       return new DOMRect(0, 0, 500, 0);

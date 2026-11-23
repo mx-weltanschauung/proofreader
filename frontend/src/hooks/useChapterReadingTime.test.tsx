@@ -5,6 +5,7 @@ import type { ChapterPage } from '../types';
 import { useChapterReadingTime } from './useChapterReadingTime';
 
 let scrollY = 0;
+let layoutShift = 0;
 let nextFrame = 1;
 const frames = new Map<number, FrameRequestCallback>();
 let resizeCallback: ResizeObserverCallback | null = null;
@@ -25,7 +26,7 @@ function moveTo(y: number) {
 }
 
 function rect(top: number, height: number): DOMRect {
-  return new DOMRect(0, top - scrollY, 500, height);
+  return new DOMRect(0, top + layoutShift - scrollY, 500, height);
 }
 
 function page(number: number, words: number): ChapterPage & { text: string } {
@@ -70,6 +71,10 @@ function layOut(
   vi.spyOn(screen.getByTestId('toolbar'), 'getBoundingClientRect').mockImplementation(
     () => new DOMRect(0, 0, 500, 50),
   );
+  const rootHeight = Math.max(...starts.map((section) => section.top + section.height)) - 100;
+  vi.spyOn(contentRef.current!, 'getBoundingClientRect').mockImplementation(() =>
+    rect(100, rootHeight),
+  );
   const sections = document.querySelectorAll<HTMLElement>('.chapter-page-section');
   sections.forEach((section, index) => {
     vi.spyOn(section, 'getBoundingClientRect').mockImplementation(() =>
@@ -89,6 +94,7 @@ function layOut(
 
 beforeEach(() => {
   scrollY = 0;
+  layoutShift = 0;
   frames.clear();
   vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
     const id = nextFrame++;
@@ -100,6 +106,14 @@ beforeEach(() => {
   });
   Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+  Object.defineProperty(document.documentElement, 'scrollHeight', {
+    configurable: true,
+    value: 800,
+  });
+  Object.defineProperty(document.documentElement, 'clientHeight', {
+    configurable: true,
+    value: 800,
+  });
   resizeCallback = null;
   observed.clear();
   vi.stubGlobal(
@@ -177,5 +191,37 @@ describe('useChapterReadingTime', () => {
       'observer',
     );
     expect(screen.getByTestId('time')).toHaveTextContent('540/360');
+  });
+
+  it('uses the moved text position after a sticky toolbar condenses during an anchor jump', () => {
+    render(<Probe pages={[page(1, 180), page(2, 180)]} />);
+    layOut([
+      { top: 100, height: 200 },
+      { top: 300, height: 200 },
+    ]);
+    layoutShift = -40;
+    moveTo(186); // page 2 now starts at document y=260, on the reading line
+    expect(screen.getByTestId('time')).toHaveTextContent('360/180');
+  });
+
+  it('finishes at the scroll limit and restores the remainder when scrolling back', () => {
+    render(<Probe pages={[page(1, 180)]} />);
+    layOut([{ top: 100, height: 1000 }]);
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      configurable: true,
+      value: 1250,
+    });
+    expect(screen.getByTestId('time')).toHaveTextContent('180/180');
+    moveTo(450); // max scroll; the last text is visible below the reading line
+    expect(screen.getByTestId('time')).toHaveTextContent('180/0');
+    moveTo(200);
+    expect(screen.getByTestId('time')).not.toHaveTextContent('180/0');
+  });
+
+  it('does not round the last unread word down to zero', () => {
+    render(<Probe pages={[page(1, 1)]} />);
+    layOut([{ top: 100, height: 1000 }]);
+    moveTo(900); // 126 px of the page still lie below the reading line
+    expect(screen.getByTestId('time')).toHaveTextContent('1/1');
   });
 });

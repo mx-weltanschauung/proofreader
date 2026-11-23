@@ -42,7 +42,7 @@ function remainingAt(measures: PageMeasure[], totalWords: number, position: numb
     if (position < page.top) return totalWords - page.before;
     if (position < page.bottom) {
       const fraction = (page.bottom - position) / Math.max(1, page.bottom - page.top);
-      return Math.round(totalWords - page.before - page.words + page.words * fraction);
+      return Math.ceil(totalWords - page.before - page.words + page.words * fraction);
     }
   }
   return 0;
@@ -67,8 +67,18 @@ export function useChapterReadingTime(
     const updateRemaining = () => {
       const toolbarBottom = toolbarRef.current?.getBoundingClientRect().bottom ?? 0;
       const readingLine = Math.min(toolbarBottom + 24, window.innerHeight * 0.4);
-      const position = window.scrollY + Math.max(0, readingLine);
-      const remainingWords = remainingAt(measures, totalWords, position);
+      // A sticky toolbar can condense while an anchor scrolls the document.
+      // That moves the whole text without changing its size, so page geometry
+      // is cached relative to the live top of the content, not the document.
+      const rootRect = root.getBoundingClientRect();
+      const position = Math.max(0, readingLine) - rootRect.top;
+      const documentRoot = document.documentElement;
+      const maxScroll = documentRoot.scrollHeight - documentRoot.clientHeight;
+      const atEnd =
+        maxScroll > 0 &&
+        window.scrollY >= maxScroll - 2 &&
+        rootRect.bottom <= window.innerHeight + 2;
+      const remainingWords = atEnd ? 0 : remainingAt(measures, totalWords, position);
       setValue((previous) =>
         previous.chapterId === chapterId &&
         previous.totalWords === totalWords &&
@@ -88,10 +98,11 @@ export function useChapterReadingTime(
     };
 
     const refreshGeometry = () => {
+      const rootTop = root.getBoundingClientRect().top;
       for (const page of measures) {
         const rect = page.element.getBoundingClientRect();
-        page.top = rect.top + window.scrollY;
-        page.bottom = rect.bottom + window.scrollY;
+        page.top = rect.top - rootTop;
+        page.bottom = rect.bottom - rootTop;
       }
       queueUpdate();
     };
