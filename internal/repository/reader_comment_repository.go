@@ -27,7 +27,9 @@ func NewReaderCommentRepository(pool *pgxpool.Pool) *ReaderCommentRepository {
 
 // Якори, адреса и контекст читаются тем же запросом, что у личных заметок.
 var commentSelect = strings.Replace(strings.Replace(marginNoteSelect, "mn.owner_id,", "COALESCE(mn.owner_id,0),", 1), "\n\tFROM margin_notes mn", `, mn.author_nickname, mn.status, mn.revision, mn.published_body,
- mn.published_revision, mn.reject_reason, mn.edited_at
+ mn.published_revision, mn.reject_reason, mn.edited_at,
+ COALESCE(mn.thread_id,0), mn.reply_to_nickname, mn.recipient_id, mn.reply_read_at, mn.removed,
+ (SELECT count(*) FROM reader_comments reply WHERE reply.thread_id=mn.id AND reply.published_revision>0)
  FROM reader_comments mn`, 1)
 
 type commentScanner struct {
@@ -38,7 +40,10 @@ type commentScanner struct {
 func (s commentScanner) Scan(dest ...any) error { return s.row.Scan(append(dest, s.extra...)...) }
 func scanComment(row rowScanner) (*models.ReaderComment, error) {
 	c := &models.ReaderComment{}
-	n, err := scanMarginNote(commentScanner{row, []any{&c.AuthorNickname, &c.Status, &c.Revision, &c.PublishedBody, &c.PublishedRevision, &c.RejectReason, &c.EditedAt}})
+	n, err := scanMarginNote(commentScanner{row, []any{
+		&c.AuthorNickname, &c.Status, &c.Revision, &c.PublishedBody, &c.PublishedRevision, &c.RejectReason, &c.EditedAt,
+		&c.ThreadID, &c.ReplyToNickname, &c.RecipientID, &c.ReplyReadAt, &c.Removed, &c.ReplyCount,
+	}})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrCommentNotFound
@@ -60,7 +65,16 @@ func commentOwn(c *models.ReaderComment, v models.CommentViewer) bool {
 func commentForViewer(c *models.ReaderComment, v models.CommentViewer) *models.ReaderComment {
 	c.CanEdit = commentOwn(c, v)
 	c.CanManage = c.CanEdit || v.Staff
-	if !c.CanEdit && !v.Staff {
+	c.Published = c.PublishedRevision > 0 && c.Removed == ""
+	c.Unread = c.Published && c.RecipientID != nil && *c.RecipientID == v.ID && c.ReplyReadAt == nil
+	if c.Removed != "" {
+		c.CanEdit = false
+		c.Body, c.PublishedBody, c.Status, c.RejectReason = "", "", "", ""
+		c.Revision, c.PublishedRevision = 0, 0
+		c.EditedAt = nil
+		return c
+	}
+	if !commentOwn(c, v) && !v.Staff {
 		c.Body = c.PublishedBody
 		c.Revision = c.PublishedRevision
 		c.Status = ""
@@ -92,11 +106,11 @@ func (r *ReaderCommentRepository) List(ctx context.Context, v models.CommentView
 		if !v.Staff {
 			return nil, ErrCommentNotFound
 		}
-		where += ` AND mn.status='на_рассмотрении'`
+		where += ` AND mn.status='на_рассмотрении' AND mn.removed=''`
 	} else if mine {
 		where += ` AND (mn.owner_id=$2 AND $2>0 OR ($3 AND mn.author_nickname=''))`
 	} else {
-		where += ` AND ((mn.owner_id=$2 AND $2>0) OR ($3 AND mn.author_nickname='') OR ($4 AND mn.published_revision>0))`
+		where += ` AND mn.thread_id IS NULL AND ((mn.owner_id=$2 AND $2>0) OR ($3 AND mn.author_nickname='') OR ($4 AND mn.published_revision>0))`
 	}
 	// Все параметры присутствуют независимо от ветки WHERE (pgx проверяет их число).
 	where += ` AND ($2::bigint>=0) AND ($3::boolean OR NOT $3) AND ($4::boolean OR NOT $4)`
@@ -141,6 +155,10 @@ func commentLock(ctx context.Context, tx pgx.Tx, key string) error {
 // Save держит живую строку пользователя до конца: ban и отправка упорядочены,
 // старый JWT запрет не обходит. История и счёт частоты пишутся атомарно.
 func (r *ReaderCommentRepository) Save(ctx context.Context, v models.CommentViewer, id int64, in models.MarginNoteInput, ip string, noteID int64, expected int) (*models.ReaderComment, error) {
+	return r.save(ctx, v, id, in, ip, noteID, expected, 0)
+}
+
+func (r *ReaderCommentRepository) save(ctx context.Context, v models.CommentViewer, id int64, in models.MarginNoteInput, ip string, noteID int64, expected int, replyTo int64) (*models.ReaderComment, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -173,7 +191,12 @@ func (r *ReaderCommentRepository) Save(ctx context.Context, v models.CommentView
 	}
 	revision := 1
 	if id == 0 {
-		if noteID > 0 {
+		if replyTo > 0 {
+			id, err = insertReply(ctx, tx, v, replyTo, nickname, in.Body, status)
+			if err != nil {
+				return nil, err
+			}
+		} else if noteID > 0 {
 			// Сотрудник тоже не может превратить чужую личную заметку.
 			note, err := scanMarginNote(tx.QueryRow(ctx, marginNoteSelect+` WHERE mn.id=$1 AND mn.owner_id=$2`+marginOpenClause(v.Staff)+` FOR UPDATE OF mn`, noteID, v.ID))
 			if err != nil {
@@ -201,7 +224,7 @@ func (r *ReaderCommentRepository) Save(ctx context.Context, v models.CommentView
 		if err != nil {
 			return nil, err
 		}
-		if !commentOwn(c, v) {
+		if !commentOwn(c, v) || c.Removed != "" {
 			return nil, ErrCommentNotFound
 		}
 		if c.Revision != expected {
@@ -249,13 +272,20 @@ func (r *ReaderCommentRepository) Review(ctx context.Context, v models.CommentVi
 	defer func() { _ = tx.Rollback(ctx) }()
 	// Порядок блокировок одинаков с Save и Ban: пользователь, комментарий.
 	var owner *int64
-	if err := tx.QueryRow(ctx, `SELECT owner_id FROM reader_comments WHERE id=$1`, id).Scan(&owner); err != nil {
+	var rootID int64
+	if err := tx.QueryRow(ctx, `SELECT owner_id,COALESCE(thread_id,id) FROM reader_comments WHERE id=$1`, id).Scan(&owner, &rootID); err != nil {
 		return ErrCommentConflict
 	}
 	if owner != nil {
 		if _, err := tx.Exec(ctx, `SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE`, *owner); err != nil {
 			return err
 		}
+	}
+	if err := lockCommentRoot(ctx, tx, v, rootID); err != nil {
+		if errors.Is(err, ErrCommentNotFound) {
+			return ErrCommentConflict
+		}
+		return err
 	}
 	status := "отклонено"
 	if approve {
@@ -266,7 +296,7 @@ func (r *ReaderCommentRepository) Review(ctx context.Context, v models.CommentVi
  published_body=CASE WHEN $5 THEN body ELSE published_body END,
  edited_at=CASE WHEN $5 AND published_revision>0 THEN now() ELSE edited_at END,
  published_revision=CASE WHEN $5 THEN revision ELSE published_revision END
- WHERE id=$1 AND revision=$2 AND status='на_рассмотрении'`, id, revision, status, reason, approve)
+ WHERE id=$1 AND revision=$2 AND status='на_рассмотрении' AND removed=''`, id, revision, status, reason, approve)
 	if err != nil {
 		return err
 	}
@@ -289,7 +319,7 @@ func (r *ReaderCommentRepository) History(ctx context.Context, v models.CommentV
 	if err != nil {
 		return nil, err
 	}
-	if !c.CanEdit && !v.Staff {
+	if !commentOwn(c, v) && !v.Staff {
 		return nil, ErrCommentNotFound
 	}
 	rows, err := r.pool.Query(ctx, `SELECT revision,body,status,reason,created_at FROM reader_comment_revisions WHERE comment_id=$1 ORDER BY revision`, id)
@@ -306,25 +336,6 @@ func (r *ReaderCommentRepository) History(ctx context.Context, v models.CommentV
 		out = append(out, rev)
 	}
 	return out, rows.Err()
-}
-
-// Без ответов (этап 2) удаление окончательное; очередь отзывается вместе с ним.
-func (r *ReaderCommentRepository) Remove(ctx context.Context, v models.CommentViewer, id int64) error {
-	c, err := r.Get(ctx, v, id)
-	if err != nil {
-		return err
-	}
-	if !c.CanManage {
-		return ErrCommentNotFound
-	}
-	tag, err := r.pool.Exec(ctx, `DELETE FROM reader_comments mn WHERE mn.id=$1`+commentClause(v), id)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrCommentNotFound
-	}
-	return nil
 }
 
 // ToNote доступно только автору ещё не опубликованного комментария.
@@ -391,7 +402,7 @@ func (r *ReaderCommentRepository) Ban(ctx context.Context, v models.CommentViewe
 	if _, err := tx.Exec(ctx, `UPDATE users SET comments_banned=true WHERE id=$1 AND role='reader'`, owner); err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `WITH rejected AS (UPDATE reader_comments SET status='отклонено',reject_reason='Комментирование запрещено редакцией' WHERE owner_id=$1 AND status='на_рассмотрении' RETURNING id,revision)
+	tag, err := tx.Exec(ctx, `WITH rejected AS (UPDATE reader_comments SET status='отклонено',reject_reason='Комментирование запрещено редакцией' WHERE owner_id=$1 AND status='на_рассмотрении' AND removed='' RETURNING id,revision)
  UPDATE reader_comment_revisions rv SET status='отклонено',reason='Комментирование запрещено редакцией',moderator_id=$2 FROM rejected r WHERE rv.comment_id=r.id AND rv.revision=r.revision`, owner, v.ID)
 	if err != nil {
 		return err
@@ -420,7 +431,7 @@ func (r *ReaderCommentRepository) PendingCount(ctx context.Context, v models.Com
 		return 0, ErrCommentNotFound
 	}
 	var count int
-	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM reader_comments WHERE status='на_рассмотрении'`).Scan(&count)
+	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM reader_comments WHERE status='на_рассмотрении' AND removed=''`).Scan(&count)
 	return count, err
 }
 func (r *ReaderCommentRepository) Banned(ctx context.Context, v models.CommentViewer) ([]models.BannedCommenter, error) {

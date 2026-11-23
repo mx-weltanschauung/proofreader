@@ -45,6 +45,13 @@ describe('useReaderComments', () => {
     expect(result.current.comments).toEqual([]);
     expect(request).not.toHaveBeenCalled();
   });
+  it('не запрашивает ветку по прямой ссылке у анонима, скрывшего комментарии', () => {
+    useAuth.setState({ user: null });
+    const thread = vi.spyOn(readerCommentsApi, 'thread');
+    const { result } = renderHook(() => useReaderComments(7, 12), { wrapper: HiddenComments });
+    expect(result.current.comments).toEqual([]);
+    expect(thread).not.toHaveBeenCalled();
+  });
   it('запрашивает только свои и скрывает их сразу при выходе', async () => {
     useAuth.setState({ user: { id: 3, role: 'reader' } as never });
     const request = vi

@@ -17,6 +17,11 @@ import (
 
 type CommentStore interface {
 	Save(context.Context, models.CommentViewer, int64, models.MarginNoteInput, string, int64, int) (*models.ReaderComment, error)
+	Reply(context.Context, models.CommentViewer, int64, string, string) (*models.ReaderComment, error)
+	Thread(context.Context, models.CommentViewer, int64) (*models.CommentThread, error)
+	IncomingReplies(context.Context, models.CommentViewer, int, int) ([]*models.ReaderComment, error)
+	UnreadReplies(context.Context, models.CommentViewer) (int, error)
+	MarkRepliesRead(context.Context, models.CommentViewer, int64, []int64) error
 	Get(context.Context, models.CommentViewer, int64) (*models.ReaderComment, error)
 	List(context.Context, models.CommentViewer, int64, bool, bool, bool, int, int) ([]*models.ReaderComment, error)
 	History(context.Context, models.CommentViewer, int64) ([]models.CommentRevision, error)
@@ -230,6 +235,7 @@ func (h *ReaderCommentHandler) Queue(w http.ResponseWriter, r *http.Request) {
 	h.list(w, r, false, true)
 }
 func (h *ReaderCommentHandler) list(w http.ResponseWriter, r *http.Request, mine, queue bool) {
+	w.Header().Set("Cache-Control", "no-store")
 	v := commentViewer(r)
 	if mine && v.ID == 0 {
 		writeError(w, 401, "Требуется вход")

@@ -15,8 +15,17 @@
   font-size: 0.8rem;
   opacity: 0.8;
 }
+.reader-comment-replies {
+  margin-inline-start: 0.25rem;
+  padding-inline-start: 0.75rem;
+  border-inline-start: 2px solid var(--color-border);
+}
+.reader-comment-composer {
+  margin-top: 0.6rem;
+}
 .target-comments {
   margin: 0.75rem 0;
+  scroll-margin-top: calc(var(--site-header-height) + 3.5rem);
 }
 .comment-list {
   max-width: 850px;
@@ -27,4 +36,7 @@
   margin: 1rem 0;
   padding: 1rem;
   border: 1px solid var(--color-border);
+}
+.comment-inbox {
+  scroll-margin-top: calc(var(--site-header-height) + 1rem);
 }

@@ -105,6 +105,37 @@ export const Header: React.FC = () => {
   const [unreadFeedback, setUnreadFeedback] = useState(0);
   const admin = isAdmin(user);
   const staff = canEdit(user);
+  const readerId = isAuthenticated && isReader(user) ? user?.id : undefined;
+  const [readerReplies, setReaderReplies] = useState<{ readerId: number; count: number } | null>(
+    null,
+  );
+  const repliesCount =
+    readerReplies && readerReplies.readerId === readerId ? readerReplies.count : 0;
+  useEffect(() => {
+    if (readerId === undefined) return;
+    let alive = true;
+    let request = 0;
+    const load = () => {
+      if (document.visibilityState === 'hidden') return;
+      const current = ++request;
+      void readerCommentsApi
+        .unreadReplyCount()
+        .then(({ data }) => {
+          if (alive && current === request) setReaderReplies({ readerId, count: data.count });
+        })
+        .catch(() => {
+          if (alive && current === request) setReaderReplies(null);
+        });
+    };
+    load();
+    document.addEventListener('visibilitychange', load);
+    window.addEventListener('reader-comment-replies-read', load);
+    return () => {
+      alive = false;
+      document.removeEventListener('visibilitychange', load);
+      window.removeEventListener('reader-comment-replies-read', load);
+    };
+  }, [readerId, location.key]);
   const [commentCount, setCommentCount] = useState(0);
   useEffect(() => {
     if (!staff) return;
@@ -172,6 +203,7 @@ export const Header: React.FC = () => {
     setPendingCount(null);
     setCommentCount(0);
     setUnreadFeedback(0);
+    setReaderReplies(null);
   }
 
   useEffect(() => {
@@ -241,9 +273,20 @@ export const Header: React.FC = () => {
             <>
               <span className="header-divider" aria-hidden="true" />
               {isReader(user) ? (
-                <Link to="/mine" className="login-link">
-                  {user.nickname}
-                </Link>
+                <>
+                  <Link to="/mine" className="login-link">
+                    {user.nickname}
+                  </Link>
+                  {repliesCount > 0 && (
+                    <Link
+                      to="/mine/comments#replies"
+                      className="login-link header-replies"
+                      aria-label={`Непрочитанные ответы: ${repliesCount}`}
+                    >
+                      Ответы<span className="header-badge">{repliesCount}</span>
+                    </Link>
+                  )}
+                </>
               ) : (
                 <span className="user-info">
                   <span className="user-email">{user.email}</span>

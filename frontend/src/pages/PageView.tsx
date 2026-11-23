@@ -34,6 +34,7 @@ import { pageNeighbours } from '../utils/pageNeighbours';
 import { pageStatusLabel } from '../utils/pageStatusLabel';
 import { russianDate } from '../utils/russianDate';
 import { numericId, pagePath, workPath } from '../utils/paths';
+import { commentThreadId } from '../utils/marginNoteHref';
 
 type PageContent =
   | { pageId: number; status: 'ok'; work: Work; html: string }
@@ -303,6 +304,7 @@ export const PageView: React.FC = () => {
                 несёт data-page и .page-html-content, которых слой ищет. */}
             <CommentedMarginNotes
               workId={work.id}
+              threadId={commentThreadId(searchParams)}
               contentRef={contentRef}
               notes={notes.notes}
               pageNumbers={[page.page_number]}

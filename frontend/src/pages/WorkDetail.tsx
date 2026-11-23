@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { worksApi, chaptersApi, editionsApi } from '../services/api';
 import { useAuth, canEdit } from '../hooks/useAuth';
@@ -18,11 +18,13 @@ import { readRecent, type LastRead } from '../hooks/useReadingProgress';
 import type { Work, Chapter, Edition, PageMapEntry, PageStatus } from '../types';
 import { apiErrorMessage } from '../utils/apiError';
 import { numericId, workPath } from '../utils/paths';
+import { commentThreadId } from '../utils/marginNoteHref';
 import './WorkDetail.css';
 
 export const WorkDetail: React.FC = () => {
   const { id: idParam } = useParams<{ id: string }>();
   const id = numericId(idParam);
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const marginNotes = useMarginNotes(id);
@@ -327,6 +329,7 @@ export const WorkDetail: React.FC = () => {
 
       <TargetNotes
         workId={work.id}
+        threadId={commentThreadId(searchParams)}
         notes={marginNotes.notes}
         onCreated={marginNotes.add}
         onChange={marginNotes.replace}

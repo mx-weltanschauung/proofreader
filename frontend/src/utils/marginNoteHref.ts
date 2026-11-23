@@ -1,4 +1,4 @@
-import type { MarginNote } from '../types';
+import type { MarginNote, ReaderComment } from '../types';
 import { chapterPath, pagePath, workPath } from './paths';
 
 /** Адрес места заметки; пустой `search` у главы и тома. */
@@ -27,4 +27,15 @@ export function noteHref(n: MarginNote): { to: string; missing: boolean; deleted
     };
   }
   return { to: workPath(work), missing: false, deletedChapter: false };
+}
+
+export function commentThreadHref(comment: ReaderComment): string {
+  const [path] = noteHref(comment).to.split('?');
+  return `${path}?thread=${comment.thread_id ?? comment.id}`;
+}
+
+export function commentThreadId(params: URLSearchParams): number | null {
+  const value = params.get('thread') ?? '';
+  const id = Number(value);
+  return /^\d+$/.test(value) && Number.isSafeInteger(id) && id > 0 ? id : null;
 }

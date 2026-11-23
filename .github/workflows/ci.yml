@@ -82,6 +82,13 @@ jobs:
           PGPASSWORD=proofreader createdb -h localhost -U proofreader proofreader_settings_test
           DB_NAME=proofreader_settings_test go run cmd/migrate/main.go up
       - run: go test ./... -count=1
+      - name: Миграция ответов со старыми комментариями
+        env:
+          PROOFREADER_TEST_DB_URL: postgres://proofreader:proofreader@localhost:5432/proofreader_replies_migration?sslmode=disable
+          PROOFREADER_MIGRATE_TEST: "1"
+        run: |
+          PGPASSWORD=proofreader createdb -h localhost -U proofreader proofreader_replies_migration
+          go test ./internal/database -run '^TestCommentRepliesMigrationPreservesOldComments$' -count=1 -v
       - uses: actions/download-artifact@v4
         with:
           name: proofread-assist-ubuntu-24.04-X64

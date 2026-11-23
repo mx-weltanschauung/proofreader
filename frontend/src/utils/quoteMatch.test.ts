@@ -228,7 +228,7 @@ describe('markQuotes', () => {
       ],
       cls,
     );
-    expect([...found].sort()).toEqual([3, 7]);
+    expect([...found.keys()].sort()).toEqual([3, 7]);
     const marks = [...el.querySelectorAll(`mark.${cls}`)] as HTMLElement[];
     expect(marks.map((m) => [m.textContent, m.dataset.noteIds])).toEqual([
       ['первая цитата', '3'],

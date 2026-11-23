@@ -10,6 +10,7 @@ import './TargetNotes.css';
 
 export interface TargetNotesProps {
   readerComments?: ReaderCommentsState;
+  threadId?: number | null;
   workId: number;
   /** Есть — заметки к этой главе; нет — к тому целиком. */
   chapterId?: number;
@@ -161,6 +162,7 @@ export const TargetNotes: React.FC<TargetNotesProps> = (props) => (
       workId={props.workId}
       chapterId={props.chapterId}
       readerComments={props.readerComments}
+      threadId={props.threadId}
     />
   </>
 );

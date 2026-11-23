@@ -306,7 +306,7 @@ function wrapRange(
   to: number,
   className: string,
   noteIds?: number[],
-): void {
+): Map<Text, HTMLElement> {
   const pieces: { node: Text; lo: number; hi: number }[] = [];
   for (let i = from; i < to; i++) {
     const last = pieces[pieces.length - 1];
@@ -314,6 +314,7 @@ function wrapRange(
     else pieces.push({ node: flat.nodes[i], lo: flat.offsets[i], hi: flat.offsets[i] + 1 });
   }
 
+  const marks = new Map<Text, HTMLElement>();
   for (let i = pieces.length - 1; i >= 0; i--) {
     const { node, lo, hi } = pieces[i];
     const range = document.createRange();
@@ -323,7 +324,9 @@ function wrapRange(
     mark.className = className;
     if (noteIds) mark.dataset.noteIds = noteIds.join(' ');
     range.surroundContents(mark);
+    marks.set(node, mark);
   }
+  return marks;
 }
 
 export interface MarkRequest {
@@ -338,12 +341,16 @@ export interface MarkRequest {
  * соседние сливаются в один <mark data-note-ids="3 7">. Оборачивание идёт
  * с конца документа к началу, поэтому плоские координаты и смещения в узлах
  * более ранних пролётов остаются верными (разрезается только хвост узла).
- * Возвращает id найденных заметок; ненайденных в ответе нет, DOM для них не
- * тронут.
+ * Возвращает метку у начала каждой найденной цитаты, чтобы карточка
+ * встала у своего абзаца даже в общей подсветке нескольких заметок.
  */
-export function markQuotes(root: HTMLElement, reqs: MarkRequest[], className: string): Set<number> {
-  const found = new Set<number>();
-  if (reqs.length === 0) return found;
+export function markQuotes(
+  root: HTMLElement,
+  reqs: MarkRequest[],
+  className: string,
+): Map<number, HTMLElement> {
+  const anchors = new Map<number, HTMLElement>();
+  if (reqs.length === 0) return anchors;
 
   const flat = flattenText(root);
   const pageIndex = new Map<number, number[]>();
@@ -355,33 +362,31 @@ export function markQuotes(root: HTMLElement, reqs: MarkRequest[], className: st
     else pageIndex.set(p, [i]);
   }
 
-  const spans: { from: number; to: number; ids: number[] }[] = [];
+  const spans: { from: number; to: number; id: number }[] = [];
   for (const r of reqs) {
     const sp = findSpan(flat, r.span, r.pageNumber, pageIndex);
     if (!sp) continue;
-    found.add(r.id);
-    spans.push({ from: sp.from, to: sp.to, ids: [r.id] });
+    spans.push({ from: sp.from, to: sp.to, id: r.id });
   }
 
   spans.sort((a, b) => a.from - b.from || a.to - b.to);
-  const merged: typeof spans = [];
+  const merged: { from: number; to: number; spans: typeof spans }[] = [];
   for (const s of spans) {
     const last = merged[merged.length - 1];
     if (last && s.from <= last.to) {
       last.to = Math.max(last.to, s.to);
-      last.ids.push(...s.ids);
-    } else merged.push({ ...s, ids: [...s.ids] });
+      last.spans.push(s);
+    } else merged.push({ from: s.from, to: s.to, spans: [s] });
   }
 
   for (let i = merged.length - 1; i >= 0; i--) {
-    const m = merged[i];
-    wrapRange(
-      flat,
-      m.from,
-      m.to,
-      className,
-      m.ids.sort((a, b) => a - b),
-    );
+    const range = merged[i];
+    const ids = range.spans.map((s) => s.id).sort((a, b) => a - b);
+    const marks = wrapRange(flat, range.from, range.to, className, ids);
+    for (const span of range.spans) {
+      const anchor = marks.get(flat.nodes[span.from]);
+      if (anchor) anchors.set(span.id, anchor);
+    }
   }
-  return found;
+  return anchors;
 }

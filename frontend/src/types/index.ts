@@ -1485,6 +1485,16 @@ export interface ReaderComment extends MarginNote {
   can_manage: boolean;
   author_id?: number;
   rejections?: number;
+  published?: boolean;
+  removed?: 'author' | 'moderator';
+  thread_id?: number;
+  reply_to_nickname?: string;
+  reply_count?: number;
+  unread?: boolean;
+}
+export interface ReaderCommentThread {
+  root: ReaderComment;
+  replies: ReaderComment[];
 }
 export interface CommentRevision {
   revision: number;
