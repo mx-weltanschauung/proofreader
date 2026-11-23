@@ -346,6 +346,10 @@ func (r *CollectionRepository) AddItem(
 	}
 	defer tx.Rollback(ctx)
 
+	if _, err := lockCollectionComposition(ctx, tx, collectionID); err != nil {
+		return nil, err
+	}
+
 	var title, author string
 	var resolvedWorkID int64
 
@@ -404,6 +408,9 @@ func (r *CollectionRepository) AddItem(
 		return nil, fmt.Errorf("failed to add collection item: %w", err)
 	}
 
+	if err := advanceCollectionRevision(ctx, tx, collectionID); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -437,12 +444,12 @@ func (r *CollectionRepository) ItemByID(
 	var it models.CollectionItem
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, collection_id, kind, chapter_id, work_id,
-		       snapshot_title, snapshot_author, author_override, order_number,
+		       snapshot_title, snapshot_author, author_override, order_number, meeting_position,
 		       created_at, updated_at
 		FROM collection_items
 		WHERE id = $2 AND collection_id = $1`, collectionID, itemID).Scan(
 		&it.ID, &it.CollectionID, &it.Kind, &it.ChapterID, &it.WorkID,
-		&it.SnapshotTitle, &it.SnapshotAuthor, &it.AuthorOverride, &it.OrderNumber,
+		&it.SnapshotTitle, &it.SnapshotAuthor, &it.AuthorOverride, &it.OrderNumber, &it.MeetingPosition,
 		&it.CreatedAt, &it.UpdatedAt,
 	)
 	if err != nil {
@@ -464,6 +471,10 @@ func (r *CollectionRepository) DeleteItem(ctx context.Context, collectionID, ite
 	}
 	defer tx.Rollback(ctx)
 
+	if _, err := lockCollectionComposition(ctx, tx, collectionID); err != nil {
+		return err
+	}
+
 	result, err := tx.Exec(ctx,
 		`DELETE FROM collection_items WHERE id = $2 AND collection_id = $1`,
 		collectionID, itemID)
@@ -478,6 +489,9 @@ func (r *CollectionRepository) DeleteItem(ctx context.Context, collectionID, ite
 		return err
 	}
 
+	if err := advanceCollectionRevision(ctx, tx, collectionID); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -495,50 +509,46 @@ func (r *CollectionRepository) MoveItem(
 	}
 	defer tx.Rollback(ctx)
 
-	var count int
-	if err := tx.QueryRow(ctx,
-		`SELECT COUNT(*) FROM collection_items WHERE collection_id = $1`,
-		collectionID).Scan(&count); err != nil {
-		return fmt.Errorf("failed to count collection items: %w", err)
-	}
-
-	target := normalizeItemOrder(newOrder, count)
-
-	// Элемент временно уезжает в ноль, чтобы не мешать пересчёту соседей:
-	// без этого он попадает под собственный сдвиг.
-	result, err := tx.Exec(ctx,
-		`UPDATE collection_items SET order_number = 0 WHERE id = $2 AND collection_id = $1`,
-		collectionID, itemID)
-	if err != nil {
-		return fmt.Errorf("failed to detach collection item: %w", err)
-	}
-	if result.RowsAffected() == 0 {
-		return fmt.Errorf("collection item not found")
-	}
-
-	if _, err := tx.Exec(ctx, `
-		WITH ranked AS (
-			SELECT id, ROW_NUMBER() OVER (ORDER BY order_number, id) AS new_order
-			FROM collection_items
-			WHERE collection_id = $1 AND id <> $2
-		)
-		UPDATE collection_items ci
-		SET order_number = CASE WHEN r.new_order >= $3 THEN r.new_order + 1 ELSE r.new_order END
-		FROM ranked r
-		WHERE ci.id = r.id`, collectionID, itemID, target); err != nil {
-		return fmt.Errorf("failed to reorder collection items: %w", err)
-	}
-
-	if _, err := tx.Exec(ctx,
-		`UPDATE collection_items SET order_number = $3 WHERE id = $2 AND collection_id = $1`,
-		collectionID, itemID, target); err != nil {
-		return fmt.Errorf("failed to move collection item: %w", err)
-	}
-
-	if err := renumberItems(ctx, tx, collectionID); err != nil {
+	if _, err := lockCollectionComposition(ctx, tx, collectionID); err != nil {
 		return err
 	}
 
+	// Старый маршрут меняет порядок чтения, сохраняя принадлежность к занятию.
+	var first, last, count int
+	if err := tx.QueryRow(ctx, `
+		WITH ranked AS (
+			SELECT id, meeting_position, ROW_NUMBER() OVER (ORDER BY order_number, id) AS position
+			FROM collection_items
+			WHERE collection_id = $1
+		)
+		SELECT MIN(position), MAX(position), (SELECT COUNT(*) FROM ranked)
+		FROM ranked
+		JOIN collection_items moving ON moving.id = $2 AND moving.collection_id = $1
+		    AND moving.meeting_position IS NOT DISTINCT FROM ranked.meeting_position
+		HAVING COUNT(*) > 0`, collectionID, itemID).Scan(&first, &last, &count); err != nil {
+		return fmt.Errorf("failed to find collection item position: %w", err)
+	}
+	target := min(max(normalizeItemOrder(newOrder, count), first), last)
+
+	if _, err := tx.Exec(ctx, `
+		WITH ranked AS (
+			SELECT id, ROW_NUMBER() OVER (ORDER BY order_number, id) AS position
+			FROM collection_items
+			WHERE collection_id = $1 AND id <> $2
+		), reordered AS (
+			SELECT id, CASE WHEN position >= $3 THEN position + 1 ELSE position END AS position
+			FROM ranked
+			UNION ALL SELECT $2::bigint, $3
+		)
+		UPDATE collection_items ci SET order_number = r.position
+		FROM reordered r
+		WHERE ci.id = r.id AND ci.order_number <> r.position`, collectionID, itemID, target); err != nil {
+		return fmt.Errorf("failed to reorder collection items: %w", err)
+	}
+
+	if err := advanceCollectionRevision(ctx, tx, collectionID); err != nil {
+		return err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
@@ -595,7 +605,7 @@ var itemRowsSlugColumns = strings.ReplaceAll(workSlugColumns, "works.", "w.")
 // работы, и он всё равно обязан попасть в оглавление — снимком заголовка.
 var itemRowsQuery = `
 	SELECT ci.id, ci.collection_id, ci.kind, ci.chapter_id, ci.work_id,
-	       ci.snapshot_title, ci.snapshot_author, ci.author_override, ci.order_number,
+	       ci.snapshot_title, ci.snapshot_author, ci.author_override, ci.order_number, ci.meeting_position,
 	       ci.created_at, ci.updated_at,
 	       c.title, c.start_page, c.end_page,
 	       w.title, w.author, w.page_offset,
@@ -608,12 +618,18 @@ var itemRowsQuery = `
 	LEFT JOIN works    w ON w.id = ci.work_id
 	LEFT JOIN editions e ON e.id = w.edition_id
 	WHERE ci.collection_id = $1
-	ORDER BY ci.order_number
+	ORDER BY ci.order_number, ci.id
 `
 
 // ItemRows retrieves the raw composition rows of a collection.
 func (r *CollectionRepository) ItemRows(ctx context.Context, collectionID int64) ([]ItemRow, error) {
-	rows, err := r.pool.Query(ctx, itemRowsQuery, collectionID)
+	return queryCollectionItemRows(ctx, r.pool, collectionID)
+}
+
+func queryCollectionItemRows(ctx context.Context, db interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, collectionID int64) ([]ItemRow, error) {
+	rows, err := db.Query(ctx, itemRowsQuery, collectionID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list collection items: %w", err)
 	}
@@ -631,7 +647,7 @@ func (r *CollectionRepository) ItemRows(ctx context.Context, collectionID int64)
 			&row.Item.ID, &row.Item.CollectionID, &row.Item.Kind,
 			&row.Item.ChapterID, &row.Item.WorkID,
 			&row.Item.SnapshotTitle, &row.Item.SnapshotAuthor,
-			&row.Item.AuthorOverride, &row.Item.OrderNumber,
+			&row.Item.AuthorOverride, &row.Item.OrderNumber, &row.Item.MeetingPosition,
 			&row.Item.CreatedAt, &row.Item.UpdatedAt,
 			&row.ChapterTitle, &row.ChapterStartPage, &row.ChapterEndPage,
 			&row.WorkTitle, &row.WorkAuthor, &row.PageOffset,
@@ -651,7 +667,7 @@ func (r *CollectionRepository) ItemRows(ctx context.Context, collectionID int64)
 		out = append(out, row)
 	}
 
-	return out, nil
+	return out, rows.Err()
 }
 
 // ChapterWorkID — том, которому принадлежит глава.

@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { collectionsApi } from '../services/api';
 import { useAuth, canEditCollection } from '../hooks/useAuth';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
-import type { Collection, CollectionTocNode } from '../types';
+import type { Collection, CollectionEntry, CollectionTocNode } from '../types';
 import { apiErrorMessage } from '../utils/apiError';
 import { sourceLabel } from '../utils/sourceLabel';
 import { DownloadMenu } from '../components/DownloadMenu';
@@ -44,6 +44,61 @@ function TocNodes({
           </div>
           {node.children && node.children.length > 0 && (
             <TocNodes nodes={node.children} work={work} />
+          )}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function CollectionToc({
+  collection,
+  items,
+}: {
+  collection: Collection;
+  items: CollectionEntry[];
+}) {
+  return (
+    <ol className="collection-toc">
+      {items.map((entry) => (
+        <li
+          key={entry.id}
+          className={`collection-entry ${entry.broken || entry.unavailable ? 'is-broken' : ''}`}
+        >
+          <div className="collection-entry-head">
+            {entry.author && <span className="collection-entry-author">{entry.author}. </span>}
+            {entry.unavailable ? (
+              // Источник закрыт: сервер не отдал ни заглавия, ни адреса.
+              <span className="collection-entry-title" />
+            ) : entry.broken ? (
+              // Битую строку некуда вести: источник удалён, читать нечего.
+              <span className="collection-entry-title">{entry.title}</span>
+            ) : (
+              <Link
+                to={collectionReadPath(collection, entry.id)}
+                className="collection-entry-title"
+              >
+                {entry.title}
+              </Link>
+            )}
+            {!entry.unavailable && (
+              <span className="collection-entry-source">{sourceLabel(entry)}</span>
+            )}
+          </div>
+
+          {entry.unavailable && <div className="collection-entry-note">Источник недоступен</div>}
+
+          {entry.broken && <div className="collection-entry-note">Источник удалён из читальни</div>}
+
+          {entry.children && entry.children.length > 0 && (
+            <TocNodes
+              nodes={entry.children}
+              work={
+                entry.source
+                  ? { id: entry.source.work_id, slug: entry.source.work_slug }
+                  : undefined
+              }
+            />
           )}
         </li>
       ))}
@@ -116,6 +171,8 @@ export const CollectionView: React.FC = () => {
   }
 
   const items = collection.items ?? [];
+  const meetings = collection.meetings ?? [];
+  const unassigned = items.filter((entry) => entry.meeting_position === undefined);
 
   return (
     <div className="collection-view">
@@ -152,61 +209,50 @@ export const CollectionView: React.FC = () => {
         )}
       </div>
 
-      <h2 className="collection-toc-title">Содержание</h2>
-
-      {items.length === 0 ? (
-        <div className="empty-state">
-          <p>В подборке пока ничего нет.</p>
-        </div>
+      {meetings.length > 0 ? (
+        <section aria-labelledby="collection-program-title">
+          <h2 id="collection-program-title" className="collection-toc-title">
+            Программа встреч
+          </h2>
+          {meetings.map((meeting) => {
+            const assigned = items.filter((entry) => entry.meeting_position === meeting.position);
+            return (
+              <details key={meeting.position} className="collection-meeting">
+                <summary>{meeting.title}</summary>
+                <div className="collection-meeting-content">
+                  {meeting.question && (
+                    <p className="collection-meeting-question">
+                      <strong>Вопрос для обсуждения</strong>
+                      {meeting.question}
+                    </p>
+                  )}
+                  {assigned.length > 0 ? (
+                    <CollectionToc collection={collection} items={assigned} />
+                  ) : (
+                    <p>К этому занятию пока нет текстов.</p>
+                  )}
+                </div>
+              </details>
+            );
+          })}
+          {unassigned.length > 0 && (
+            <>
+              <h2 className="collection-toc-title">Тексты вне занятий</h2>
+              <CollectionToc collection={collection} items={unassigned} />
+            </>
+          )}
+        </section>
       ) : (
-        <ol className="collection-toc">
-          {items.map((entry) => (
-            <li
-              key={entry.id}
-              className={`collection-entry ${entry.broken || entry.unavailable ? 'is-broken' : ''}`}
-            >
-              <div className="collection-entry-head">
-                {entry.author && <span className="collection-entry-author">{entry.author}. </span>}
-                {entry.unavailable ? (
-                  // Источник закрыт: сервер не отдал ни заглавия, ни адреса.
-                  <span className="collection-entry-title" />
-                ) : entry.broken ? (
-                  // Битую строку некуда вести: источник удалён, читать нечего.
-                  <span className="collection-entry-title">{entry.title}</span>
-                ) : (
-                  <Link
-                    to={collectionReadPath(collection, entry.id)}
-                    className="collection-entry-title"
-                  >
-                    {entry.title}
-                  </Link>
-                )}
-                {!entry.unavailable && (
-                  <span className="collection-entry-source">{sourceLabel(entry)}</span>
-                )}
-              </div>
-
-              {entry.unavailable && (
-                <div className="collection-entry-note">Источник недоступен</div>
-              )}
-
-              {entry.broken && (
-                <div className="collection-entry-note">Источник удалён из читальни</div>
-              )}
-
-              {entry.children && entry.children.length > 0 && (
-                <TocNodes
-                  nodes={entry.children}
-                  work={
-                    entry.source
-                      ? { id: entry.source.work_id, slug: entry.source.work_slug }
-                      : undefined
-                  }
-                />
-              )}
-            </li>
-          ))}
-        </ol>
+        <>
+          <h2 className="collection-toc-title">Содержание</h2>
+          {items.length === 0 ? (
+            <div className="empty-state">
+              <p>В подборке пока ничего нет.</p>
+            </div>
+          ) : (
+            <CollectionToc collection={collection} items={items} />
+          )}
+        </>
       )}
     </div>
   );

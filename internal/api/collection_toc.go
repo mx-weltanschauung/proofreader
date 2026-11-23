@@ -60,19 +60,21 @@ func buildCollectionTOC(rows []repository.ItemRow, chapters []*models.Chapter, c
 		if itemIsClosed(row.Item, closed) ||
 			(row.Item.ChapterID != nil && closedChapters[*row.Item.ChapterID]) {
 			entries = append(entries, &models.CollectionEntry{
-				ID:          row.Item.ID,
-				Kind:        row.Item.Kind,
-				OrderNumber: row.Item.OrderNumber,
-				Unavailable: true,
+				ID:              row.Item.ID,
+				Kind:            row.Item.Kind,
+				OrderNumber:     row.Item.OrderNumber,
+				MeetingPosition: row.Item.MeetingPosition,
+				Unavailable:     true,
 			})
 			continue
 		}
 
 		entry := &models.CollectionEntry{
-			ID:             row.Item.ID,
-			Kind:           row.Item.Kind,
-			OrderNumber:    row.Item.OrderNumber,
-			AuthorOverride: row.Item.AuthorOverride,
+			ID:              row.Item.ID,
+			Kind:            row.Item.Kind,
+			OrderNumber:     row.Item.OrderNumber,
+			MeetingPosition: row.Item.MeetingPosition,
+			AuthorOverride:  row.Item.AuthorOverride,
 		}
 
 		if row.WorkAuthor != nil {

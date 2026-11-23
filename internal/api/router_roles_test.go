@@ -181,6 +181,7 @@ var routeAccess = map[string]access{
 	"PUT /api/collections/{slug}/items/{itemId}":        accessReader,
 	"DELETE /api/collections/{slug}/items/{itemId}":     accessReader,
 	"PATCH /api/collections/{slug}/items/{itemId}/move": accessReader,
+	"PATCH /api/collections/{slug}/program":             accessReader,
 	"POST /api/collections/{slug}/publish":              accessReader,
 	"POST /api/collections/{slug}/unpublish":            accessReader,
 	// Второй, более длинный вид адреса — /collections/{ник}/{слаг}, для
@@ -192,6 +193,7 @@ var routeAccess = map[string]access{
 	"PUT /api/collections/{nickname}/{slug}/items/{itemId}":        accessReader,
 	"DELETE /api/collections/{nickname}/{slug}/items/{itemId}":     accessReader,
 	"PATCH /api/collections/{nickname}/{slug}/items/{itemId}/move": accessReader,
+	"PATCH /api/collections/{nickname}/{slug}/program":             accessReader,
 	"POST /api/collections/{nickname}/{slug}/publish":              accessReader,
 	"POST /api/collections/{nickname}/{slug}/unpublish":            accessReader,
 	"GET /api/concepts":                                          accessPublic,

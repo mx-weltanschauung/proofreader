@@ -232,6 +232,8 @@ type CollectionStore interface {
 	MoveItem(ctx context.Context, collectionID, itemID int64, newOrder int) error
 	ItemByID(ctx context.Context, collectionID, itemID int64) (*models.CollectionItem, error)
 	ItemRows(ctx context.Context, collectionID int64) ([]repository.ItemRow, error)
+	Composition(ctx context.Context, collectionID int64) (repository.CollectionComposition, error)
+	SaveProgram(ctx context.Context, collectionID, revision int64, meetings []models.CollectionMeetingInput, unassigned []int64) error
 	ChaptersForWorks(ctx context.Context, workIDs []int64) ([]*models.Chapter, error)
 	// ChapterWorkID — том главы; нужен, чтобы закрытую главу не добавили в
 	// подборку не-сотрудником.

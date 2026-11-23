@@ -743,6 +743,7 @@ func (rt *Router) Setup() *mux.Router {
 	reader.HandleFunc("/collections/{slug}/items/{itemId}", rt.collectionHandler.UpdateItem).Methods("PUT")
 	reader.HandleFunc("/collections/{slug}/items/{itemId}", rt.collectionHandler.DeleteItem).Methods("DELETE")
 	reader.HandleFunc("/collections/{slug}/items/{itemId}/move", rt.collectionHandler.MoveItem).Methods("PATCH")
+	reader.HandleFunc("/collections/{slug}/program", rt.collectionHandler.SaveProgram).Methods("PATCH")
 	reader.HandleFunc("/collections/{slug}/publish", rt.collectionHandler.Publish).Methods("POST")
 	reader.HandleFunc("/collections/{slug}/unpublish", rt.collectionHandler.Unpublish).Methods("POST")
 
@@ -753,6 +754,7 @@ func (rt *Router) Setup() *mux.Router {
 	reader.HandleFunc("/collections/{nickname}/{slug}/items/{itemId}", rt.collectionHandler.UpdateItem).Methods("PUT")
 	reader.HandleFunc("/collections/{nickname}/{slug}/items/{itemId}", rt.collectionHandler.DeleteItem).Methods("DELETE")
 	reader.HandleFunc("/collections/{nickname}/{slug}/items/{itemId}/move", rt.collectionHandler.MoveItem).Methods("PATCH")
+	reader.HandleFunc("/collections/{nickname}/{slug}/program", rt.collectionHandler.SaveProgram).Methods("PATCH")
 	reader.HandleFunc("/collections/{nickname}/{slug}/publish", rt.collectionHandler.Publish).Methods("POST")
 	reader.HandleFunc("/collections/{nickname}/{slug}/unpublish", rt.collectionHandler.Unpublish).Methods("POST")
 	reader.HandleFunc("/collections/{nickname}/{slug}", rt.collectionHandler.Update).Methods("PUT")

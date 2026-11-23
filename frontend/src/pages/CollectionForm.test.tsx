@@ -138,6 +138,21 @@ describe('CollectionForm', () => {
     expect(screen.getAllByRole('button', { name: /вверх/i })[0]).toHaveProperty('disabled', true);
   });
 
+  it('переставляет тексты программы только в редакторе занятий', async () => {
+    vi.mocked(collectionsApi.get).mockReturnValue(
+      ok({
+        ...COLLECTION,
+        meetings: [{ position: 1, title: 'Первая встреча', question: '' }],
+        items: COLLECTION.items!.map((item) => ({ ...item, meeting_position: 1 })),
+      }),
+    );
+    renderForm();
+    await screen.findByText('Вторая');
+    expect(screen.queryByRole('button', { name: /вверх/i })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Изменить программу' }));
+    expect(await screen.findByRole('button', { name: 'Переместить «Вторая» вверх' })).toBeEnabled();
+  });
+
   it('сохраняет переопределение автора', async () => {
     renderForm();
     await screen.findByText('Первая');
