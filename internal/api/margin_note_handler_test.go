@@ -62,9 +62,23 @@ func (f *fakeMarginNotes) ListByWork(_ context.Context, ownerID, _ int64, includ
 	return []*models.MarginNote{}, nil
 }
 
-func (f *fakeMarginNotes) ListByOwner(_ context.Context, ownerID int64, _ *int64, _, _ int, includeClosed bool) ([]*models.MarginNote, int, error) {
+func (f *fakeMarginNotes) ListByOwner(_ context.Context, ownerID int64, _ *int64, _ string, _, _ int, includeClosed bool) ([]*models.MarginNote, int, error) {
 	f.listOwner, f.listIncludeClosed = ownerID, includeClosed
 	return []*models.MarginNote{}, 0, nil
+}
+
+func (f *fakeMarginNotes) ListWorksByOwner(context.Context, int64, bool) ([]models.MarginNoteWork, error) {
+	return []models.MarginNoteWork{}, nil
+}
+
+func (f *fakeMarginNotes) ListByIDs(_ context.Context, ownerID int64, ids []int64, _ bool) ([]*models.MarginNote, error) {
+	var notes []*models.MarginNote
+	for _, id := range ids {
+		if note, err := f.own(ownerID, id); err == nil {
+			notes = append(notes, note)
+		}
+	}
+	return notes, nil
 }
 
 type fakeMarginWorks struct{ ids map[int64]bool }
@@ -118,6 +132,7 @@ func marginRig(claims *auth.Claims) (*fakeMarginNotes, http.Handler) {
 	r.HandleFunc("/api/works/{workId}/margin-notes", withClaims(claims, h.Create)).Methods("POST")
 	r.HandleFunc("/api/works/{workId}/margin-notes", withClaims(claims, h.ListByWork)).Methods("GET")
 	r.HandleFunc("/api/margin-notes", withClaims(claims, h.List)).Methods("GET")
+	r.HandleFunc("/api/margin-notes/export", withClaims(claims, h.Export)).Methods("POST")
 	r.HandleFunc("/api/margin-notes/{id}", withClaims(claims, h.Update)).Methods("PUT")
 	r.HandleFunc("/api/margin-notes/{id}", withClaims(claims, h.Delete)).Methods("DELETE")
 	return notes, r
@@ -325,5 +340,37 @@ func TestMarginNoteListByWorkIsBareArray(t *testing.T) {
 	var got []models.MarginNote
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMarginNoteExportRejectsForeignSelection(t *testing.T) {
+	notes, h := marginRig(&auth.Claims{UserID: 42, Role: models.RoleReader})
+	notes.notes[1] = &models.MarginNote{ID: 1, OwnerID: 42, Body: "личный текст"}
+	notes.notes[2] = &models.MarginNote{ID: 2, OwnerID: 99, Body: "чужой текст"}
+	rec := marginDo(h, "POST", "/api/margin-notes/export", `{"ids":[1,2]}`)
+	if rec.Code != 404 || strings.Contains(rec.Body.String(), "текст") {
+		t.Fatalf("выгрузка чужой записи: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = marginDo(h, "POST", "/api/margin-notes/export", `{"ids":[1]}`)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "личный текст") {
+		t.Fatalf("выгрузка своей записи: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMarginNoteQuoteKeepsReadingChapter(t *testing.T) {
+	notes, h := marginRig(testReaderClaims)
+	rec := marginDo(h, "POST", "/api/works/7/margin-notes",
+		`{"target":"quote","chapter_id":10,"start_page":24,"end_page":25,"quote_key":"Без","body":"мысль"}`)
+	if rec.Code != http.StatusCreated || len(notes.created) != 1 {
+		t.Fatalf("код %d: %s", rec.Code, rec.Body)
+	}
+	chapterID := notes.created[0].ChapterID
+	if chapterID == nil || *chapterID != 10 {
+		t.Fatalf("контекст главы не записан: %+v", notes.created[0])
+	}
+	rec = marginDo(h, "POST", "/api/works/7/margin-notes",
+		`{"target":"quote","chapter_id":11,"start_page":24,"end_page":25,"quote_key":"Без","body":"мысль"}`)
+	if rec.Code != http.StatusNotFound || len(notes.created) != 1 {
+		t.Fatalf("цитата из главы чужого тома: %d %s", rec.Code, rec.Body)
 	}
 }

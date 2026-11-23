@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -1430,6 +1431,26 @@ func checkClosedChapter(t *testing.T, router http.Handler, f *closedSweep, cache
 	}
 	if res := sweepDo(t, router, "/api/margin-notes", f.editorTok); strings.Contains(res.text, "Открытая заметка") {
 		t.Error("заметки на полях: редактор видит заметку читателя")
+	}
+	exportNotes := func(token string, ids ...int64) sweepResponse {
+		body, err := json.Marshal(map[string][]int64{"ids": ids})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sweepSend(t, router, http.MethodPost, "/api/margin-notes/export", token, string(body))
+	}
+	if res := exportNotes(f.readerTok, f.ch.openNote); res.code != http.StatusOK || !strings.Contains(res.text, openNote) {
+		t.Errorf("открытая заметка в выгрузке: %d %s", res.code, res.text)
+	}
+	if res := exportNotes(f.editorTok, f.ch.openNote); res.code != http.StatusNotFound || strings.Contains(res.text, openNote) {
+		t.Errorf("чужая заметка в выгрузке: %d %s", res.code, res.text)
+	}
+	for _, id := range f.marginClosed {
+		res := exportNotes(f.readerTok, f.ch.openNote, id)
+		if res.code != http.StatusNotFound || strings.Contains(res.text, openNote) ||
+			chapterLeak.FindString(res.text) != "" || leakIn(f, res.text) != "" {
+			t.Errorf("закрытая заметка в выгрузке: %d %s", res.code, res.text)
+		}
 	}
 	countNotes := func() int {
 		var n int

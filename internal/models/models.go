@@ -1019,6 +1019,7 @@ type MarginNote struct {
 	// PageMissing — цитата, а её полоса снесена (перезаливкой).
 	PageMissing   bool      `json:"page_missing"`
 	SnapshotStart *int      `json:"snapshot_start_page"`
+	SnapshotEnd   *int      `json:"snapshot_end_page"`
 	QuoteKey      string    `json:"quote_key"`
 	QuoteTail     string    `json:"quote_tail"`
 	QuoteText     string    `json:"quote_text"`
@@ -1036,6 +1037,12 @@ type MarginNote struct {
 	NumberingStyle string `json:"numbering_style"`
 	// ContextChapter — самая узкая глава, накрывающая start_page (у цитаты).
 	ContextChapter string `json:"context_chapter,omitempty"`
+}
+
+// MarginNoteWork — том, доступный в фильтре личных заметок.
+type MarginNoteWork struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
 }
 
 // MarginNoteInput — то, что пишет обработчик после проверки.

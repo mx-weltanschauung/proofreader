@@ -78,6 +78,7 @@ export const ChapterView: React.FC = () => {
   // вырезок указателя (там хранится только голова) — тогда подсветится начало.
   const quote = searchParams.get('quote') ?? '';
   const quoteTo = searchParams.get('to') ?? '';
+  const quoteEndPage = Number(searchParams.get('to_page') ?? NaN);
   const { user } = useAuth();
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [work, setWork] = useState<Work | null>(null);
@@ -615,6 +616,7 @@ export const ChapterView: React.FC = () => {
         readingContentRef={readingContentRef}
         remainingReadingTime={remainingReadingTime}
         marginNotes={marginNotes}
+        noteChapterId={chapter.id}
         readerComments={readerComments}
         pageJump={{
           currentLabel:
@@ -627,7 +629,11 @@ export const ChapterView: React.FC = () => {
         pageHref={pageHref}
         crumbs={chapterCrumbs}
         highlightTerms={highlightTerms}
-        quote={{ start: quote, end: quoteTo }}
+        quote={{
+          start: quote,
+          end: quoteTo,
+          endPage: Number.isSafeInteger(quoteEndPage) ? quoteEndPage : undefined,
+        }}
         citation={{
           work,
           // Цитата, снятая в главе, ведёт В ГЛАВУ — туда, где читатель был, —

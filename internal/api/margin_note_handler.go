@@ -161,8 +161,7 @@ func (h *MarginNoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	in := models.MarginNoteInput{OwnerID: ownerID, WorkID: workID, Target: req.Target, Body: body}
-	switch req.Target {
-	case models.MarginTargetChapter:
+	if req.Target == models.MarginTargetChapter || (req.Target == models.MarginTargetQuote && req.ChapterID != 0) {
 		chapter, err := h.chapters.GetByID(ctx, req.ChapterID)
 		if err != nil {
 			if storageNotFound(err) {
@@ -177,8 +176,11 @@ func (h *MarginNoteHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		in.ChapterID = &chapter.ID
-		in.ChapterTitle = marginChapterTitle(chapter.Title)
-	case models.MarginTargetQuote:
+		if req.Target == models.MarginTargetChapter {
+			in.ChapterTitle = marginChapterTitle(chapter.Title)
+		}
+	}
+	if req.Target == models.MarginTargetQuote {
 		start, err := h.pages.GetByWorkAndPageNumber(ctx, workID, req.StartPage)
 		if err != nil {
 			h.pageError(w, err)
@@ -275,12 +277,93 @@ func (h *MarginNoteHandler) List(w http.ResponseWriter, r *http.Request) {
 	if n, err := strconv.Atoi(q.Get("offset")); err == nil && n > 0 {
 		offset = n
 	}
-	items, total, err := h.notes.ListByOwner(r.Context(), ownerID, workID, limit, offset, staffContext(r.Context()))
+	h.list(w, r, ownerID, workID, "", limit, offset)
+}
+
+// Search принимает строку в теле, чтобы личный текст не попадал в журналы URL.
+func (h *MarginNoteHandler) Search(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := marginClaims(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Query  string `json:"q"`
+		WorkID *int64 `json:"work_id"`
+		Limit  int    `json:"limit"`
+		Offset int    `json:"offset"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, marginMaxBody)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Некорректные параметры поиска")
+		return
+	}
+	limit := marginListDefaultLimit
+	if req.Limit > 0 {
+		limit = min(req.Limit, marginListMaxLimit)
+	}
+	h.list(w, r, ownerID, req.WorkID, strings.TrimSpace(req.Query), limit, max(req.Offset, 0))
+}
+
+func (h *MarginNoteHandler) list(w http.ResponseWriter, r *http.Request, ownerID int64, workID *int64, search string, limit, offset int) {
+	ctx := r.Context()
+	includeClosed := staffContext(ctx)
+	items, total, err := h.notes.ListByOwner(ctx, ownerID, workID, search, limit, offset, includeClosed)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось прочитать заметки")
 		return
 	}
-	writeJSONStatus(w, http.StatusOK, map[string]any{"items": items, "total": total})
+	result := map[string]any{"items": items, "total": total}
+	if offset == 0 {
+		works, err := h.notes.ListWorksByOwner(ctx, ownerID, includeClosed)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Не удалось прочитать тома заметок")
+			return
+		}
+		result["works"] = works
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSONStatus(w, http.StatusOK, result)
+}
+
+// Export — POST /margin-notes/export: свежие данные для сборки Markdown.
+func (h *MarginNoteHandler) Export(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	ownerID, ok := marginClaims(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 22*models.MarginNotesPerOwner+1024)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil ||
+		len(req.IDs) == 0 || len(req.IDs) > models.MarginNotesPerOwner {
+		writeError(w, http.StatusBadRequest, "Некорректный список заметок")
+		return
+	}
+	unique := make(map[int64]bool, len(req.IDs))
+	ids := make([]int64, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if id <= 0 {
+			writeError(w, http.StatusBadRequest, "Некорректный список заметок")
+			return
+		}
+		if !unique[id] {
+			unique[id] = true
+			ids = append(ids, id)
+		}
+	}
+	ctx := r.Context()
+	notes, err := h.notes.ListByIDs(ctx, ownerID, ids, staffContext(ctx))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Не удалось подготовить заметки")
+		return
+	}
+	if len(notes) != len(ids) {
+		writeError(w, http.StatusNotFound, "Часть выбранных заметок недоступна. Снимите выбор и выберите заметки заново.")
+		return
+	}
+	writeJSONStatus(w, http.StatusOK, notes)
 }
 
 // Update — PUT /margin-notes/{id}: меняется только текст.

@@ -12,6 +12,7 @@ import './MarginNotes.css';
 export interface NoteButtonProps {
   contentRef: React.RefObject<HTMLElement>;
   workId: number;
+  chapterId?: number;
   onCreated(n: MarginNote): void;
   className?: string;
 }
@@ -66,6 +67,7 @@ function quoteOfSelection(root: HTMLElement): Quote | null {
 
 interface Opened {
   quote: Quote;
+  chapterId?: number;
   /**
    * Том, с которого снята цитата. Берётся в момент нажатия, а не из пропа
    * при записи: в чтении подборки соседний элемент — другой том, и поле,
@@ -89,6 +91,7 @@ interface Opened {
 export const NoteButton: React.FC<NoteButtonProps> = ({
   contentRef,
   workId,
+  chapterId,
   onCreated,
   className,
 }) => {
@@ -151,6 +154,7 @@ export const NoteButton: React.FC<NoteButtonProps> = ({
       typeof range?.getBoundingClientRect === 'function' ? range.getBoundingClientRect() : null;
     setOpened({
       quote,
+      chapterId,
       workId,
       top: (rect?.bottom ?? 0) + window.scrollY + POPOVER_GAP,
       left: (rect?.left ?? 0) + window.scrollX,
@@ -195,7 +199,11 @@ export const NoteButton: React.FC<NoteButtonProps> = ({
               save={(body) =>
                 (asComment
                   ? readerCommentsApi.create(opened.workId, { ...opened.quote, body })
-                  : marginNotesApi.create(opened.workId, { ...opened.quote, body })
+                  : marginNotesApi.create(opened.workId, {
+                      ...opened.quote,
+                      chapter_id: opened.chapterId,
+                      body,
+                    })
                 ).then((r) => r.data)
               }
               onSaved={(n) => {

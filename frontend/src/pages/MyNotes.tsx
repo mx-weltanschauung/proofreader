@@ -7,6 +7,7 @@ import { joinPathFor } from '../utils/returnUrl';
 import { noteHref } from '../utils/marginNoteHref';
 import { apiErrorMessage } from '../utils/apiError';
 import { printedFolio } from '../utils/folio';
+import { notesMarkdown } from '../utils/notesMarkdown';
 import './MyNotes.css';
 
 const PAGE_SIZE = 50;
@@ -14,45 +15,8 @@ const PAGE_SIZE = 50;
 type Load = { status: 'loading' } | { status: 'ok' } | { status: 'error'; message: string };
 
 export const MyNotes: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const location = useLocation();
-  const [items, setItems] = useState<MarginNote[]>([]);
-  const [total, setTotal] = useState(0);
-  const [workId, setWorkId] = useState<number | undefined>(undefined);
-  const [works, setWorks] = useState<Map<number, string>>(new Map());
-  const [load, setLoad] = useState<Load>({ status: 'loading' });
-  const [loadingMore, setLoadingMore] = useState(false);
-  // Устаревший ответ (быстрая смена фильтра) не должен перезаписать свежий.
-  const seq = useRef(0);
-
-  const fetchPage = useCallback((wid: number | undefined, offset: number) => {
-    const mine = ++seq.current;
-    marginNotesApi
-      .mine({ work_id: wid, limit: PAGE_SIZE, offset })
-      .then((response) => {
-        if (mine !== seq.current) return;
-        const got = response.data.items ?? [];
-        setItems((prev) => (offset === 0 ? got : [...prev, ...got]));
-        setTotal(response.data.total);
-        setWorks((prev) => {
-          const next = new Map(prev);
-          for (const n of got) if (!next.has(n.work_id)) next.set(n.work_id, n.work_title ?? '');
-          return next;
-        });
-        setLoad({ status: 'ok' });
-        setLoadingMore(false);
-      })
-      .catch((err: unknown) => {
-        if (mine !== seq.current) return;
-        setLoad({ status: 'error', message: apiErrorMessage(err, 'Не удалось загрузить заметки') });
-        setLoadingMore(false);
-      });
-  }, []);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    fetchPage(undefined, 0);
-  }, [isAuthenticated, fetchPage]);
 
   if (!isAuthenticated) {
     return (
@@ -70,17 +34,99 @@ export const MyNotes: React.FC = () => {
     );
   }
 
-  const onFilter = (value: string) => {
-    const wid = value === '' ? undefined : Number(value);
-    setWorkId(wid);
+  return <NotesList key={user?.id} />;
+};
+
+const NotesList: React.FC = () => {
+  const [items, setItems] = useState<MarginNote[]>([]);
+  const [total, setTotal] = useState(0);
+  const [workId, setWorkId] = useState<number | undefined>();
+  const [works, setWorks] = useState<{ id: number; title: string }[]>([]);
+  const [search, setSearch] = useState('');
+  const query = search.trim();
+  const [load, setLoad] = useState<Load>({ status: 'loading' });
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [downloading, setDownloading] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const seq = useRef(0);
+  const invalidate = useCallback(() => {
+    seq.current++;
+  }, []);
+
+  const fetchPage = useCallback((wid: number | undefined, q: string, offset: number) => {
+    const mine = ++seq.current;
+    marginNotesApi
+      .mine({ work_id: wid, limit: PAGE_SIZE, offset, ...(q ? { q } : {}) })
+      .then(({ data }) => {
+        if (mine !== seq.current) return;
+        const got = data.items ?? [];
+        setItems((prev) => (offset === 0 ? got : [...prev, ...got]));
+        setTotal(data.total);
+        if (data.works) setWorks(data.works);
+        setLoad({ status: 'ok' });
+        setLoadingMore(false);
+      })
+      .catch((err: unknown) => {
+        if (mine !== seq.current) return;
+        setLoad({ status: 'error', message: apiErrorMessage(err, 'Не удалось загрузить заметки') });
+        setLoadingMore(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => fetchPage(workId, query, 0), query ? 250 : 0);
+    return () => {
+      window.clearTimeout(timer);
+      invalidate();
+    };
+  }, [workId, query, fetchPage, invalidate]);
+
+  const resetList = () => {
+    invalidate();
     setItems([]);
     setLoad({ status: 'loading' });
-    fetchPage(wid, 0);
+    setLoadingMore(false);
   };
 
   const onMore = () => {
     setLoadingMore(true);
-    fetchPage(workId, items.length);
+    fetchPage(workId, query, items.length);
+  };
+
+  const toggle = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setExportError('');
+  };
+
+  const download = async () => {
+    const userId = useAuth.getState().user?.id;
+    setExportError('');
+    setDownloading(true);
+    try {
+      const { data } = await marginNotesApi.forExport([...selected]);
+      const markdown = await notesMarkdown(data, window.location.origin);
+      if (useAuth.getState().user?.id !== userId) return;
+      const url = URL.createObjectURL(
+        new Blob([markdown], { type: 'text/markdown;charset=utf-8' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'my-notes.md';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      setExportError(apiErrorMessage(err, 'Не удалось скачать заметки'));
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -93,22 +139,69 @@ export const MyNotes: React.FC = () => {
         Заметки на полях видите только вы. <Link to="/help#notes">Как они устроены</Link>
       </p>
 
-      {works.size > 0 && (
+      <div className="my-notes-controls">
         <label className="my-notes-filter">
-          <span>Том</span>
-          <select
-            aria-label="Том"
-            value={workId === undefined ? '' : String(workId)}
-            onChange={(e) => onFilter(e.target.value)}
-          >
-            <option value="">Все тома</option>
-            {[...works].map(([id, title]) => (
-              <option key={id} value={id}>
-                {title}
-              </option>
-            ))}
-          </select>
+          <span>Поиск по заметкам и цитатам</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => {
+              if (e.target.value.trim() !== query) resetList();
+              setSearch(e.target.value);
+            }}
+          />
         </label>
+        {(works.length > 0 || workId !== undefined) && (
+          <label className="my-notes-filter">
+            <span>Том</span>
+            <select
+              value={workId ?? ''}
+              onChange={(e) => {
+                resetList();
+                setWorkId(e.target.value ? Number(e.target.value) : undefined);
+              }}
+            >
+              <option value="">Все тома</option>
+              {workId !== undefined && !works.some((work) => work.id === workId) && (
+                <option value={workId}>Недоступный том</option>
+              )}
+              {works.map(({ id, title }) => (
+                <option key={id} value={id}>
+                  {title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+
+      <div className="my-notes-selection">
+        <span role="status">Выбрано: {selected.size}</span>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!selected.size || downloading}
+          onClick={() => void download()}
+        >
+          {downloading ? 'Подготовка…' : 'Скачать Markdown'}
+        </button>
+        {selected.size > 0 && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              setSelected(new Set());
+              setExportError('');
+            }}
+          >
+            Снять выбор
+          </button>
+        )}
+      </div>
+      {exportError && (
+        <div role="alert" className="error-state">
+          {exportError}
+        </div>
       )}
 
       {load.status === 'loading' && <div className="loading-state">Загрузка…</div>}
@@ -116,7 +209,7 @@ export const MyNotes: React.FC = () => {
 
       {load.status === 'ok' && items.length === 0 && (
         <div className="my-notes-empty">
-          <p>Заметок пока нет.</p>
+          <p>{query || workId ? 'Заметки не найдены.' : 'Заметок пока нет.'}</p>
         </div>
       )}
 
@@ -138,6 +231,12 @@ export const MyNotes: React.FC = () => {
             return (
               <li key={n.id} className="my-notes-row">
                 <div className="my-notes-place">
+                  <input
+                    type="checkbox"
+                    aria-label={`Выбрать заметку: ${n.body.slice(0, 80)}`}
+                    checked={selected.has(n.id)}
+                    onChange={() => toggle(n.id)}
+                  />
                   <Link to={to} className="my-notes-link">
                     {[
                       n.work_title,
@@ -163,11 +262,19 @@ export const MyNotes: React.FC = () => {
                     type="button"
                     className="btn btn-secondary btn-sm"
                     onClick={() => {
+                      const request = seq.current;
                       void readerCommentsApi
                         .create(n.work_id, { note_id: n.id, body: n.body })
                         .then(() => {
-                          setItems((s) => s.filter((x) => x.id !== n.id));
-                          setTotal((v) => v - 1);
+                          if (request === seq.current) {
+                            setItems((s) => s.filter((x) => x.id !== n.id));
+                            setTotal((v) => v - 1);
+                          }
+                          setSelected((prev) => {
+                            const next = new Set(prev);
+                            next.delete(n.id);
+                            return next;
+                          });
                           window.dispatchEvent(new Event('reader-comments-changed'));
                         })
                         .catch((e) =>

@@ -131,6 +131,8 @@ export type QuoteMatch = 'hit' | 'multiple' | 'partial' | 'miss';
 export interface QuoteSpan {
   start: string;
   end?: string;
+  /** Номер последней полосы, если он известен из сохранённого диапазона. */
+  endPage?: number;
 }
 
 /**
@@ -280,7 +282,14 @@ function findSpan(
     // Вперёд ОТ НАЧАЛА пролёта, а не от его конца: якорь конца короткой
     // цитаты законно перекрывается с ключом начала («Если до» / «до 6 лет»),
     // и поиск от конца начала такой якорь бы потерял.
-    const at = flat.text.indexOf(end, from);
+    let at = flat.text.indexOf(end, from);
+    while (
+      at >= 0 &&
+      span.endPage !== undefined &&
+      (flat.pages[at] !== span.endPage || flat.pages[at + end.length - 1] !== span.endPage)
+    ) {
+      at = flat.text.indexOf(end, at + 1);
+    }
     if (at < 0) endMissing = true;
     else to = Math.max(to, at + end.length);
   }

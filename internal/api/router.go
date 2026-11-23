@@ -524,6 +524,8 @@ func (rt *Router) Setup() *mux.Router {
 	reader.HandleFunc("/works/{workId}/margin-notes", rt.marginNoteHandler.Create).Methods("POST")
 	reader.HandleFunc("/works/{workId}/margin-notes", rt.marginNoteHandler.ListByWork).Methods("GET")
 	reader.HandleFunc("/margin-notes", rt.marginNoteHandler.List).Methods("GET")
+	reader.HandleFunc("/margin-notes/search", rt.marginNoteHandler.Search).Methods("POST")
+	reader.HandleFunc("/margin-notes/export", rt.marginNoteHandler.Export).Methods("POST")
 	reader.HandleFunc("/margin-notes/{id}", rt.marginNoteHandler.Update).Methods("PUT")
 	reader.HandleFunc("/margin-notes/{id}", rt.marginNoteHandler.Delete).Methods("DELETE")
 

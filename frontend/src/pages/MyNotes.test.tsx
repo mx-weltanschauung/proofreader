@@ -187,6 +187,10 @@ describe('MyNotes', () => {
     const spy = vi.spyOn(marginNotesApi, 'mine').mockReturnValue(
       ok({
         total: 2,
+        works: [
+          { id: 7, title: 'Том седьмой' },
+          { id: 8, title: 'Том восьмой' },
+        ],
         items: [
           note({ id: 1, work_id: 7, work_title: 'Том седьмой', body: 'а' }),
           note({ id: 2, work_id: 8, work_title: 'Том восьмой', work_slug: 'tom-8', body: 'б' }),
@@ -215,4 +219,24 @@ describe('MyNotes', () => {
     expect(spy).toHaveBeenLastCalledWith({ work_id: undefined, limit: 50, offset: 50 });
     expect(screen.queryByRole('button', { name: /показать ещё/i })).toBeNull();
   });
+});
+
+it('сохраняет выбранную заметку при поиске и запрашивает следующую страницу с тем же запросом', async () => {
+  login();
+  const first = Array.from({ length: 50 }, (_, i) => note({ id: i + 1, body: `н${i + 1}` }));
+  const spy = vi
+    .spyOn(marginNotesApi, 'mine')
+    .mockImplementation(({ offset }) =>
+      ok({ total: 51, items: offset ? [note({ id: 51 })] : first }),
+    );
+  renderPage();
+  await screen.findByText('н1');
+  await userEvent.click(screen.getAllByRole('checkbox')[0]);
+  await userEvent.type(screen.getByRole('searchbox'), 'редкая');
+  await waitFor(() =>
+    expect(spy).toHaveBeenLastCalledWith({ work_id: undefined, limit: 50, offset: 0, q: 'редкая' }),
+  );
+  expect(screen.getByText('Выбрано: 1')).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole('button', { name: /показать ещё/i }));
+  expect(spy).toHaveBeenLastCalledWith({ work_id: undefined, limit: 50, offset: 50, q: 'редкая' });
 });
