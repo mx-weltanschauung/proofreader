@@ -55,6 +55,7 @@ import { plural } from '../utils/volumeLabel';
 import { missingPageMessage, parsePrintedPage, resolvePageJump } from '../utils/pageJump';
 import { printedFolio } from '../utils/folio';
 import { ChapterEvents } from '../components/ChapterEvents';
+import { ReadLaterButton } from '../components/ReadLaterButton';
 import { TargetNotes } from '../components/TargetNotes';
 import { useMarginNotes } from '../hooks/useMarginNotes';
 import { useReaderComments } from '../hooks/useReaderComments';
@@ -706,6 +707,7 @@ export const ChapterView: React.FC = () => {
               {totalReadingTime && <span>{totalReadingTime} чтения</span>}
             </div>
             <div className="chapter-header-actions">
+              <ReadLaterButton target={{ kind: 'chapter', id: chapter.id }} title={chapter.title} />
               {!chapterClosedInEffect &&
                 (user?.role === 'reader' ? (
                   <button className="btn btn-secondary" disabled={openingRun} onClick={openRun}>

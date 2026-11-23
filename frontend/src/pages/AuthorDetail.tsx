@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../utils/apiError';
 import { articleKindLabel } from '../utils/credits';
 import { chapterPath, journalPath } from '../utils/paths';
 import { issueDesignation } from '../utils/issueDesignation';
+import { ReadLaterButton } from '../components/ReadLaterButton';
 import './AuthorDetail.css';
 
 export function AuthorDetail() {
@@ -142,6 +143,11 @@ export function AuthorDetail() {
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
+                <ReadLaterButton
+                  target={{ kind: 'chapter', id: a.chapter_id }}
+                  title={a.title}
+                  compact
+                />
               </li>
             ))}
           </ul>

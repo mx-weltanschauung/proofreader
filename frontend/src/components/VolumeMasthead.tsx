@@ -5,6 +5,7 @@ import type { LastRead } from '../hooks/useReadingProgress';
 import { volumeCoordinates } from '../utils/volumeCoordinates';
 import { plural, worksPlural } from '../utils/volumeLabel';
 import { worksLevel } from '../utils/volumeOutline';
+import { ReadLaterButton } from './ReadLaterButton';
 import { DownloadMenu } from './DownloadMenu';
 import { ClosedBadge } from './ClosedBadge';
 import { ShareButton } from './ShareButton';
@@ -92,37 +93,40 @@ export const VolumeMasthead: React.FC<Props> = ({
         </p>
       )}
 
-      {canStartReading && (
-        <div className="vol-masthead-actions">
-          <Link to={startHref} className="vol-masthead-start">
-            Читать с начала
-          </Link>
-          {resume && (
-            <Link
-              // Слаг главы «Продолжить» не хранится в localStorage (см.
-              // LastRead) — числовой сегмент здесь законен, а не запасной
-              // вариант.
-              to={chapterPath(work, { id: resume.chapterId })}
-              className="vol-masthead-resume"
-            >
-              Продолжить: {resume.chapterTitle}
-              {resume.pageNumber !== null && `, стр. ${resume.pageNumber}`}
+      <div className="vol-masthead-actions">
+        {canStartReading && (
+          <>
+            <Link to={startHref} className="vol-masthead-start">
+              Читать с начала
             </Link>
-          )}
-          <DownloadMenu
-            href={`/api/works/${work.id}/download`}
-            audio={hasAudio}
-            withToken={!!work.closed_by}
-          />
-          {/* Подпись — та же, что во вкладке (WorkDetail, useDocumentTitle):
+            {resume && (
+              <Link
+                // Слаг главы «Продолжить» не хранится в localStorage (см.
+                // LastRead) — числовой сегмент здесь законен, а не запасной
+                // вариант.
+                to={chapterPath(work, { id: resume.chapterId })}
+                className="vol-masthead-resume"
+              >
+                Продолжить: {resume.chapterTitle}
+                {resume.pageNumber !== null && `, стр. ${resume.pageNumber}`}
+              </Link>
+            )}
+            <DownloadMenu
+              href={`/api/works/${work.id}/download`}
+              audio={hasAudio}
+              withToken={!!work.closed_by}
+            />
+            {/* Подпись — та же, что во вкладке (WorkDetail, useDocumentTitle):
               название вперёд, автор следом. */}
-          <ShareButton
-            title={[work.title, work.author].filter(Boolean).join(' — ')}
-            path={workPath(work)}
-            className="vol-masthead-share"
-          />
-        </div>
-      )}
+            <ShareButton
+              title={[work.title, work.author].filter(Boolean).join(' — ')}
+              path={workPath(work)}
+              className="vol-masthead-share"
+            />
+          </>
+        )}
+        <ReadLaterButton target={{ kind: 'work', id: work.id }} title={work.title} />
+      </div>
 
       {children.length > 0 && (
         <>

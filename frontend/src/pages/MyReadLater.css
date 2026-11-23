@@ -1,0 +1,31 @@
+.read-later-page {
+  max-width: 52rem;
+  margin-inline: auto;
+  padding: 1.5rem 1rem;
+}
+
+.read-later-list {
+  margin: 1.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.read-later-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 0;
+  border-block-start: 1px solid var(--color-border-light);
+}
+
+.read-later-row > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.read-later-source {
+  margin-block-start: 0.25rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}

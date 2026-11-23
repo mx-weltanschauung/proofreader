@@ -133,3 +133,19 @@
     display: inline-block;
   }
 }
+
+.volume-slab-row {
+  position: relative;
+}
+
+.volume-slab-row:has(> .read-later-compact) .volume-slab {
+  padding-inline-end: 5.5rem;
+}
+
+.volume-slab-row > .read-later-compact {
+  position: absolute;
+  z-index: 2;
+  inset-inline-end: 0.55rem;
+  inset-block-start: 50%;
+  transform: translateY(-50%);
+}

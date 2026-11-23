@@ -2,6 +2,8 @@ import axios from 'axios';
 import { loginPathFor, joinPathFor } from '../utils/returnUrl';
 import { EMPTY_SCOPE, type SearchScope } from '../utils/searchScope';
 import type {
+  ReadLaterEntry,
+  ReadLaterTarget,
   MarginNote,
   ReaderComment,
   CommentRevision,
@@ -109,6 +111,8 @@ declare module 'axios' {
      * вызывающий сам показывает ошибку рядом с полем, сохраняя ввод.
      */
     keepPageOn401?: boolean;
+    /** Запрос относится к конкретной сессии, даже если кэш общий для всего приложения. */
+    sessionToken?: string | null;
   }
 }
 
@@ -119,6 +123,9 @@ const api = axios.create({
 // Add auth token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
+  if (config.sessionToken !== undefined && (!token || config.sessionToken !== token)) {
+    throw new Error('Сессия изменилась в другой вкладке');
+  }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -148,6 +155,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      const sessionToken = error.config?.sessionToken;
+      if (sessionToken !== undefined && sessionToken !== localStorage.getItem('token')) {
+        return Promise.reject(error);
+      }
       // Роли без сохранённого пользователя (первый заход) достаётся прежнее
       // поведение — на /login, хуже нынешнего не будет.
       const isReader = storedUserRole() === 'reader';
@@ -875,6 +886,17 @@ export const suggestionsApi = {
 const KEEP_PAGE = { keepPageOn401: true } as const;
 
 // Заметки читателя на полях: к тому, главе или цитате.
+export const readLaterApi = {
+  list: (sessionToken: string | null, signal: AbortSignal) =>
+    api.get<ReadLaterEntry[]>('/read-later', { sessionToken, signal }),
+  change: (sessionToken: string | null, { kind, id }: ReadLaterTarget, saved: boolean) =>
+    api.request<void>({
+      url: `/read-later/${kind}/${id}`,
+      method: saved ? 'PUT' : 'DELETE',
+      sessionToken,
+    }),
+};
+
 export const marginNotesApi = {
   ofWork: (workId: number) => api.get<MarginNote[]>(`/works/${workId}/margin-notes`, KEEP_PAGE),
   create: (workId: number, data: CreateMarginNote) =>
