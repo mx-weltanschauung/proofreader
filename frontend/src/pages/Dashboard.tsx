@@ -11,12 +11,14 @@ import { VolumeShelf } from '../components/VolumeShelf';
 import { JournalShelf } from '../components/JournalShelf';
 import { OrganizationShelf } from '../components/OrganizationShelf';
 import { HomeToc } from '../components/HomeToc';
+import { PrintedPageLookup } from '../components/PrintedPageLookup';
 import type { EventOrganizationSummary, JournalSummary, ShelfEdition, ShelfWork } from '../types';
 import { apiErrorMessage } from '../utils/apiError';
 import { splitEditionVolumes } from '../utils/editionStats';
 import { corpusSentence } from '../utils/corpusSentence';
 import { buildHomeLayout } from '../utils/homeLayout';
 import { plural } from '../utils/volumeLabel';
+import { shownVolumeNumber } from '../utils/shownVolume';
 import { chapterPath, editionPath, workPath } from '../utils/paths';
 
 import { useSite } from '../services/site';
@@ -170,6 +172,12 @@ export const Dashboard: React.FC = () => {
       <nav className="shelf-quicklinks" aria-label="Другие разделы читальни">
         <Link to="/documents">Разборы</Link>
       </nav>
+
+      {shelves.some(
+        ({ edition, volumes }) =>
+          edition.volume_numbering !== 'order' &&
+          volumes.some((volume) => shownVolumeNumber(volume) !== undefined),
+      ) && <PrintedPageLookup shelves={shelves} />}
 
       <HomeToc layout={layout} />
 

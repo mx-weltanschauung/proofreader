@@ -1,0 +1,58 @@
+.printed-page-lookup {
+  max-width: 48rem;
+  margin-block: 0 2rem;
+  padding: 1rem;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: 4px;
+}
+
+.printed-page-lookup h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+
+.printed-page-lookup label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.printed-page-lookup-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.printed-page-lookup-fields textarea {
+  flex: 1 1 18rem;
+  min-width: 0;
+  resize: vertical;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-card-border);
+  border-radius: 4px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.printed-page-lookup-status:not(:empty) {
+  margin-top: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.printed-page-lookup-options {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.printed-page-lookup-options .btn {
+  max-width: 100%;
+  white-space: normal;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
