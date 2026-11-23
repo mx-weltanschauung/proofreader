@@ -66,6 +66,7 @@ import type {
   WorkUpdatePayload,
   Collection,
   CollectionProgramInput,
+  CollectionProgramReviewEntry,
   CollectionItem,
   ReadingWindow,
   SuggestionRow,
@@ -715,6 +716,22 @@ export const collectionsApi = {
 
   unpublish: (slug: string, nickname?: string) =>
     api.post<Collection>(collectionUrl(nickname, slug, '/unpublish')),
+
+  submitProgram: (slug: string, revision: number, nickname?: string) =>
+    api.post<void>(collectionUrl(nickname, slug, '/program/submit'), { revision }),
+
+  programReviewQueue: () => api.get<CollectionProgramReviewEntry[]>('/collection-programs/review'),
+
+  resolveProgram: (
+    entry: CollectionProgramReviewEntry,
+    decision: 'approve' | 'reject',
+    reason?: string,
+  ) =>
+    api.post<void>(`/collection-programs/review/${entry.id}`, {
+      revision: entry.revision,
+      decision,
+      reason,
+    }),
 
   saveProgram: (slug: string, data: CollectionProgramInput, nickname?: string) =>
     api.patch<void>(collectionUrl(nickname, slug, '/program'), data),

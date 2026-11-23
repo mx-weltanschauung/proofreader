@@ -197,6 +197,18 @@ func (f *fakeCollectionStore) SaveProgram(context.Context, int64, int64, []model
 	return nil
 }
 
+func (f *fakeCollectionStore) SubmitProgram(context.Context, int64, int64, string, int, time.Time) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeCollectionStore) ProgramsForReview(context.Context) ([]models.CollectionProgramReviewEntry, error) {
+	return nil, nil
+}
+
+func (f *fakeCollectionStore) ResolveProgram(context.Context, int64, int64, string) error {
+	return nil
+}
+
 func (f *fakeCollectionStore) ChaptersForWorks(ctx context.Context, ids []int64) ([]*models.Chapter, error) {
 	return f.chapters, nil
 }
@@ -1221,5 +1233,70 @@ func TestCollectionProgramRequiresOwnerAndTitle(t *testing.T) {
 				t.Fatalf("статус %d, нужен %d: %s", rec.Code, tc.status, rec.Body.String())
 			}
 		})
+	}
+}
+
+type changingCollectionReviewStore struct {
+	*fakeCollectionStore
+	reads int
+}
+
+func (f *changingCollectionReviewStore) GetByAuthorSlug(ctx context.Context, nickname, slug string) (*models.Collection, error) {
+	c, err := f.fakeCollectionStore.GetByAuthorSlug(ctx, nickname, slug)
+	if err != nil || c == nil {
+		return c, err
+	}
+	f.reads++
+	if f.reads > 1 {
+		c.PublishedAt = nil
+		c.ProgramReviewStatus = models.CollectionProgramPending
+		c.Revision++
+	}
+	return c, nil
+}
+
+func TestCollectionReadRechecksModerationAfterLoadingComposition(t *testing.T) {
+	f := collectionFixture()
+	c := f.collections[0]
+	c.AuthorNickname = testCollectionOwnerClaims.Nickname
+	c.OwnerID = &testCollectionOwnerClaims.UserID
+	c.PublishIPHash = "published"
+	store := &changingCollectionReviewStore{fakeCollectionStore: f}
+	h := NewCollectionHandler(store, nil, nil, nil, "", false)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/collections/author/materializm", nil)
+	req = mux.SetURLVars(req, map[string]string{"nickname": c.AuthorNickname, "slug": c.Slug})
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
+	if rec.Code != http.StatusGone || strings.Contains(rec.Body.String(), "Фейербах") {
+		t.Fatalf("снятая между запросами программа: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPendingProgramCanBePreviewedByModerator(t *testing.T) {
+	f := collectionFixture()
+	c := f.collections[0]
+	c.AuthorNickname = testCollectionOwnerClaims.Nickname
+	c.OwnerID = &testCollectionOwnerClaims.UserID
+	c.PublishedAt = nil
+	c.ProgramReviewStatus = models.CollectionProgramPending
+	h := NewCollectionHandler(f, nil, nil, nil, "", false)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/collections/author/materializm", nil)
+	req = mux.SetURLVars(req, map[string]string{"nickname": c.AuthorNickname, "slug": c.Slug})
+	for _, tc := range []struct {
+		claims *auth.Claims
+		want   int
+	}{
+		{nil, http.StatusNotFound},
+		{testCollectionStrangerClaims, http.StatusNotFound},
+		{testCollectionEditorClaims, http.StatusOK},
+		{testCollectionOwnerClaims, http.StatusOK},
+	} {
+		rec := httptest.NewRecorder()
+		withClaims(tc.claims, h.Get)(rec, req)
+		if rec.Code != tc.want {
+			t.Fatalf("доступ к поданному: %d, нужен %d: %s", rec.Code, tc.want, rec.Body.String())
+		}
 	}
 }

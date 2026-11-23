@@ -13,15 +13,6 @@ import (
 // устарел или не содержит каждый текущий элемент подборки ровно один раз.
 var ErrCollectionCompositionChanged = errors.New("collection composition changed")
 
-// Все операции, меняющие порядок или набор элементов, берут этот замок
-// прежде, чем трогать строки состава.
-func lockCollectionComposition(ctx context.Context, tx pgx.Tx, id int64) (int64, error) {
-	var revision int64
-	err := tx.QueryRow(ctx, `
-		SELECT program_revision FROM collections WHERE id = $1 FOR NO KEY UPDATE`, id).Scan(&revision)
-	return revision, err
-}
-
 func advanceCollectionRevision(ctx context.Context, tx pgx.Tx, id int64) error {
 	_, err := tx.Exec(ctx, `UPDATE collections SET program_revision = program_revision + 1 WHERE id = $1`, id)
 	return err
@@ -84,7 +75,7 @@ func (r *CollectionRepository) SaveProgram(ctx context.Context, id, expectedRevi
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	revision, err := lockCollectionComposition(ctx, tx, id)
+	revision, err := lockCollectionComposition(ctx, tx, id, len(meetings) > 0)
 	if err != nil {
 		return err
 	}

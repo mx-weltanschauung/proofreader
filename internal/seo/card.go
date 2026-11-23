@@ -250,19 +250,29 @@ func (h *Handler) OGCard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cacheKey := "/og/" + kind + "/" + id
+	mutable := kind == "collection" && strings.Contains(id, "/")
+	if mutable {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	// Метка поколения — до рисования, по той же причине, что у страниц
 	// (см. Handler.Page): у карточек срок годности сутки, и карточка снятого
 	// тома, легшая в кэш после сброса, пережила бы снятие на сутки.
 	gen := h.cards.generation()
-	if cached, ok := h.cards.get(cacheKey); ok {
-		writeCard(w, r, cached)
-		return
+	if !mutable {
+		if cached, ok := h.cards.get(cacheKey); ok {
+			writeCard(w, r, cached)
+			return
+		}
 	}
 
 	in, stamp, err := h.src.cardInput(r.Context(), kind, id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrNeverPublished) {
 			http.NotFound(w, r)
+			return
+		}
+		if errors.Is(err, ErrBusy) {
+			writeRenderError(w, r, cacheKey, err)
 			return
 		}
 		log.Printf("карточка %s: %v", cacheKey, err)
@@ -287,7 +297,9 @@ func (h *Handler) OGCard(w http.ResponseWriter, r *http.Request) {
 		}
 		entry.etag = docETag(cacheKey, h.build(), closures, stamp.Unix())
 	}
-	h.cards.putIfFresh(cacheKey, entry, gen)
+	if !mutable {
+		h.cards.putIfFresh(cacheKey, entry, gen)
+	}
 	writeCard(w, r, entry)
 }
 
@@ -302,7 +314,9 @@ func writeCard(w http.ResponseWriter, r *http.Request, e *cacheEntry) {
 	w.Header().Set("Content-Type", "image/png")
 	// Сутки: Телеграм всё равно забирает карточку один раз и держит её у себя
 	// сам, а поисковики перезаходят по ETag.
-	w.Header().Set("Cache-Control", "public, max-age=86400")
+	if w.Header().Get("Cache-Control") == "" {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+	}
 	if _, err := w.Write([]byte(e.body)); err != nil {
 		log.Printf("карточка: отдача прервана: %v", err)
 	}
@@ -493,10 +507,7 @@ func (s *Source) cardInput(ctx context.Context, kind, id string) (CardInput, tim
 		}
 		subtitle := "Подборка"
 		if c.AuthorNickname != "" {
-			// Несъёмная пометка происхождения: читальня отвечает за то, что
-			// показывает, и не модерирует читательские подборки — читатель
-			// должен быть виден как собиратель, автор карточки его убрать не
-			// может.
+			// Подпись показывает, кто собрал подборку.
 			subtitle = "Подборка · собрал читатель " + c.AuthorNickname
 		}
 		// Пункты закрытых источников не считаются: страница подборки их тоже

@@ -65,6 +65,11 @@ const DocumentView = lazy(() =>
 const DocumentReviewQueue = lazy(() =>
   import('./pages/DocumentReviewQueue').then((m) => ({ default: m.DocumentReviewQueue })),
 );
+const CollectionProgramReviewQueue = lazy(() =>
+  import('./pages/CollectionProgramReviewQueue').then((m) => ({
+    default: m.CollectionProgramReviewQueue,
+  })),
+);
 const EditionForm = lazy(() =>
   import('./pages/EditionForm').then((m) => ({ default: m.EditionForm })),
 );
@@ -386,6 +391,14 @@ function App() {
                     наравне с редактором/администратором) — RequireRole тут не
                     подходит, форма сама показывает приглашение записаться
                     гостю (см. CollectionForm.tsx). */}
+                <Route
+                  path="/collection-programs/review"
+                  element={
+                    <RequireRole roles={['administrator', 'editor']}>
+                      <CollectionProgramReviewQueue />
+                    </RequireRole>
+                  }
+                />
                 <Route path="/collections/new" element={<CollectionForm />} />
                 <Route path="/collections/:slug/edit" element={<CollectionForm />} />
                 {/* Длинный (читательский) адрес несёт ник впереди слага — см.

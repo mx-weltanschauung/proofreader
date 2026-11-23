@@ -754,9 +754,26 @@ type Collection struct {
 	// проект избегает. Из-за него же у пустой подборки (Items == []*CollectionEntry{})
 	// ключ "items" в ответе отсутствует вовсе — это ожидаемый контракт, а не баг:
 	// потребитель обязан читать отсутствие ключа как пустой состав.
-	Items           []*CollectionEntry  `json:"items,omitempty" db:"-"`
-	Meetings        []CollectionMeeting `json:"meetings,omitempty" db:"-"`
-	ProgramRevision *int64              `json:"program_revision,omitempty" db:"-"`
+	Items               []*CollectionEntry  `json:"items,omitempty" db:"-"`
+	Meetings            []CollectionMeeting `json:"meetings,omitempty" db:"-"`
+	ProgramRevision     *int64              `json:"program_revision,omitempty" db:"-"`
+	Revision            int64               `json:"-" db:"program_revision"`
+	ProgramReviewStatus string              `json:"program_review_status,omitempty" db:"program_review_status"`
+	ProgramRejectReason string              `json:"program_reject_reason,omitempty" db:"program_reject_reason"`
+}
+
+const (
+	CollectionProgramPending  = "pending"
+	CollectionProgramRejected = "rejected"
+)
+
+type CollectionProgramReviewEntry struct {
+	ID             int64     `json:"id"`
+	Title          string    `json:"title"`
+	Slug           string    `json:"slug"`
+	AuthorNickname string    `json:"author_nickname"`
+	Revision       int64     `json:"revision"`
+	SubmittedAt    time.Time `json:"submitted_at"`
 }
 
 // CollectionMeeting — занятие в программе. Position задаёт место в программе

@@ -321,15 +321,28 @@ export const CollectionForm: React.FC = () => {
     }
   };
 
-  const handleUnpublish = async () => {
-    if (!routeSlug) return;
+  const handleSubmitProgram = async () => {
+    if (!routeSlug || collection?.program_revision === undefined) return;
     setIsPublishing(true);
     try {
-      const response = await collectionsApi.unpublish(routeSlug, nickname);
-      setCollection((current) =>
-        current ? { ...current, published_at: response.data.published_at } : current,
-      );
-      toast.success('Подборка снята с публикации');
+      await collectionsApi.submitProgram(routeSlug, collection.program_revision, nickname);
+      await reloadCollection(routeSlug);
+      toast.success('Программа отправлена на проверку');
+    } catch (err: unknown) {
+      toast.error(apiErrorMessage(err, 'Не удалось отправить программу на проверку'));
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
+  const handleUnpublish = async () => {
+    if (!routeSlug) return;
+    const pending = collection?.program_review_status === 'pending';
+    setIsPublishing(true);
+    try {
+      await collectionsApi.unpublish(routeSlug, nickname);
+      await reloadCollection(routeSlug);
+      toast.success(pending ? 'Программа отозвана с проверки' : 'Подборка снята с публикации');
     } catch (err: unknown) {
       toast.error(apiErrorMessage(err, 'Не удалось снять подборку с публикации'));
     } finally {
@@ -363,6 +376,20 @@ export const CollectionForm: React.FC = () => {
   const backHref = collection ? collectionPath(collection) : '/collections';
   const backLabel = isEditMode ? '← К подборке' : '← К подборкам';
   const items = collection?.items ?? [];
+  const readerProgram = Boolean(collection?.author_nickname && collection.meetings?.length);
+  const pending = collection?.program_review_status === 'pending';
+  const rejected = readerProgram && collection?.program_review_status === 'rejected';
+  const publishedReaderProgram = readerProgram && Boolean(collection?.published_at);
+  const locked = pending || publishedReaderProgram;
+  const publishedReaderCollection = Boolean(collection?.author_nickname && collection.published_at);
+  let publicationStatus = 'Подборка сейчас черновик — её видите только вы.';
+  if (pending) publicationStatus = 'Программа на проверке. Для правки отзовите её.';
+  if (rejected) publicationStatus = 'Редактор вернул программу на доработку.';
+  if (collection?.published_at) {
+    publicationStatus = publishedReaderProgram
+      ? 'При начале правки программа будет снята с публикации. После изменений её нужно снова отправить на проверку.'
+      : 'Подборка опубликована.';
+  }
 
   return (
     <div className="collection-form-container">
@@ -375,103 +402,116 @@ export const CollectionForm: React.FC = () => {
 
         {error && <div className="error-message">{error}</div>}
 
-        <form onSubmit={(e) => void handleSubmit(e)} className="collection-form">
-          <div className="form-group">
-            <label htmlFor="collection-title">
-              Название <span className="required">*</span>
-            </label>
-            <input
-              id="collection-title"
-              type="text"
-              value={title}
-              onChange={(e) => handleTitleChange(e.target.value)}
-              placeholder="Материализм и эмпириокритицизм"
-              required
-            />
-          </div>
+        {!locked && (
+          <form onSubmit={(e) => void handleSubmit(e)} className="collection-form">
+            <div className="form-group">
+              <label htmlFor="collection-title">
+                Название <span className="required">*</span>
+              </label>
+              <input
+                id="collection-title"
+                type="text"
+                value={title}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                placeholder="Материализм и эмпириокритицизм"
+                required
+              />
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="collection-slug">
-              Слаг <span className="required">*</span>
-            </label>
-            <input
-              id="collection-slug"
-              type="text"
-              value={slug}
-              onChange={(e) => {
-                setSlugTouched(true);
-                setSlug(e.target.value);
-              }}
-              placeholder="materializm"
-              required
-            />
-            <p className="form-help-text">Сервер слаг не генерирует и пустой не принимает.</p>
-          </div>
+            <div className="form-group">
+              <label htmlFor="collection-slug">
+                Слаг <span className="required">*</span>
+              </label>
+              <input
+                id="collection-slug"
+                type="text"
+                value={slug}
+                onChange={(e) => {
+                  setSlugTouched(true);
+                  setSlug(e.target.value);
+                }}
+                placeholder="materializm"
+                required
+              />
+              <p className="form-help-text">Сервер слаг не генерирует и пустой не принимает.</p>
+            </div>
 
-          <div className="form-group">
-            <label htmlFor="collection-description">Описание</label>
-            <textarea
-              id="collection-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
+            <div className="form-group">
+              <label htmlFor="collection-description">Описание</label>
+              <textarea
+                id="collection-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+              />
+            </div>
 
-          <div className="form-actions">
-            <button
-              type="button"
-              onClick={() => navigate(backHref)}
-              className="cancel-button"
-              disabled={isSaving}
-            >
-              Отмена
-            </button>
-            <button type="submit" className="submit-button" disabled={isSaving}>
-              {isSaving ? 'Сохранение…' : isEditMode ? 'Сохранить' : 'Создать'}
-            </button>
-          </div>
-        </form>
+            <div className="form-actions">
+              <button
+                type="button"
+                onClick={() => navigate(backHref)}
+                className="cancel-button"
+                disabled={isSaving}
+              >
+                Отмена
+              </button>
+              <button type="submit" className="submit-button" disabled={isSaving}>
+                {isSaving ? 'Сохранение…' : isEditMode ? 'Сохранить' : 'Создать'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
       {isEditMode && collection && (
         <div className="collection-form-card collection-publish-card">
-          <h2>Публикация</h2>
-          <p className="collection-publish-status">
-            {collection.published_at
-              ? 'Подборка опубликована.'
-              : 'Подборка сейчас черновик — её видите только вы.'}
-          </p>
-          <p className="collection-publish-note">
-            Опубликованная подборка живёт по своей ссылке — её можно переслать. В общий список
-            подборок читальни она не попадает.
-          </p>
-          {collection.published_at ? (
+          <h2>{publishedReaderProgram ? 'Начало правки' : 'Публикация'}</h2>
+          <p className="collection-publish-status">{publicationStatus}</p>
+          {rejected && (
+            <p className="collection-publish-status">{collection.program_reject_reason}</p>
+          )}
+          {!publishedReaderProgram && (
+            <p className="collection-publish-note">
+              Опубликованная подборка живёт по своей ссылке — её можно переслать. В общий список
+              подборок читальни она не попадает.
+            </p>
+          )}
+          {collection.published_at || pending ? (
             <button
               type="button"
-              className="cancel-button"
+              className={publishedReaderProgram ? 'submit-button' : 'cancel-button'}
               disabled={isPublishing || isEditingProgram}
               onClick={() => void handleUnpublish()}
             >
-              {isPublishing ? 'Снимаем…' : 'Снять с публикации'}
+              {pending
+                ? 'Отозвать с проверки'
+                : publishedReaderProgram
+                  ? 'Начать правку'
+                  : 'Снять с публикации'}
             </button>
           ) : (
             <button
               type="button"
               className="submit-button"
               disabled={isPublishing || isEditingProgram}
-              onClick={() => void handlePublish()}
+              onClick={() => void (readerProgram ? handleSubmitProgram() : handlePublish())}
             >
-              {isPublishing ? 'Публикуем…' : 'Опубликовать'}
+              {isPublishing
+                ? 'Сохраняем…'
+                : readerProgram
+                  ? 'Отправить на проверку'
+                  : 'Опубликовать'}
             </button>
           )}
         </div>
       )}
 
-      {isEditMode && collection && (
+      {isEditMode && collection && !locked && (
         <div className="collection-form-card">
           <h2>Программа встреч</h2>
-          {isEditingProgram ? (
+          {publishedReaderCollection ? (
+            <p className="form-help-text">Снимите подборку с публикации, чтобы добавить занятия.</p>
+          ) : isEditingProgram ? (
             <CollectionProgramForm
               collection={collection}
               onSave={handleSaveProgram}
@@ -489,7 +529,7 @@ export const CollectionForm: React.FC = () => {
         </div>
       )}
 
-      {isEditMode && routeSlug && !isEditingProgram && (
+      {isEditMode && routeSlug && !isEditingProgram && !locked && (
         <div className="collection-form-card collection-composition">
           <h2>Состав</h2>
 

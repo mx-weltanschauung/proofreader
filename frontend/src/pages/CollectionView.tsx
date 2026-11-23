@@ -187,6 +187,10 @@ export const CollectionView: React.FC = () => {
         )}
       </header>
 
+      {collection.program_review_status === 'pending' && (
+        <p className="collection-description">Программа на проверке</p>
+      )}
+
       <div className="collection-view-actions">
         <DownloadMenu href={`/api${collectionPath(collection)}/download`} />
         {/* Черновик видит только владелец: получатель ссылки открыл бы 404. */}

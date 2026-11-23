@@ -765,6 +765,7 @@ func closedSweepSilent() map[string]string {
 		"/api/users":                                              admin,
 		"/api/audio/queue":                                        staff,
 		"/api/documents/review":                                   staff,
+		"/api/collection-programs/review":                         "очередь читательских программ видит только сотрудник",
 		"/api/suggestions":                                        staff,
 		"/api/suggestions/{id}":                                   staff,
 		"/api/editions/{id}/works/{workId}/cross-references":      staff,
