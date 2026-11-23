@@ -149,13 +149,22 @@ describe('Dashboard', () => {
     ).toBeInTheDocument();
   });
 
-  // Раньше с главной нельзя было попасть на витрину разборов — только через
-  // шапку или набранный вручную адрес. Указатель и подборки сюда не дублируются
-  // — их и так показывает шапка на каждой странице.
-  it('ведёт на витрину разборов', async () => {
+  it('не дублирует ссылку на разборы в содержимом главной', async () => {
     renderDashboard();
     await screen.findByRole('heading', { name: EDITION.title });
-    expect(screen.getByRole('link', { name: 'Разборы' })).toHaveAttribute('href', '/documents');
+    expect(screen.queryByRole('link', { name: 'Разборы' })).not.toBeInTheDocument();
+  });
+
+  it('держит поиск по печатной ссылке свёрнутым до нажатия', async () => {
+    const user = userEvent.setup();
+    renderDashboard();
+    const summary = await screen.findByText('Поиск по печатной ссылке', { selector: 'summary' });
+    const input = screen.getByLabelText('Библиографическая ссылка');
+    expect(input).not.toBeVisible();
+    await user.click(summary);
+    expect(input).toBeVisible();
+    await user.click(summary);
+    expect(input).not.toBeVisible();
   });
 
   // Страница берёт всё одним ответом: прежде она делала шесть запросов в две

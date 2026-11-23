@@ -309,6 +309,11 @@ func TestListAllWorkSummariesMatchesPerEdition(t *testing.T) {
 	chapter(t, pool, one.ID, "Примечания", 41, 90)
 	attach(first, "все-том-2", 2)
 	third := attach(second, "все-том-3", 1)
+	third.NumberingStyle = models.NumberingRoman
+	third.PageOffset = -1
+	if err := works.Update(ctx, third); err != nil {
+		t.Fatalf("update pagination: %v", err)
+	}
 	chapter(t, pool, third.ID, "Работа третья", 1, 20)
 
 	// Работа вне собраний в общий ответ попадать не должна: полка её не
@@ -327,6 +332,10 @@ func TestListAllWorkSummariesMatchesPerEdition(t *testing.T) {
 			t.Fatalf("в общем ответе работа без собрания: %q", s.Title)
 		}
 		byEdition[*s.EditionID] = append(byEdition[*s.EditionID], s)
+		if s.ID == third.ID && (s.NumberingStyle != third.NumberingStyle || s.PageOffset != third.PageOffset) {
+			t.Errorf("том %d: пагинация %q, сдвиг %d; ожидались %q, %d",
+				s.ID, s.NumberingStyle, s.PageOffset, third.NumberingStyle, third.PageOffset)
+		}
 	}
 
 	for _, edition := range []*models.Edition{first, second} {

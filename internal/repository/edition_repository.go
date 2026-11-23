@@ -280,7 +280,7 @@ const workSummariesQueryTemplate = `
 	-- decides whether the requester may receive it.
 	SELECT w.id, w.title, w.author, w.publication_date, w.language, w.country,
 	       ''::text AS file_path, w.status, w.edition_id, w.volume_number, w.volume_part,
-	       w.page_offset, w.role, w.precedes_volume, w.shelf_label,
+	       w.page_offset, w.numbering_style, w.role, w.precedes_volume, w.shelf_label,
 	       w.owner_id, w.created_at, w.updated_at,
 	       %[3]s,
 	       w.closed, %[4]s, w.scans_hidden,
@@ -374,7 +374,7 @@ func (r *EditionRepository) scanSummaries(
 		err := rows.Scan(
 			&s.ID, &s.Title, &s.Author, &s.PublicationDate, &s.Language, &s.Country,
 			&s.FilePath, &s.Status, &s.EditionID, &s.VolumeNumber, &s.VolumePart,
-			&s.PageOffset, &s.Role, &s.PrecedesVolume, &s.ShelfLabel,
+			&s.PageOffset, &s.NumberingStyle, &s.Role, &s.PrecedesVolume, &s.ShelfLabel,
 			&s.OwnerID, &s.CreatedAt, &s.UpdatedAt,
 			&slugEdition, &slugVolume, &slugPart, &s.VolumeOrderOnly, &s.Closed, &s.ClosedBy,
 			&s.ScansHidden, &s.ScansHiddenBy,

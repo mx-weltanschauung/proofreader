@@ -11,12 +11,14 @@ import { VolumeShelf } from '../components/VolumeShelf';
 import { JournalShelf } from '../components/JournalShelf';
 import { OrganizationShelf } from '../components/OrganizationShelf';
 import { HomeToc } from '../components/HomeToc';
+import { PrintedPageLookup } from '../components/PrintedPageLookup';
 import type { EventOrganizationSummary, JournalSummary, ShelfEdition, ShelfWork } from '../types';
 import { apiErrorMessage } from '../utils/apiError';
 import { splitEditionVolumes } from '../utils/editionStats';
 import { corpusSentence } from '../utils/corpusSentence';
 import { buildHomeLayout } from '../utils/homeLayout';
 import { plural } from '../utils/volumeLabel';
+import { shownVolumeNumber } from '../utils/shownVolume';
 import { chapterPath, editionPath, workPath } from '../utils/paths';
 
 import { useSite } from '../services/site';
@@ -164,14 +166,18 @@ export const Dashboard: React.FC = () => {
         allShelves.length > 0 && <p className="shelf-intro">{corpusSentence(allShelves)}</p>
       )}
 
-      {/* Ссылка на витрину разборов — читательское эссе поверх корпуса.
-          Указатель и подборки сюда не дублируются: их и так показывает шапка
-          на каждой странице, включая эту. */}
-      <nav className="shelf-quicklinks" aria-label="Другие разделы читальни">
-        <Link to="/documents">Разборы</Link>
-      </nav>
-
       <HomeToc layout={layout} />
+
+      {shelves.some(
+        ({ edition, volumes }) =>
+          edition.volume_numbering !== 'order' &&
+          volumes.some((volume) => shownVolumeNumber(volume) !== undefined),
+      ) && (
+        <details className="home-printed-lookup">
+          <summary>Поиск по печатной ссылке</summary>
+          <PrintedPageLookup shelves={shelves} />
+        </details>
+      )}
 
       {layout.sections.map((section) => (
         <section
