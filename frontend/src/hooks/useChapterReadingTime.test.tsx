@@ -8,6 +8,7 @@ let scrollY = 0;
 let nextFrame = 1;
 const frames = new Map<number, FrameRequestCallback>();
 let resizeCallback: ResizeObserverCallback | null = null;
+const observed = new Set<Element>();
 
 function flushFrame() {
   act(() => {
@@ -37,14 +38,19 @@ const toolbarRef = createRef<HTMLDivElement>();
 function Probe({ pages }: { pages: (ChapterPage & { text?: string })[] }) {
   const time = useChapterReadingTime(contentRef, toolbarRef, pages, 7, true);
   return (
-    <>
+    <article>
       <div ref={toolbarRef} data-testid="toolbar" />
       <div ref={contentRef}>
         {pages.map((p) =>
           p.text === undefined ? null : (
             <section className="chapter-page-section" key={p.page_number}>
               <span className="page-marker">{p.page_number}</span>
-              <div className="page-html-content">{p.text}</div>
+              <div
+                className="page-html-content"
+                {...(p.html
+                  ? { dangerouslySetInnerHTML: { __html: p.html } }
+                  : { children: p.text })}
+              />
             </section>
           ),
         )}
@@ -53,7 +59,7 @@ function Probe({ pages }: { pages: (ChapterPage & { text?: string })[] }) {
       <output data-testid="time">
         {time.ready ? `${time.totalWords}/${time.remainingWords}` : 'pending'}
       </output>
-    </>
+    </article>
   );
 }
 
@@ -71,7 +77,10 @@ function layOut(
     );
   });
   if (notify === 'observer') {
-    act(() => resizeCallback?.([], {} as ResizeObserver));
+    const article = document.querySelector('article');
+    if (article && observed.has(article)) {
+      act(() => resizeCallback?.([], {} as ResizeObserver));
+    }
   } else {
     void act(() => window.dispatchEvent(new Event('resize')));
   }
@@ -92,13 +101,16 @@ beforeEach(() => {
   Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
   resizeCallback = null;
+  observed.clear();
   vi.stubGlobal(
     'ResizeObserver',
     class {
       constructor(callback: ResizeObserverCallback) {
         resizeCallback = callback;
       }
-      observe() {}
+      observe(element: Element) {
+        observed.add(element);
+      }
       disconnect() {}
     },
   );
@@ -131,10 +143,14 @@ describe('useChapterReadingTime', () => {
   });
 
   it('counts only rendered main text, including a stitched page once', () => {
-    render(<Probe pages={[page(1, 180), { ...page(2, 0), text: undefined }, page(3, 180)]} />);
+    const stitched = {
+      ...page(1, 0),
+      html: `<p>${'слово '.repeat(180)}<span class="chapter-page-section page-seam"><a class="page-marker">2</a> ${'слово '.repeat(180)}</span></p>`,
+    };
+    render(<Probe pages={[stitched, { ...page(2, 0), text: undefined }]} />);
     layOut([
-      { top: 100, height: 200 },
-      { top: 300, height: 200 },
+      { top: 100, height: 400 },
+      { top: 300, height: 100 },
     ]);
     expect(screen.getByTestId('time')).toHaveTextContent('360/360');
   });

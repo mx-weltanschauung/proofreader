@@ -36,6 +36,8 @@ import {
   numericId,
 } from '../utils/paths';
 import { useReadingProgress } from '../hooks/useReadingProgress';
+import { useChapterReadingTime } from '../hooks/useChapterReadingTime';
+import { formatReadingDuration } from '../utils/readingTime';
 import { useCanonicalPath } from '../hooks/useCanonicalPath';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useAnchorAboveFold } from '../hooks/useAnchorAboveFold';
@@ -123,6 +125,7 @@ export const ChapterView: React.FC = () => {
   // подглав и пишется запись «где читатель остановился».
   const [visiblePage, setVisiblePage] = useState<number | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const readingContentRef = useRef<HTMLDivElement>(null);
 
   // Порядок и разделитель — те же, что печатает internal/seo/render_text.go
   // (Chapter): название вперёд, автор следом, и без лишнего тире, если автора
@@ -499,6 +502,23 @@ export const ChapterView: React.FC = () => {
     // упёрлось бы в его высоту.
     ready: !isLoading && pagesWithHtml.length > 0 && chapter?.id === chapterId,
   });
+  const readingTime = useChapterReadingTime(
+    readingContentRef,
+    toolbarRef,
+    pagesWithHtml,
+    chapterId,
+    !isLoading && pagesWithHtml.length > 0 && chapter?.id === chapterId,
+  );
+  const totalReadingTime =
+    readingTime.ready && readingTime.totalWords > 0
+      ? formatReadingDuration(readingTime.totalWords)
+      : null;
+  const remainingReadingTime =
+    totalReadingTime === null
+      ? undefined
+      : readingTime.remainingWords === 0
+        ? 'Основной текст прочитан'
+        : `Ещё ${formatReadingDuration(readingTime.remainingWords)}`;
   useVisiblePageHit(
     workId,
     visiblePage,
@@ -592,6 +612,8 @@ export const ChapterView: React.FC = () => {
         footnotesHtml={footnotesHtml}
         work={work}
         progressPercent={progress}
+        readingContentRef={readingContentRef}
+        remainingReadingTime={remainingReadingTime}
         marginNotes={marginNotes}
         readerComments={readerComments}
         pageJump={{
@@ -675,6 +697,7 @@ export const ChapterView: React.FC = () => {
                 Страницы {chapter.start_page}—{chapter.end_page}
               </span>
               <span>{plural(pagesWithHtml.length, ['страница', 'страницы', 'страниц'])}</span>
+              {totalReadingTime && <span>{totalReadingTime} чтения</span>}
             </div>
             <div className="chapter-header-actions">
               {!chapterClosedInEffect &&

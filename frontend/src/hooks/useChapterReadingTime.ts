@@ -24,7 +24,10 @@ function collectPages(root: HTMLDivElement): { measures: PageMeasure[]; totalWor
   let totalWords = 0;
   const measures = Array.from(root.querySelectorAll<HTMLElement>('.chapter-page-section')).map(
     (element) => {
-      const text = element.querySelector('.page-html-content')?.textContent ?? '';
+      const rendered = element.querySelector('.page-html-content');
+      const copy = rendered?.cloneNode(true) as HTMLElement | undefined;
+      copy?.querySelectorAll('.page-marker').forEach((marker) => marker.remove());
+      const text = copy?.textContent ?? '';
       const words = countReadingWords(text);
       const measure = { element, words, before: totalWords, top: 0, bottom: 0 };
       totalWords += words;
@@ -46,8 +49,8 @@ function remainingAt(measures: PageMeasure[], totalWords: number, position: numb
 }
 
 export function useChapterReadingTime(
-  contentRef: RefObject<HTMLDivElement | null>,
-  toolbarRef: RefObject<HTMLDivElement | null>,
+  contentRef: RefObject<HTMLDivElement>,
+  toolbarRef: RefObject<HTMLDivElement>,
   pages: ChapterPage[],
   chapterId: number | null,
   enabled: boolean,
@@ -98,6 +101,10 @@ export function useChapterReadingTime(
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(refreshGeometry);
     observer?.observe(root);
+    // Header metadata sits before the text. When its height changes (for
+    // example after the total duration appears), the text moves without
+    // changing its own size; the enclosing article does change height.
+    if (root.parentElement) observer?.observe(root.parentElement);
     refreshGeometry();
 
     return () => {

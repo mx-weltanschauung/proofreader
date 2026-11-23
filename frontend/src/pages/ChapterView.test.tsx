@@ -1975,3 +1975,48 @@ describe('переход к сверке главы', () => {
     },
   );
 });
+
+describe('ChapterView reading time', () => {
+  beforeEach(() => {
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CHAPTER));
+    vi.spyOn(worksApi, 'get').mockImplementation(() => ok(WORK));
+    vi.spyOn(chaptersApi, 'list').mockImplementation(() => ok([] as Chapter[]));
+  });
+
+  it('shows total time and updates the remaining time after scrolling through the text', async () => {
+    let scrollY = 0;
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.classList.contains('chapter-view-header')) return new DOMRect(0, 0, 500, 50);
+      if (this.classList.contains('chapter-page-section'))
+        return new DOMRect(0, 100 - scrollY, 500, 400);
+      return new DOMRect(0, 0, 500, 0);
+    });
+    vi.spyOn(chaptersApi, 'listPages').mockImplementation(() =>
+      ok({
+        pages: [{ page_number: 245, html: `<p>${'слово '.repeat(360)}</p>`, blank: false }],
+        footnotes_html: '',
+      }),
+    );
+
+    renderChapter();
+    expect(await screen.findByText('≈ 2 мин чтения')).toBeInTheDocument();
+    expect(await screen.findByText('Ещё ≈ 2 мин')).toBeInTheDocument();
+
+    scrollY = 426;
+    void act(() => window.dispatchEvent(new Event('scroll')));
+    expect(await screen.findByText('Основной текст прочитан')).toBeInTheDocument();
+  });
+
+  it('hides both estimates when the chapter has no readable text', async () => {
+    vi.spyOn(chaptersApi, 'listPages').mockImplementation(() =>
+      ok({ pages: [{ page_number: 245, html: '', blank: true }], footnotes_html: '' }),
+    );
+    renderChapter();
+    await screen.findByText('1 страница');
+    expect(screen.queryByText(/мин чтения/)).toBeNull();
+    expect(screen.queryByText(/Ещё|Основной текст прочитан/)).toBeNull();
+  });
+});
