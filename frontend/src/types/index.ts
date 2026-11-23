@@ -1379,6 +1379,7 @@ export interface MarginNote {
   end_page: number | null;
   page_missing: boolean;
   snapshot_start_page: number | null;
+  snapshot_end_page?: number | null;
   quote_key: string;
   quote_tail: string;
   quote_text: string;
@@ -1418,6 +1419,7 @@ export interface CommentRevision {
 export type CreateMarginNote =
   | {
       target: 'quote';
+      chapter_id?: number;
       start_page: number;
       end_page: number;
       quote_key: string;

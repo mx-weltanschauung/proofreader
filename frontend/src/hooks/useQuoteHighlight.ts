@@ -56,7 +56,7 @@ export function useQuoteHighlight(
   // зависимость по объекту перезапускала бы эффект всегда — то есть гоняла бы
   // flattenText по всей главе (366 мс на 742 полосах) на каждый рендер
   // читалки.
-  const { start, end } = span;
+  const { start, end, endPage } = span;
   // Посадка на найденное место — прокрутка И фокус — делается один раз за
   // жизнь компонента: читатель, ушедший фокусом на кнопку панели, не должен
   // получать его обратно на каждую перерисовку читалки.
@@ -81,7 +81,7 @@ export function useQuoteHighlight(
       return;
     }
 
-    const result = markQuote(root, { start, end }, pageNumber);
+    const result = markQuote(root, { start, end, endPage }, pageNumber);
     setMatch(result);
 
     // `result !== 'miss'` здесь — защита про запас, не рабочая ветка: markQuote
@@ -120,7 +120,7 @@ export function useQuoteHighlight(
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [containerRef, start, end, pageNumber, ...deps]);
+  }, [containerRef, start, end, endPage, pageNumber, ...deps]);
 
   return match;
 }

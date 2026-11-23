@@ -168,6 +168,8 @@ var routeAccess = map[string]access{
 	"GET /api/suggestions/mine":                            accessReader,
 	"POST /api/works/{workId}/margin-notes":                accessReader,
 	"GET /api/works/{workId}/margin-notes":                 accessReader,
+	"POST /api/margin-notes/search":                        accessReader,
+	"POST /api/margin-notes/export":                        accessReader,
 	"GET /api/margin-notes":                                accessReader,
 	"PUT /api/margin-notes/{id}":                           accessReader,
 	"DELETE /api/margin-notes/{id}":                        accessReader,

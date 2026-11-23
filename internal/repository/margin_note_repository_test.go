@@ -187,7 +187,7 @@ func TestMarginNoteHidesClosed(t *testing.T) {
 	if list, _ := f.repo.ListByWork(ctx, reader.ID, closedVol.ID, false); len(list) != 0 {
 		t.Fatalf("закрытый том отдал заметки: %d", len(list))
 	}
-	all, total, err := f.repo.ListByOwner(ctx, reader.ID, nil, 50, 0, false)
+	all, total, err := f.repo.ListByOwner(ctx, reader.ID, nil, "", 50, 0, false)
 	if err != nil || total != 1 || len(all) != 1 || all[0].ID != nOpen.ID {
 		t.Fatalf("ListByOwner без закрытого: %v total=%d %d", err, total, len(all))
 	}
@@ -201,7 +201,7 @@ func TestMarginNoteHidesClosed(t *testing.T) {
 		}
 	}
 
-	_, total, err = f.repo.ListByOwner(ctx, reader.ID, nil, 50, 0, true)
+	_, total, err = f.repo.ListByOwner(ctx, reader.ID, nil, "", 50, 0, true)
 	if err != nil || total != 4 {
 		t.Fatalf("includeClosed: total=%d err=%v", total, err)
 	}
@@ -242,7 +242,7 @@ func TestMarginNoteHidesClosedByPageNumberAfterReingest(t *testing.T) {
 	if list, _ := f.repo.ListByWork(ctx, reader.ID, vol.ID, false); len(list) != 0 {
 		t.Fatalf("заметка на закрытом номере полосы видна: %+v", list[0])
 	}
-	if _, total, _ := f.repo.ListByOwner(ctx, reader.ID, nil, 10, 0, false); total != 0 {
+	if _, total, _ := f.repo.ListByOwner(ctx, reader.ID, nil, "", 10, 0, false); total != 0 {
 		t.Fatalf("ListByOwner: total=%d", total)
 	}
 	if _, err := f.repo.UpdateBody(ctx, reader.ID, n.ID, "x", false); err == nil {
@@ -308,7 +308,7 @@ func TestMarginNoteCascades(t *testing.T) {
 	if err := f.works.Delete(ctx, vol.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, total, _ := f.repo.ListByOwner(ctx, reader.ID, nil, 10, 0, true); total != 0 {
+	if _, total, _ := f.repo.ListByOwner(ctx, reader.ID, nil, "", 10, 0, true); total != 0 {
 		t.Fatalf("заметки пережили работу: %d", total)
 	}
 	if err := f.users.DeleteReader(ctx, other.ID); err != nil {
@@ -358,7 +358,7 @@ func TestMarginNoteListByOwnerFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	all, total, err := f.repo.ListByOwner(ctx, reader.ID, nil, 10, 0, false)
+	all, total, err := f.repo.ListByOwner(ctx, reader.ID, nil, "", 10, 0, false)
 	if err != nil || total != 2 || len(all) != 2 {
 		t.Fatalf("список: %v total=%d", err, total)
 	}
@@ -373,12 +373,65 @@ func TestMarginNoteListByOwnerFields(t *testing.T) {
 		t.Fatalf("колонцифра работы: offset=%d style=%q", all[1].PageOffset, all[1].NumberingStyle)
 	}
 
-	one, total, err := f.repo.ListByOwner(ctx, reader.ID, &vol2.ID, 10, 0, false)
+	one, total, err := f.repo.ListByOwner(ctx, reader.ID, &vol2.ID, "", 10, 0, false)
 	if err != nil || total != 1 || len(one) != 1 || one[0].WorkID != vol2.ID {
 		t.Fatalf("фильтр по тому: %v total=%d", err, total)
 	}
-	page2, total, err := f.repo.ListByOwner(ctx, reader.ID, nil, 1, 1, false)
+	page2, total, err := f.repo.ListByOwner(ctx, reader.ID, nil, "", 1, 1, false)
 	if err != nil || total != 2 || len(page2) != 1 || page2[0].WorkID != vol.ID {
 		t.Fatalf("смещение: %v total=%d", err, total)
+	}
+}
+
+func TestMarginNoteSearchAndExport(t *testing.T) {
+	ctx, f, reader := marginSetup(t)
+	vol := newVolume(t, f.works, "Первый том")
+	other := newVolume(t, f.works, "Второй том")
+	pages := f.addPages(t, vol.ID, 3)
+	ch := f.addChapter(t, vol.ID, nil, "Середина цитаты", 1, 2, 2)
+	quote := quoteInput(reader.ID, vol.ID, pages[0], "Своя запись")
+	quote.QuoteText = "Снимок с буквальным знаком %"
+	end := pages[2].PageNumber
+	quote.EndPageID, quote.EndPageNumber = &pages[2].ID, &end
+	old, err := f.repo.Create(ctx, quote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recent, err := f.repo.Create(ctx, models.MarginNoteInput{
+		OwnerID: reader.ID, WorkID: other.ID, Target: models.MarginTargetWork, Body: "Свежая запись",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes, total, err := f.repo.ListByOwner(ctx, reader.ID, nil, "", 1, 0, false)
+	if err != nil || total != 2 || len(notes) != 1 || notes[0].ID != recent.ID {
+		t.Fatalf("первая порция: %v, всего %d, ошибка %v", notes, total, err)
+	}
+	for _, search := range []string{"СВОЯ", "СНИМОК", "%"} {
+		notes, total, err = f.repo.ListByOwner(ctx, reader.ID, &vol.ID, search, 1, 0, false)
+		if err != nil || total != 1 || len(notes) != 1 || notes[0].ID != old.ID {
+			t.Fatalf("поиск %q: %v, всего %d, ошибка %v", search, notes, total, err)
+		}
+	}
+	notes, total, err = f.repo.ListByOwner(ctx, reader.ID, &other.ID, "снимок", 1, 0, false)
+	if err != nil || total != 0 || len(notes) != 0 {
+		t.Fatalf("поиск с другим томом: %v, всего %d, ошибка %v", notes, total, err)
+	}
+	works, err := f.repo.ListWorksByOwner(ctx, reader.ID, false)
+	if err != nil || len(works) != 2 {
+		t.Fatalf("тома фильтра: %v, ошибка %v", works, err)
+	}
+
+	selection := []int64{old.ID, recent.ID}
+	notes, err = f.repo.ListByIDs(ctx, reader.ID, selection, false)
+	if err != nil || len(notes) != 2 {
+		t.Fatalf("до закрытия: %v, ошибка %v", notes, err)
+	}
+	if _, err := f.closed.SetChapterClosed(ctx, ch.ID, true, models.ClosureActor{Name: "тест"}, "проба"); err != nil {
+		t.Fatal(err)
+	}
+	notes, err = f.repo.ListByIDs(ctx, reader.ID, selection, false)
+	if err != nil || len(notes) != 1 || notes[0].ID != recent.ID {
+		t.Fatalf("после закрытия середины цитаты: %v, ошибка %v", notes, err)
 	}
 }

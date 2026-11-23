@@ -41,7 +41,7 @@ const marginNoteSelect = `
 	SELECT mn.id, mn.owner_id, mn.work_id, mn.target, mn.chapter_id, mn.chapter_title,
 	       sp.page_number, ep.page_number,
 	       (mn.target = 'quote' AND (sp.id IS NULL OR ep.id IS NULL)),
-	       mn.start_page_number, mn.quote_key, mn.quote_tail, mn.quote_text, mn.body,
+	       mn.start_page_number, mn.end_page_number, mn.quote_key, mn.quote_tail, mn.quote_text, mn.body,
 	       mn.created_at, mn.updated_at,
 	       works.title, works.role, works.precedes_volume,
 	       works.slug_edition, works.slug_volume, works.slug_part,
@@ -58,27 +58,26 @@ const marginNoteSelect = `
 		LIMIT 1
 	) cc ON true`
 
-// marginNoteOpen отсекает закрытое: работу, главу и обе полосы заметки.
-// Только NOT EXISTS с равенством по id, не NOT IN (SELECT id FROM …): NOT IN
-// строит представление целиком — closed_pages тогда проходит всю таблицу
-// pages на каждый запрос списка (замер на 200 тыс. полос — 2 с против 2 мс),
-// а NOT EXISTS проталкивает id в представление и берёт полосу по ключу.
-// Пустой id (главу или полосу снесли) даёт NOT EXISTS истину — заметка
-// проходит, как и должна.
-//
-// Полоса снесена (id обнулён), а под тем же номером в том же томе лежит
-// новая (перезаливка) — тогда судит она: цитата, взятая с полосы, которая
-// теперь закрыта, наружу не идёт. Без этого условия заметка с потерянной
-// полосой проходила бы проверку полос вовсе не проверенной.
+// marginNoteOpen проверяет главы цели и их предков. Разворачивание closed_pages
+// несколько раз строило рекурсивное дерево всего корпуса: дорогая оценка
+// плана включала JIT и тратила секунды на компиляцию одной строки.
+// Пересечение диапазонов учитывает и середину цитаты; подъём к предкам —
+// наследуемое закрытие. Снесённые полосы проверяются по снимкам номеров.
 const marginNoteOpen = `
-	AND NOT EXISTS (SELECT 1 FROM closed_works c WHERE c.id = mn.work_id)
-	AND NOT EXISTS (SELECT 1 FROM closed_chapters c WHERE c.id = mn.chapter_id)
-	AND NOT EXISTS (SELECT 1 FROM closed_pages c WHERE c.id = mn.start_page_id)
-	AND NOT EXISTS (SELECT 1 FROM closed_pages c WHERE c.id = mn.end_page_id)
-	AND (mn.start_page_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM closed_pages c
-		WHERE c.work_id = mn.work_id AND c.page_number = mn.start_page_number))
-	AND (mn.end_page_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM closed_pages c
-		WHERE c.work_id = mn.work_id AND c.page_number = mn.end_page_number))`
+ AND NOT EXISTS (SELECT 1 FROM closed_works w WHERE w.id=mn.work_id)
+ AND NOT EXISTS (
+  WITH RECURSIVE ancestors AS (
+   SELECT c.id,c.parent_id,c.closed FROM chapters c
+   WHERE c.work_id=mn.work_id AND (
+    c.id=mn.chapter_id OR (
+     c.start_page <= COALESCE((SELECT page_number FROM pages WHERE id=mn.end_page_id),mn.end_page_number)
+     AND c.end_page >= COALESCE((SELECT page_number FROM pages WHERE id=mn.start_page_id),mn.start_page_number)
+    )
+   )
+   UNION
+   SELECT p.id,p.parent_id,p.closed FROM chapters p JOIN ancestors a ON p.id=a.parent_id
+  ) SELECT 1 FROM ancestors WHERE closed
+ )`
 
 func scanMarginNote(row rowScanner) (*models.MarginNote, error) {
 	var n models.MarginNote
@@ -90,7 +89,7 @@ func scanMarginNote(row rowScanner) (*models.MarginNote, error) {
 	if err := row.Scan(
 		&n.ID, &n.OwnerID, &n.WorkID, &n.Target, &n.ChapterID, &n.ChapterTitle,
 		&n.StartPage, &n.EndPage, &n.PageMissing,
-		&n.SnapshotStart, &n.QuoteKey, &n.QuoteTail, &n.QuoteText, &n.Body,
+		&n.SnapshotStart, &n.SnapshotEnd, &n.QuoteKey, &n.QuoteTail, &n.QuoteText, &n.Body,
 		&n.CreatedAt, &n.UpdatedAt,
 		&n.WorkTitle, &role, &precedes, &slugEdition, &slugVolume, &slugPart,
 		&n.PageOffset, &n.NumberingStyle,
@@ -225,19 +224,50 @@ func (r *MarginNoteRepository) ListByWork(ctx context.Context, ownerID, workID i
 
 // ListByOwner — «Мои заметки»: свежие первыми, при workID — одного тома.
 // total считается тем же условием, что и выборка.
-func (r *MarginNoteRepository) ListByOwner(ctx context.Context, ownerID int64, workID *int64, limit, offset int, includeClosed bool) ([]*models.MarginNote, int, error) {
-	where := ` WHERE mn.owner_id = $1 AND ($2::bigint IS NULL OR mn.work_id = $2)` + marginOpenClause(includeClosed)
+func (r *MarginNoteRepository) ListByOwner(ctx context.Context, ownerID int64, workID *int64, search string, limit, offset int, includeClosed bool) ([]*models.MarginNote, int, error) {
+	where := ` WHERE mn.owner_id = $1 AND ($2::bigint IS NULL OR mn.work_id = $2)
+		AND ($3 = '' OR strpos(lower(mn.body), lower($3)) > 0
+		             OR strpos(lower(mn.quote_text), lower($3)) > 0)` + marginOpenClause(includeClosed)
 
 	var total int
 	if err := r.pool.QueryRow(ctx,
-		`SELECT count(*) FROM margin_notes mn`+where, ownerID, workID).Scan(&total); err != nil {
+		`SELECT count(*) FROM margin_notes mn`+where, ownerID, workID, search).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("failed to count margin notes: %w", err)
 	}
 	notes, err := r.collect(ctx, marginNoteSelect+where+`
-		ORDER BY mn.created_at DESC, mn.id DESC LIMIT $3 OFFSET $4`,
-		ownerID, workID, limit, offset)
+		ORDER BY mn.created_at DESC, mn.id DESC LIMIT $4 OFFSET $5`,
+		ownerID, workID, search, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
 	return notes, total, nil
+}
+
+// ListWorksByOwner возвращает все доступные варианты фильтра.
+func (r *MarginNoteRepository) ListWorksByOwner(ctx context.Context, ownerID int64, includeClosed bool) ([]models.MarginNoteWork, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT w.id, w.title FROM works w
+		WHERE EXISTS (SELECT 1 FROM margin_notes mn
+			WHERE mn.owner_id = $1 AND mn.work_id = w.id`+marginOpenClause(includeClosed)+`)
+		ORDER BY w.title, w.id`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	works := []models.MarginNoteWork{}
+	for rows.Next() {
+		var work models.MarginNoteWork
+		if err := rows.Scan(&work.ID, &work.Title); err != nil {
+			return nil, err
+		}
+		works = append(works, work)
+	}
+	return works, rows.Err()
+}
+
+// ListByIDs проверяет владельца и видимость всех выбранных мест в одном снимке БД.
+func (r *MarginNoteRepository) ListByIDs(ctx context.Context, ownerID int64, ids []int64, includeClosed bool) ([]*models.MarginNote, error) {
+	return r.collect(ctx, marginNoteSelect+`
+		WHERE mn.owner_id = $1 AND mn.id = ANY($2::bigint[])`+marginOpenClause(includeClosed)+`
+		ORDER BY mn.created_at DESC, mn.id DESC`, ownerID, ids)
 }

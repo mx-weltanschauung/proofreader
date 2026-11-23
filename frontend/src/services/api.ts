@@ -838,8 +838,13 @@ export const marginNotesApi = {
   ofWork: (workId: number) => api.get<MarginNote[]>(`/works/${workId}/margin-notes`, KEEP_PAGE),
   create: (workId: number, data: CreateMarginNote) =>
     api.post<MarginNote>(`/works/${workId}/margin-notes`, data, KEEP_PAGE),
-  mine: (params: { work_id?: number; limit?: number; offset?: number }) =>
-    api.get<{ items: MarginNote[]; total: number }>('/margin-notes', { params }),
+  mine: ({ q, ...params }: { work_id?: number; limit?: number; offset?: number; q?: string }) => {
+    type Page = { items: MarginNote[]; total: number; works?: { id: number; title: string }[] };
+    return q
+      ? api.post<Page>('/margin-notes/search', { ...params, q })
+      : api.get<Page>('/margin-notes', { params });
+  },
+  forExport: (ids: number[]) => api.post<MarginNote[]>('/margin-notes/export', { ids }),
   update: (id: number, body: string) =>
     api.put<MarginNote>(`/margin-notes/${id}`, { body }, KEEP_PAGE),
   remove: (id: number) => api.delete<void>(`/margin-notes/${id}`, KEEP_PAGE),

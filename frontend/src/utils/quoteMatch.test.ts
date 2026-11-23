@@ -292,3 +292,13 @@ describe('markQuotes', () => {
     expect(found.size).toBe(200);
   });
 });
+
+it('берёт конец цитаты на указанной полосе, если он встречается и раньше', () => {
+  const el = root(
+    '<p data-page="1">Начало, общий конец.</p><p data-page="2">Другой текст, общий конец.</p>',
+  );
+  expect(markQuote(el, { start: 'Начало', end: 'общий конец', endPage: 2 }, 1)).toBe('hit');
+  expect(el.querySelector('[data-page="2"] .quote-hit')).toHaveTextContent(
+    'Другой текст, общий конец',
+  );
+});

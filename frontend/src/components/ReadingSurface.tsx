@@ -108,6 +108,7 @@ export interface ReadingSurfaceProps {
    * главы (ChapterView) эти данные передаёт.
    */
   citation?: CitationContext;
+  noteChapterId?: number;
   /**
    * Переход к странице по номеру — встаёт на место доли прочитанного цифрой.
    * Нет его у чтения подборки: там полосы из разных томов, и номер ничего не
@@ -150,6 +151,7 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
   highlightTerms = [],
   quote = EMPTY_QUOTE,
   citation,
+  noteChapterId,
   pageJump,
   marginNotes,
   readerComments,
@@ -386,6 +388,7 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
             <NoteButton
               contentRef={contentRef}
               workId={work.id}
+              chapterId={noteChapterId}
               onCreated={notes.add}
               className="btn btn-secondary"
             />
