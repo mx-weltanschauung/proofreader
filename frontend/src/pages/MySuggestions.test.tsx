@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as renderUI, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
@@ -9,12 +11,18 @@ import {
   documentsApi,
   authApi,
   marginNotesApi,
+  readLaterApi,
 } from '../services/api';
 import type { Collection, Document, SuggestionRow } from '../types';
 // useAuth — это и есть zustand-стор (create<AuthState>()), поэтому у него
 // есть setState: статус входа в тестах подменяется прямо на нём, без vi.mock.
 import { useAuth } from '../hooks/useAuth';
 import { MySuggestions } from './MySuggestions';
+
+function render(ui: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderUI(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 function ok<T>(data: T): Promise<AxiosResponse<T>> {
   return Promise.resolve({ data } as unknown as AxiosResponse<T>);
@@ -77,6 +85,7 @@ beforeEach(() => {
   vi.spyOn(collectionsApi, 'mine').mockReturnValue(ok([]) as never);
   vi.spyOn(documentsApi, 'mine').mockReturnValue(ok([]) as never);
   vi.spyOn(marginNotesApi, 'mine').mockReturnValue(ok({ items: [], total: 0 }) as never);
+  vi.spyOn(readLaterApi, 'list').mockReturnValue(ok([]));
 });
 
 describe('MySuggestions', () => {
@@ -101,6 +110,7 @@ describe('MySuggestions', () => {
     expect(spy).not.toHaveBeenCalled();
     expect(collectionsSpy).not.toHaveBeenCalled();
     expect(documentsSpy).not.toHaveBeenCalled();
+    expect(readLaterApi.list).not.toHaveBeenCalled();
   });
 
   it('показывает свои правки вошедшему читателю', async () => {
@@ -120,6 +130,42 @@ describe('MySuggestions', () => {
     expect(await screen.findByText('Том 8')).toBeInTheDocument();
     // Токен подставляет общий перехватчик — вызов без параметров.
     expect(spy).toHaveBeenCalledWith();
+  });
+
+  it('показывает последние отложенные публикации прямо на странице «Моё»', async () => {
+    useAuth.setState({
+      user: { id: 1, email: '', nickname: 'читатель', role: 'reader' },
+      token: 't',
+      isAuthenticated: true,
+      isLoading: false,
+    });
+    vi.spyOn(suggestionsApi, 'mine').mockReturnValue(ok([]) as never);
+    vi.mocked(readLaterApi.list).mockReturnValue(
+      ok([
+        { work_id: 7, chapter_id: 9, title: 'Отложенная глава', source: 'Том 8' },
+        { work_id: 8, title: 'Отложенный том', source: 'Собрание' },
+        { work_id: 9, title: 'Отложенный номер', source: 'Журнал' },
+        { work_id: 10, title: 'Раннее сохранение', source: 'Собрание' },
+      ]),
+    );
+    render(
+      <MemoryRouter>
+        <MySuggestions />
+      </MemoryRouter>,
+    );
+
+    const shelf = within(screen.getByRole('region', { name: 'Отложено' }));
+    expect(await shelf.findByRole('link', { name: 'Отложенная глава' })).toHaveAttribute(
+      'href',
+      '/works/7/chapters/9',
+    );
+    expect(shelf.getByRole('link', { name: 'Отложенный том' })).toHaveAttribute('href', '/works/8');
+    expect(shelf.getAllByRole('listitem')).toHaveLength(3);
+    expect(shelf.queryByText('Раннее сохранение')).not.toBeInTheDocument();
+    expect(shelf.getByRole('link', { name: 'Открыть всю полку' })).toHaveAttribute(
+      'href',
+      '/mine/read-later',
+    );
   });
 
   it('показывает причину отказа', async () => {
@@ -154,6 +200,10 @@ describe('MySuggestions', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByText(/пока нет предложенных правок/i)).toBeInTheDocument();
+    const shelf = within(screen.getByRole('region', { name: 'Отложено' }));
+    expect(await shelf.findByText('Отложенных публикаций пока нет.')).toBeInTheDocument();
+    expect(shelf.getByText(/нажмите «Отложить»/)).toBeInTheDocument();
+    expect(shelf.queryByRole('link')).not.toBeInTheDocument();
   });
 
   it('заголовок экрана — «Моё»', async () => {
@@ -259,6 +309,7 @@ describe('MySuggestions', () => {
     vi.spyOn(suggestionsApi, 'mine').mockReturnValue(ok([]) as never);
     vi.spyOn(documentsApi, 'mine').mockReturnValue(ok([]) as never);
     vi.spyOn(marginNotesApi, 'mine').mockReturnValue(ok({ items: [], total: 0 }) as never);
+    vi.spyOn(readLaterApi, 'list').mockReturnValue(ok([]));
 
     render(
       <MemoryRouter>

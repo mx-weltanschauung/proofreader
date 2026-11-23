@@ -78,6 +78,23 @@ describe('страница справки', () => {
     }
   });
 
+  it('объясняет, где отложить чтение и открыть полку', () => {
+    setup();
+    const navigation = screen.getByRole('navigation', { name: 'Разделы справки' });
+    expect(within(navigation).getByRole('link', { name: 'Отложено' })).toHaveAttribute(
+      'href',
+      '#read-later',
+    );
+    const heading = screen.getByRole('heading', { name: 'Полка «Отложено»' });
+    const section = within(heading.closest('section')!);
+    expect(section.getByText('Отложить', { exact: true })).toBeInTheDocument();
+    expect(section.getByRole('link', { name: '«Моё»' })).toHaveAttribute('href', '/mine');
+    expect(section.getByRole('link', { name: 'полный список' })).toHaveAttribute(
+      'href',
+      '/mine/read-later',
+    );
+  });
+
   // Хвостик «Подробнее» ведёт на /help#<идентификатор подсказки>. Раздел без
   // якоря — ссылка в никуда, и заметить это в браузере можно только случайно.
   it('у каждой подсказки есть раздел с её якорем', () => {
