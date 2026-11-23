@@ -1,15 +1,10 @@
 .printed-page-lookup {
   max-width: 48rem;
-  margin-block: 0 2rem;
+  margin-top: 0.5rem;
   padding: 1rem;
   background: var(--color-card-bg);
   border: 1px solid var(--color-card-border);
   border-radius: 4px;
-}
-
-.printed-page-lookup h2 {
-  margin: 0 0 0.5rem;
-  font-size: 1.15rem;
 }
 
 .printed-page-lookup label {

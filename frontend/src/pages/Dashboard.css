@@ -133,13 +133,20 @@
   font-size: 0.95rem;
 }
 
-/* Ссылка на витрину разборов — тонкая, не карточкой: она не часть шкафа, а
-   сноска к нему. Один пункт, не строка — flex/gap здесь были нужны только
-   под ряд из трёх ссылок. */
-.shelf-quicklinks {
-  margin-bottom: 2.5rem;
-  font-family: var(--reading-font-literata);
-  font-size: 0.95rem;
+.home-printed-lookup {
+  margin-top: 0.5rem;
+}
+
+.home-printed-lookup > summary {
+  width: fit-content;
+  padding-block: 0.3rem;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.home-printed-lookup > summary:hover {
+  color: var(--color-link);
 }
 
 .shelf-actions {

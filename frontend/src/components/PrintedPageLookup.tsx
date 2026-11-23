@@ -126,8 +126,7 @@ export function PrintedPageLookup({ shelves }: { shelves: ShelfEdition[] }) {
   }
 
   return (
-    <section className="printed-page-lookup" aria-labelledby={id + '-heading'}>
-      <h2 id={id + '-heading'}>Поиск по печатной ссылке</h2>
+    <section className="printed-page-lookup" aria-label="Поиск по печатной ссылке">
       <form onSubmit={submit}>
         <label htmlFor={id}>Библиографическая ссылка</label>
         <div className="printed-page-lookup-fields">

@@ -166,20 +166,18 @@ export const Dashboard: React.FC = () => {
         allShelves.length > 0 && <p className="shelf-intro">{corpusSentence(allShelves)}</p>
       )}
 
-      {/* Ссылка на витрину разборов — читательское эссе поверх корпуса.
-          Указатель и подборки сюда не дублируются: их и так показывает шапка
-          на каждой странице, включая эту. */}
-      <nav className="shelf-quicklinks" aria-label="Другие разделы читальни">
-        <Link to="/documents">Разборы</Link>
-      </nav>
+      <HomeToc layout={layout} />
 
       {shelves.some(
         ({ edition, volumes }) =>
           edition.volume_numbering !== 'order' &&
           volumes.some((volume) => shownVolumeNumber(volume) !== undefined),
-      ) && <PrintedPageLookup shelves={shelves} />}
-
-      <HomeToc layout={layout} />
+      ) && (
+        <details className="home-printed-lookup">
+          <summary>Поиск по печатной ссылке</summary>
+          <PrintedPageLookup shelves={shelves} />
+        </details>
+      )}
 
       {layout.sections.map((section) => (
         <section
