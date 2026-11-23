@@ -44,3 +44,7 @@
   text-align: right;
   white-space: nowrap;
 }
+
+.volume-table-title .read-later-compact {
+  margin-inline-start: 0.5rem;
+}

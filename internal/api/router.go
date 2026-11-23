@@ -58,6 +58,7 @@ type Router struct {
 	feedbackHandler       *FeedbackHandler
 	pageSuggestionHandler *PageSuggestionHandler
 	marginNoteHandler     *MarginNoteHandler
+	readLaterHandler      *ReadLaterHandler
 	readerCommentHandler  *ReaderCommentHandler
 	searchHandler         *SearchHandler
 	seoHandler            *seo.Handler
@@ -177,6 +178,11 @@ func NewRouter(
 // WithAudio: маршруты регистрируются всегда, чтобы их видел сторож ролей.
 func (rt *Router) WithMarginNotes(h *MarginNoteHandler) *Router {
 	rt.marginNoteHandler = h
+	return rt
+}
+
+func (rt *Router) WithReadLater(h *ReadLaterHandler) *Router {
+	rt.readLaterHandler = h
 	return rt
 }
 
@@ -533,6 +539,9 @@ func (rt *Router) Setup() *mux.Router {
 	// Заметки читателя на полях: личные, только владельцу. Маршруты тома стоят
 	// под closedGate подроутера reader (404 не-сотруднику на закрытую работу);
 	// закрытые полосу и главу отсекает сам обработчик через обёртки чтения.
+	reader.HandleFunc("/read-later", rt.readLaterHandler.List).Methods("GET")
+	reader.HandleFunc("/read-later/{kind}/{id}", rt.readLaterHandler.Change).Methods("PUT", "DELETE")
+
 	reader.HandleFunc("/works/{workId}/margin-notes", rt.marginNoteHandler.Create).Methods("POST")
 	reader.HandleFunc("/works/{workId}/margin-notes", rt.marginNoteHandler.ListByWork).Methods("GET")
 	reader.HandleFunc("/margin-notes", rt.marginNoteHandler.List).Methods("GET")

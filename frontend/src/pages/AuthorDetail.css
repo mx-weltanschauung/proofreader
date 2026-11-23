@@ -106,3 +106,8 @@
 .author-merge-results li {
   margin-bottom: 0.5rem;
 }
+
+.author-article .read-later-compact {
+  align-self: flex-start;
+  margin-block-start: 0.25rem;
+}

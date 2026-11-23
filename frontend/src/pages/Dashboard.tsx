@@ -6,6 +6,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useHashAnchor } from '../hooks/useHashAnchor';
 import { forgetRead, readRecent, type LastRead } from '../hooks/useReadingProgress';
 import { EditionSummary } from '../components/EditionSummary';
+import { ReadLaterButton } from '../components/ReadLaterButton';
 import { VolumeShelf } from '../components/VolumeShelf';
 import { JournalShelf } from '../components/JournalShelf';
 import { OrganizationShelf } from '../components/OrganizationShelf';
@@ -250,6 +251,11 @@ export const Dashboard: React.FC = () => {
             {looseWorks.map((work) => (
               <li key={work.id}>
                 <Link to={workPath(work)}>{work.title}</Link>
+                <ReadLaterButton
+                  target={{ kind: 'work', id: work.id }}
+                  title={work.title}
+                  compact
+                />
               </li>
             ))}
           </ul>

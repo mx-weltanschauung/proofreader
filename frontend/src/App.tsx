@@ -38,6 +38,9 @@ const MyComments = lazy(() =>
 const CommentReviewQueue = lazy(() =>
   import('./pages/CommentPages').then((m) => ({ default: m.CommentReviewQueue })),
 );
+const MyReadLater = lazy(() =>
+  import('./pages/MyReadLater').then((m) => ({ default: m.MyReadLater })),
+);
 const MyNotes = lazy(() => import('./pages/MyNotes').then((m) => ({ default: m.MyNotes })));
 const MySuggestions = lazy(() =>
   import('./pages/MySuggestions').then((m) => ({ default: m.MySuggestions })),
@@ -252,6 +255,7 @@ function App() {
                 {/* Публичный, без RequireRole: невошедший читатель видит на
                     экране приглашение записаться вместо списка правок. */}
                 <Route path="/mine" element={<MySuggestions />} />
+                <Route path="/mine/read-later" element={<MyReadLater />} />
                 <Route path="/mine/notes" element={<MyNotes />} />
                 <Route path="/mine/comments" element={<MyComments />} />
                 <Route

@@ -7,6 +7,7 @@ import api, {
   conceptsApi,
   editionsApi,
   readingApi,
+  readLaterApi,
   searchApi,
 } from './api';
 import { EMPTY_SCOPE, type SearchScope } from '../utils/searchScope';
@@ -555,4 +556,33 @@ describe('заметки на полях: 401 не уводит со стран�
     await api.get('/suggestions/mine').catch(() => {});
     expect(window.location.href).toBe('/join?next=%2Fworks%2F6%2Fchapters%2F2');
   });
+});
+
+it('полка не отправляет запрос со старой сессией после смены аккаунта в другой вкладке', async () => {
+  const originalAdapter = api.defaults.adapter;
+  const previousToken = localStorage.getItem('token');
+  const adapter = vi.fn(async (config: InternalAxiosRequestConfig) => ({
+    config,
+    data: [],
+    headers: {},
+    status: 200,
+    statusText: 'OK',
+  }));
+  try {
+    api.defaults.adapter = adapter;
+    localStorage.setItem('token', 'second-session');
+    await expect(
+      readLaterApi.list('first-session', new AbortController().signal),
+    ).rejects.toThrow();
+    await expect(
+      readLaterApi.change('first-session', { kind: 'chapter', id: 1 }, true),
+    ).rejects.toThrow();
+    expect(adapter).not.toHaveBeenCalled();
+    await readLaterApi.list('second-session', new AbortController().signal);
+    expect(adapter.mock.calls[0][0].headers.get('Authorization')).toBe('Bearer second-session');
+  } finally {
+    api.defaults.adapter = originalAdapter;
+    if (previousToken === null) localStorage.removeItem('token');
+    else localStorage.setItem('token', previousToken);
+  }
 });

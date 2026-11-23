@@ -250,6 +250,11 @@ export const Header: React.FC = () => {
                   <span className="user-role">{roleLabel(user.role)}</span>
                 </span>
               )}
+              {!isReader(user) && (
+                <Link to="/mine/read-later" className="login-link">
+                  Отложено
+                </Link>
+              )}
               <button onClick={logout} className="btn btn-secondary btn-sm">
                 Выйти
               </button>

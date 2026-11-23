@@ -8,6 +8,7 @@ import { articleKindLabel } from '../utils/credits';
 import { CreditLinks } from './CreditLinks';
 import { PageCells } from './PageCells';
 import { chapterPath, readPath } from '../utils/paths';
+import { ReadLaterButton } from './ReadLaterButton';
 import './VolumeOutlineRow.css';
 
 interface Props {
@@ -122,6 +123,8 @@ export const VolumeOutlineRow: React.FC<Props> = ({
               </>
             )}
           </span>
+
+          <ReadLaterButton target={{ kind: 'chapter', id: chapter.id }} title={title} compact />
 
           <span className="vol-toc-pages">
             {chapter.start_page}—{chapter.end_page}
