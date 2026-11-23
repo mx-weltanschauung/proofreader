@@ -1986,6 +1986,18 @@ describe('ChapterView reading time', () => {
   it('shows total time and updates the remaining time after scrolling through the text', async () => {
     let scrollY = 0;
     Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
+    Object.defineProperty(document.documentElement, 'scrollTop', {
+      configurable: true,
+      get: () => scrollY,
+    });
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      configurable: true,
+      value: 500,
+    });
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: HTMLElement,
     ) {
@@ -2005,11 +2017,11 @@ describe('ChapterView reading time', () => {
 
     renderChapter();
     expect(await screen.findByText('≈ 2 мин чтения')).toBeInTheDocument();
-    expect(await screen.findByText('Ещё ≈ 2 мин')).toBeInTheDocument();
+    expect(await screen.findByText('0 % · Ещё ≈ 2 мин')).toBeInTheDocument();
 
     scrollY = 426;
     void act(() => window.dispatchEvent(new Event('scroll')));
-    expect(await screen.findByText('Основной текст прочитан')).toBeInTheDocument();
+    expect(await screen.findByText('85 % · Текст прочитан')).toBeInTheDocument();
   });
 
   it('hides both estimates when the chapter has no readable text', async () => {
@@ -2019,6 +2031,6 @@ describe('ChapterView reading time', () => {
     renderChapter();
     await screen.findByText('1 страница');
     expect(screen.queryByText(/мин чтения/)).toBeNull();
-    expect(screen.queryByText(/Ещё|Основной текст прочитан/)).toBeNull();
+    expect(screen.queryByText(/Ещё|Текст прочитан/)).toBeNull();
   });
 });

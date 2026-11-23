@@ -102,14 +102,17 @@ describe('ReadingSurface', () => {
     expect(container.querySelector('.reading-percent')).toBeNull();
   });
 
-  it('shows an optional remaining-time label beside the crumbs and exposes main text', () => {
+  it('shows reading percent beside the remaining time and exposes main text', () => {
     const readingContentRef = createRef<HTMLDivElement>();
     renderSurface([page(265, '<p>текст</p>')], {
       crumbs: () => 'Том',
+      progressPercent: 42,
       remainingReadingTime: 'Ещё ≈ 2 мин',
       readingContentRef,
     });
-    expect(screen.getByText('Ещё ≈ 2 мин').closest('.chapter-view-header')).toBeInTheDocument();
+    expect(
+      screen.getByText('42 % · Ещё ≈ 2 мин').closest('.chapter-view-header'),
+    ).toBeInTheDocument();
     expect(readingContentRef.current).toHaveClass('chapter-pages-content');
   });
 

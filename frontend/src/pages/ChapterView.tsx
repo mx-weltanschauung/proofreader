@@ -517,7 +517,7 @@ export const ChapterView: React.FC = () => {
     totalReadingTime === null
       ? undefined
       : readingTime.remainingWords === 0
-        ? 'Основной текст прочитан'
+        ? 'Текст прочитан'
         : `Ещё ${formatReadingDuration(readingTime.remainingWords)}`;
   useVisiblePageHit(
     workId,
