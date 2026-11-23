@@ -222,6 +222,11 @@ export const MySuggestions: React.FC = () => {
   return (
     <div className="my-suggestions-container">
       <h1>Моё</h1>
+      <p>
+        <Link to="/mine/read-later" className="btn btn-secondary">
+          Отложено
+        </Link>
+      </p>
 
       {isLoading && <div className="loading-state">Загрузка…</div>}
       {loadError && <div className="error-state">{loadError}</div>}

@@ -1439,6 +1439,15 @@ export interface AgendaInput {
 
 /** Заметка читателя на полях: к тому, главе или цитате. */
 export type MarginTarget = 'work' | 'chapter' | 'quote';
+export type ReadLaterTarget = { kind: 'work' | 'chapter'; id: number };
+
+export interface ReadLaterEntry {
+  work_id: number;
+  chapter_id?: number;
+  title: string;
+  source: string;
+}
+
 export interface MarginNote {
   id: number;
   work_id: number;

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { VolumeSummary } from '../types';
 import { volumeCoordinates } from '../utils/volumeCoordinates';
 import { workPath } from '../utils/paths';
+import { ReadLaterButton } from './ReadLaterButton';
 import './VolumeTable.css';
 
 interface Props {
@@ -29,6 +30,11 @@ export const VolumeTable: React.FC<Props> = ({ volumes }) => (
           <td className="volume-table-coord">{volumeCoordinates(volume)}</td>
           <td className="volume-table-title">
             <Link to={workPath(volume)}>{volume.title}</Link>
+            <ReadLaterButton
+              target={{ kind: 'work', id: volume.id }}
+              title={[volume.title, volumeCoordinates(volume)].filter(Boolean).join(' · ')}
+              compact
+            />
           </td>
           <td className="volume-table-num">{volume.pages_total}</td>
           <td className="volume-table-num">{volume.chapters_total}</td>

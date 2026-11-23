@@ -7,8 +7,9 @@ import {
   runCaption,
   shelfSlots,
 } from '../utils/shelfGeometry';
-import { plural } from '../utils/volumeLabel';
+import { plural, volumeName } from '../utils/volumeLabel';
 import { editionStats } from '../utils/editionStats';
+import { ReadLaterButton } from './ReadLaterButton';
 import { VolumeSlab } from './VolumeSlab';
 import { VolumeCard } from './VolumeCard';
 import { useVolumePeek } from '../hooks/useVolumePeek';
@@ -98,14 +99,20 @@ export const VolumeShelf: React.FC<Props> = ({
             (at >= cut ? ' is-overflow' : '') + (at >= cutWide ? ' is-overflow-wide' : '');
           if (slot.kind === 'volume') {
             return (
-              <VolumeSlab
-                key={slot.volume.id}
-                volume={slot.volume}
-                current={currentWorkId === slot.volume.id}
-                onPeek={(target) => handlePeek(slot.volume, target)}
-                describedBy={peek?.volume.id === slot.volume.id ? CARD_ID : undefined}
-                className={hidden}
-              />
+              <div className={`volume-slab-row${hidden}`} key={slot.volume.id}>
+                <VolumeSlab
+                  volume={slot.volume}
+                  current={currentWorkId === slot.volume.id}
+                  onPeek={(target) => handlePeek(slot.volume, target)}
+                  describedBy={peek?.volume.id === slot.volume.id ? CARD_ID : undefined}
+                  className={hidden}
+                />
+                <ReadLaterButton
+                  target={{ kind: 'work', id: slot.volume.id }}
+                  title={volumeName(slot.volume)}
+                  compact
+                />
+              </div>
             );
           }
           /* Пропуск, названный словами. От чтения с экрана не скрыт, в отличие

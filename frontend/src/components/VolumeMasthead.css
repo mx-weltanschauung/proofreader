@@ -112,3 +112,7 @@
   font-size: 0.875rem;
   color: var(--color-text-secondary);
 }
+
+.vol-masthead-actions:empty {
+  display: none;
+}

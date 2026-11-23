@@ -215,3 +215,7 @@
 .shelf-page [id] {
   scroll-margin-top: calc(var(--site-header-height, 0px) + 0.75rem);
 }
+
+.loose-works .read-later-compact {
+  margin-inline-start: 0.5rem;
+}

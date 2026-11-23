@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
@@ -41,13 +42,15 @@ function asEditor() {
   });
 }
 
-function renderAt() {
+function renderAt(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
-    <MemoryRouter initialEntries={['/authors/gr-bammel']}>
-      <Routes>
-        <Route path="/authors/:slug" element={<AuthorDetail />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/authors/gr-bammel']}>
+        <Routes>
+          <Route path="/authors/:slug" element={<AuthorDetail />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -68,6 +71,26 @@ describe('AuthorDetail', () => {
     expect(screen.getByText(/1928, № 12, с\. 5—25/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Слить/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Сохранить имя' })).toBeNull();
+  });
+
+  it('показывает состояние отложенной статьи у её автора', async () => {
+    asEditor();
+    vi.spyOn(personsApi, 'get').mockImplementation(() => ok(DETAIL));
+    const client = new QueryClient();
+    client.setQueryData(
+      ['read-later', 1],
+      [
+        {
+          work_id: 300,
+          chapter_id: 50,
+          title: DETAIL.articles[0].title,
+          source: 'Журнал, 1928, № 12',
+        },
+      ],
+    );
+    renderAt(client);
+    const action = await screen.findByRole('button', { name: /Памяти Иосифа Дидгена/ });
+    expect(action).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('статья на одной полосе — «с. 5», без «5—5»', async () => {
