@@ -18,7 +18,7 @@ func TestRenderPageRangeNumbersSubscriptsAcrossTheRange(t *testing.T) {
 		{PageNumber: 9, ContentMarkdown: "Бета[^r1].\n\n[^r1]: вторая."},
 	}
 
-	html, notes := renderPageRange(r, pages)
+	html, notes := renderPageRange(r, pages, nil)
 
 	if len(html) != 2 {
 		t.Fatalf("HTML страниц = %d, ожидалось 2", len(html))
@@ -41,7 +41,7 @@ func TestRenderPageRangeNumbersSubscriptsAcrossTheRange(t *testing.T) {
 
 // Пустой диапазон — не ошибка: у главы может не быть страниц.
 func TestRenderPageRangeEmpty(t *testing.T) {
-	html, notes := renderPageRange(markdown.NewRenderer(), nil)
+	html, notes := renderPageRange(markdown.NewRenderer(), nil, nil)
 
 	if len(html) != 0 {
 		t.Errorf("HTML страниц = %d, ожидалось 0", len(html))

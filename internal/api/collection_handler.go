@@ -109,6 +109,7 @@ func isCollectionSlugTakenError(err error) bool {
 
 // CollectionHandler handles collection endpoints
 type CollectionHandler struct {
+	crossReferences *CrossReferenceHandler
 	collectionStore CollectionStore
 	pageStore       PageStore
 	renderer        *markdown.Renderer
@@ -814,12 +815,16 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 	if hasClosed {
 		cache = nil
 	}
+	refs := h.crossReferences.published(w, r, *item.WorkID, start, end)
+	if len(refs) > 0 {
+		cache = nil
+	}
 	cache.Serve(w, r, key, func() (any, error) {
 		pages, err := h.pageStore.GetPageRange(ctx, *item.WorkID, start, end)
 		if err != nil {
 			return nil, err
 		}
-		pageHTML, notes := renderPageRange(h.renderer, pages)
+		pageHTML, notes := renderPageRange(h.renderer, pages, refs)
 		return ChapterPagesResponse{
 			Pages:         chapterPagesFromRange(pages, pageHTML, nil),
 			FootnotesHTML: markdown.RenderNotes(notes),

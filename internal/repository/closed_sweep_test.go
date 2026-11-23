@@ -71,6 +71,7 @@ type closedSweep struct {
 	openJournal, openPerson         string
 	closedConcept, openConcept      string
 	refs                            []int64
+	readingRefs                     [3]int64 // открытая цель, закрытый том, закрытая глава
 	staffItems, readerItems         []int64
 	cuts                            []int64
 	track, openTrack, recording     int64
@@ -620,13 +621,17 @@ func (sweepStorage) DeletePrefix(context.Context, string) error { return nil }
 // closedSweepRouter — роутер читальни той же сборкой, что cmd/server
 // (api.NewServer), над одноразовой базой; файловый кэш глав включён, чтобы
 // прогретая сотрудником глава была в нём по-настоящему.
-func closedSweepRouter(t *testing.T, pool *pgxpool.Pool) (*mux.Router, *auth.Service, *pagecache.Store) {
+func closedSweepRouter(t *testing.T, pool *pgxpool.Pool, configure ...func(*config.Config, *auth.Service)) (*mux.Router, *auth.Service, *pagecache.Store) {
 	t.Helper()
 	cfg := &config.Config{
 		Server: config.ServerConfig{PublicBaseURL: sweepBase},
 		JWT: config.JWTConfig{Secret: "closed-sweep", Expiration: time.Hour,
 			RefreshExpiration: time.Hour, ReaderExpiration: time.Hour},
 		S3: config.S3Config{PresignTTL: time.Minute},
+	}
+	authService := auth.NewService(&cfg.JWT)
+	for _, apply := range configure {
+		apply(cfg, authService)
 	}
 	cache := pagecache.New(t.TempDir())
 	if err := cache.Init("sweep"); err != nil {
@@ -638,7 +643,7 @@ func closedSweepRouter(t *testing.T, pool *pgxpool.Pool) (*mux.Router, *auth.Ser
 		Stats:   stats.NewRecorder(repository.NewStatsRepository(pool)),
 		Metrics: metrics.New(),
 	})
-	return r, auth.NewService(&cfg.JWT), cache
+	return r, authService, cache
 }
 
 // closedSweepVars — значения переменных пути для обхода маршрутов. Ключ —
@@ -665,30 +670,31 @@ func closedSweepVars(f *closedSweep) map[string][]string {
 		pages = append(pages, itoa(f.ch.pages[n]))
 	}
 	return map[string][]string{
-		"works/{id}":             works,
-		"works/{workId}":         works,
-		"chapters/{id}":          chapters,
-		"pages/{pageId}":         pages,
-		"by-number/{pageNumber}": {"1", "3"},
-		"versions/{versionId}":   {"1"},
-		"editions/{id}":          ids(f.openEd, f.closedEd),
-		"journals/{slug}":        {f.journalSlug, f.openJournal},
-		"persons/{slug}":         {f.person, f.openPerson, f.ch.person},
-		"categories/{id}":        ids(f.category),
-		"concepts/{slug}":        {f.closedConcept, f.openConcept, f.ch.concept},
-		"references/{refId}":     ids(f.refs...),
-		"audio/{id}":             ids(f.track, f.openTrack, f.ch.track, f.ch.sharedTrack, f.ch.openTrack),
-		"rec/{id}":               ids(f.recording, f.openRecording, f.ch.recording, f.ch.parentRecording),
-		"proofread-runs/{id}":    ids(f.proofreadOpen, f.proofreadClosed),
-		"runs/{id}":              ids(f.proofreadOpen, f.proofreadClosed),
-		"suggestions/{id}":       ids(f.suggestion, f.ch.suggestion),
-		"margin-notes/{id}":      ids(append(append([]int64{}, f.marginClosed...), f.ch.openNote)...),
-		"reader-comments/{id}":   ids(append(append([]int64{}, f.commentClosed...), f.openComment)...),
-		"documents/{slug}":       {"razbor"},
-		"documents/{nickname}":   {f.readerNick},
-		"cuts/{cutId}":           ids(append(append([]int64{}, f.cuts...), f.ch.cuts...)...),
-		"collections/{slug}":     {"podborka"},
-		"collections/{nickname}": {f.readerNick},
+		"works/{id}":                     works,
+		"works/{workId}":                 works,
+		"chapters/{id}":                  chapters,
+		"pages/{pageId}":                 pages,
+		"by-number/{pageNumber}":         {"1", "3"},
+		"versions/{versionId}":           {"1"},
+		"editions/{id}":                  ids(f.openEd, f.closedEd),
+		"journals/{slug}":                {f.journalSlug, f.openJournal},
+		"persons/{slug}":                 {f.person, f.openPerson, f.ch.person},
+		"categories/{id}":                ids(f.category),
+		"concepts/{slug}":                {f.closedConcept, f.openConcept, f.ch.concept},
+		"references/{refId}":             ids(f.refs...),
+		"cross-references/{referenceId}": ids(f.readingRefs[:]...),
+		"audio/{id}":                     ids(f.track, f.openTrack, f.ch.track, f.ch.sharedTrack, f.ch.openTrack),
+		"rec/{id}":                       ids(f.recording, f.openRecording, f.ch.recording, f.ch.parentRecording),
+		"proofread-runs/{id}":            ids(f.proofreadOpen, f.proofreadClosed),
+		"runs/{id}":                      ids(f.proofreadOpen, f.proofreadClosed),
+		"suggestions/{id}":               ids(f.suggestion, f.ch.suggestion),
+		"margin-notes/{id}":              ids(append(append([]int64{}, f.marginClosed...), f.ch.openNote)...),
+		"reader-comments/{id}":           ids(append(append([]int64{}, f.commentClosed...), f.openComment)...),
+		"documents/{slug}":               {"razbor"},
+		"documents/{nickname}":           {f.readerNick},
+		"cuts/{cutId}":                   ids(append(append([]int64{}, f.cuts...), f.ch.cuts...)...),
+		"collections/{slug}":             {"podborka"},
+		"collections/{nickname}":         {f.readerNick},
 		"items/{itemId}": ids(append(append(append([]int64{}, f.staffItems...), f.readerItems...),
 			f.ch.staffItem, f.ch.parentItem, f.ch.readerItem)...),
 		"readers/{nickname}":        {f.readerNick},
@@ -761,6 +767,7 @@ func closedSweepSilent() map[string]string {
 		"/api/documents/review":                                   staff,
 		"/api/suggestions":                                        staff,
 		"/api/suggestions/{id}":                                   staff,
+		"/api/editions/{id}/works/{workId}/cross-references":      staff,
 		"/api/works/{id}/apparatus":                               staff,
 		"/api/closures/latest":                                    staff,
 		"/api/works/{workId}/pages/{pageId}/versions":             staff,
@@ -786,15 +793,16 @@ func closedDirectValues(f *closedSweep) map[string]map[string]bool {
 	}
 	works := set(itoa(f.self), itoa(f.front), itoa(f.edVol), itoa(f.issue))
 	return map[string]map[string]bool{
-		"proofread-runs/{id}": set(itoa(f.proofreadClosed)),
-		"works/{id}":          works,
-		"works/{workId}":      works,
-		"editions/{id}":       set(itoa(f.closedEd)),
-		"journals/{slug}":     set(f.journalSlug),
-		"concepts/{slug}":     set(f.closedConcept, f.ch.concept),
-		"persons/{slug}":      set(f.person, f.ch.person),
-		"audio/{id}":          set(itoa(f.track), itoa(f.ch.track), itoa(f.ch.sharedTrack)),
-		"rec/{id}":            set(itoa(f.recording), itoa(f.ch.recording), itoa(f.ch.parentRecording)),
+		"proofread-runs/{id}":            set(itoa(f.proofreadClosed)),
+		"cross-references/{referenceId}": set(itoa(f.readingRefs[1]), itoa(f.readingRefs[2])),
+		"works/{id}":                     works,
+		"works/{workId}":                 works,
+		"editions/{id}":                  set(itoa(f.closedEd)),
+		"journals/{slug}":                set(f.journalSlug),
+		"concepts/{slug}":                set(f.closedConcept, f.ch.concept),
+		"persons/{slug}":                 set(f.person, f.ch.person),
+		"audio/{id}":                     set(itoa(f.track), itoa(f.ch.track), itoa(f.ch.sharedTrack)),
+		"rec/{id}":                       set(itoa(f.recording), itoa(f.ch.recording), itoa(f.ch.parentRecording)),
 		// Вторая организация и событие 1 видны только закрытым: 404 всем,
 		// кроме сотрудника.
 		"organizations/{slug}":      set(f.orgB, f.ch.org),
@@ -981,6 +989,11 @@ func percentDecoded(text string) string {
 func leakIn(f *closedSweep, text string) string {
 	norm := strings.NewReplacer(`\u0001`, "", `\u0002`, "", "\x01", "", "\x02", "").Replace(text)
 	norm += "\n" + percentDecoded(norm)
+	for _, id := range f.readingRefs[1:] {
+		if id > 0 && strings.Contains(norm, "/api/cross-references/"+itoa(id)+"/open") {
+			return "переход к закрытой полосе"
+		}
+	}
 	if m := closedLeak.FindString(norm); m != "" {
 		return fmt.Sprintf("маркер %q", m)
 	}
@@ -1027,8 +1040,12 @@ func (c closedChapterSweep) hiddenKeys() []string {
 // closedSweepVars, тест падает, пока её не заведут.
 func TestClosedNeverReachesOutsiders(t *testing.T) {
 	pool := repository.SharedTestPool(t)
-	router, authService, cache := closedSweepRouter(t, pool)
-	f := seedClosedSweep(t, pool, authService)
+	var f *closedSweep
+	router, _, cache := closedSweepRouter(t, pool, func(cfg *config.Config, authService *auth.Service) {
+		f = seedClosedSweep(t, pool, authService)
+		cfg.Server.CrossReferenceEditionID = f.openEd
+	})
+	seedSweepCrossReferences(t, pool, f)
 	// Журнал запросов (middleware.Logging) — тысячи строк на прогон.
 	log.SetOutput(io.Discard)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })

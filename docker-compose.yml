@@ -87,6 +87,7 @@ services:
       PAGE_CACHE_DIR: /var/cache/proofreader
       # Экземпляр: имя, описание, ссылки подвала, занятые ники —
       # из .env рядом с compose (docs/SELF_HOSTING.md). Пусто — умолчания.
+      CROSS_REFERENCE_EDITION_ID: ${CROSS_REFERENCE_EDITION_ID:-}
       SITE_NAME: ${SITE_NAME:-}
       SITE_DESCRIPTION: ${SITE_DESCRIPTION:-}
       SITE_SUPPORT_URL: ${SITE_SUPPORT_URL:-}

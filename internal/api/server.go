@@ -100,12 +100,20 @@ func NewServer(d ServerDeps) *mux.Router {
 		WithClosedChapters(closedRepo).WithScansHiddenChapters(closedRepo)
 	eventRepo := repository.NewEventRepository(pool)
 	readingHandler := NewReadingHandler(viewPages, markdownRenderer).WithClosedMarkers(viewChapters)
+	crossReferences := &CrossReferenceHandler{
+		editionID: cfg.Server.CrossReferenceEditionID,
+		repo:      repository.NewCrossReferenceRepository(pool), pages: viewPages, renderer: markdownRenderer,
+	}
+	pageHandler.crossReferences = crossReferences
+	chapterHandler.crossReferences = crossReferences
+	readingHandler.crossReferences = crossReferences
 	// Догрузка вклейки целиком по кнопке «Развернуть здесь» (задача 8) — тот же
 	// набор источников, что у чтения разбора, плюс свой рендер без подрезки.
 	documentCutHandler := NewDocumentCutHandler(documentRepo, documentCutRepo, workRepo, viewPages, markdownRenderer).WithClosed(closedRepo).WithClosedSpans(closedRepo)
 	userHandler := NewUserHandler(userRepo, authService)
 	exportHandler := NewExportHandler(workRepo, chapterRepo, pageRepo)
 	editionHandler := NewEditionHandler(editionRepo)
+	editionHandler.crossReferenceEditionID = cfg.Server.CrossReferenceEditionID
 	shelfHandler := NewShelfHandler(editionRepo, workRepo).WithJournals(journalRepo).WithClosed(closedRepo).WithClosedChapters(closedRepo).WithEvents(eventRepo)
 	highlightHandler := NewHighlightHandler(editionRepo).WithClosed(closedRepo).WithClosedChapters(closedRepo)
 	searchRepo := repository.NewSearchRepository(pool)
@@ -122,6 +130,7 @@ func NewServer(d ServerDeps) *mux.Router {
 	tokenlessIndex := NewTokenlessIndex(indexRepo, closedRepo)
 	indexHandler := NewIndexHandler(indexRepo, workRepo, editionRepo, viewPages, viewChapters, fragmentRepo, markdownRenderer).WithClosed(closedRepo)
 	collectionHandler := NewCollectionHandler(collectionRepo, viewPages, markdownRenderer, rangeCache, cfg.JWT.Secret, cfg.Server.TrustProxyHeaders).WithClosed(closedRepo)
+	collectionHandler.crossReferences = crossReferences
 	downloadSource := NewDownloadSource(
 		workRepo, viewChapters, viewPages, editionRepo, collectionRepo,
 		markdownRenderer, cfg.Server.PublicBaseURL,
@@ -256,6 +265,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		readerAdminHandler,
 		authService,
 	).WithMCP(mcpHandler).
+		WithCrossReferences(crossReferences).
 		WithProofread(&ProofreadHandler{limit: suggestionLimit, jwtSecret: cfg.JWT.Secret, trustProxy: cfg.Server.TrustProxyHeaders, runs: repository.NewProofreadRunRepository(pool), chapters: viewChapters, pages: viewPages, closed: closedRepo, scans: closedRepo, storage: scans, ttl: cfg.S3.PresignTTL}).
 		WithSettings(NewSettingsHandler(suggestionLimit)).
 		WithOPDS(opdsHandler).

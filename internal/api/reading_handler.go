@@ -47,8 +47,9 @@ type ReadingWindowResponse struct {
 // Отдельный обработчик, а не третий метод у глав: маршрут адресует работу.
 // Поток идёт сквозь весь том и границу главы не замечает.
 type ReadingHandler struct {
-	pageRepo PageStore
-	renderer *markdown.Renderer
+	crossReferences *CrossReferenceHandler
+	pageRepo        PageStore
+	renderer        *markdown.Renderer
 	// markers — дерево глав для пометки закрытых полос сотруднику; nil —
 	// пометок нет.
 	markers ChapterTreeStore
@@ -167,6 +168,10 @@ func (h *ReadingHandler) Window(w http.ResponseWriter, r *http.Request) {
 
 	// make, а не var: nil-срез уехал бы в JSON как null, и фронт упал бы на
 	// .map при чтении работы без страниц.
+	var refs publishedByPage
+	if len(pages) > 0 {
+		refs = h.crossReferences.published(w, r, workID, pages[0].PageNumber, pages[len(pages)-1].PageNumber)
+	}
 	result := make([]ReadingPage, len(pages))
 	for i, page := range pages {
 		// Постранично, по одной странице за вызов. Счёт подстрочных сносок
@@ -174,7 +179,7 @@ func (h *ReadingHandler) Window(w http.ResponseWriter, r *http.Request) {
 		// не кончается, и войди читатель в разных местах, одна и та же
 		// сноска получила бы разные номера. Страница везёт свои сноски и ни
 		// от чего не зависит.
-		html, notes := renderPageRange(h.renderer, []*models.Page{page})
+		html, notes := renderPageRange(h.renderer, []*models.Page{page}, refs)
 		result[i] = ReadingPage{
 			PageNumber: page.PageNumber,
 			HTML:       html[0],

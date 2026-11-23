@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import type { Chapter, Work, Page } from '../types';
 import {
@@ -37,6 +37,15 @@ const PAGE_246 = { id: 1002, work_id: 3, page_number: 246, status: 'вычита
 const HTML_245 = 'Так писал он в тысяча восемьсот сорок восьмом.';
 const HTML_246 = 'Наутро всё переменилось.';
 
+function LocationProbe() {
+  const { pathname, search } = useLocation();
+  return (
+    <span hidden data-testid="page-route">
+      {pathname + search}
+    </span>
+  );
+}
+
 describe('PageView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,6 +71,7 @@ describe('PageView', () => {
         <Routes>
           <Route path="/works/:workId/pages/:pageNumber" element={<PageView />} />
         </Routes>
+        <LocationProbe />
       </MemoryRouter>,
     );
   }
@@ -165,6 +175,40 @@ describe('PageView', () => {
     renderAt('/works/3/pages/245');
 
     expect(await screen.findByText(HTML_245)).toBeInTheDocument();
+  });
+
+  it('открывает подтверждённую полосу по идентификатору и сохраняет его в каноническом адресе', async () => {
+    vi.spyOn(worksApi, 'get').mockReturnValue(ok({ ...WORK, slug: 'primer' }));
+    const get = vi.spyOn(pagesApi, 'get').mockReturnValue(ok(PAGE_245));
+    vi.spyOn(pagesApi, 'render').mockReturnValue(ok({ html: `<p>${HTML_245}</p>` }));
+
+    renderAt('/works/3/pages/245?verified_page_id=1001');
+
+    expect(await screen.findByText(HTML_245)).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith(3, 1001);
+    expect(pagesApi.getByNumber).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.getByTestId('page-route')).toHaveTextContent(
+        '/works/3-primer/pages/245?verified_page_id=1001',
+      ),
+    );
+  });
+
+  it.each([
+    ['исходная полоса удалена', () => Promise.reject({ response: { status: 404 } })],
+    ['номер исходной полосы изменился', () => ok({ ...PAGE_245, page_number: 246 })],
+  ])('не открывает подмену по номеру, если %s', async (_description, getPage) => {
+    const replacement = { ...PAGE_245, id: 2001 };
+    const byNumber = vi.spyOn(pagesApi, 'getByNumber').mockReturnValue(ok(replacement));
+    const get = vi.spyOn(pagesApi, 'get').mockImplementation(getPage);
+    const renderPage = vi.spyOn(pagesApi, 'render').mockReturnValue(ok({ html: '<p>Подмена</p>' }));
+
+    renderAt('/works/3/pages/245?verified_page_id=1001');
+
+    expect(await screen.findByText('Страница 245 не найдена в этой работе')).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith(3, 1001);
+    expect(byNumber).not.toHaveBeenCalled();
+    expect(renderPage).not.toHaveBeenCalled();
   });
 
   it('зовёт предложить исправление и без входа в читальню', async () => {

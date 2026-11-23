@@ -74,6 +74,9 @@ const EditionHighlightsEdit = lazy(() =>
 const EditionDetail = lazy(() =>
   import('./pages/EditionDetail').then((m) => ({ default: m.EditionDetail })),
 );
+const CrossReferences = lazy(() =>
+  import('./pages/CrossReferences').then((m) => ({ default: m.CrossReferences })),
+);
 const AuthorDetail = lazy(() =>
   import('./pages/AuthorDetail').then((m) => ({ default: m.AuthorDetail })),
 );
@@ -343,6 +346,14 @@ function App() {
                   element={
                     <RequireRole roles={['administrator', 'editor']}>
                       <EditionHighlightsEdit />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/editions/:id/cross-references"
+                  element={
+                    <RequireRole roles={['administrator', 'editor']}>
+                      <CrossReferences />
                     </RequireRole>
                   }
                 />

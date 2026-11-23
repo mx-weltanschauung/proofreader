@@ -48,6 +48,7 @@ export const PageView: React.FC = () => {
   const { workId, pageNumber } = useParams<{ workId: string; pageNumber: string }>();
   const parsedWorkId = numericId(workId);
   const cleanWorkId = parsedWorkId !== null ? String(parsedWorkId) : undefined;
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const editable = canEdit(user);
   const {
@@ -55,7 +56,7 @@ export const PageView: React.FC = () => {
     isLoading: isPageLoading,
     notFound,
     error: pageError,
-  } = usePageByNumber(cleanWorkId, pageNumber);
+  } = usePageByNumber(cleanWorkId, pageNumber, searchParams.get('verified_page_id'));
   const { levels: chapterLevels } = useChaptersForPage(cleanWorkId, page?.page_number);
   const [content, setContent] = useState<PageContent | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -116,7 +117,6 @@ export const PageView: React.FC = () => {
   // Полоса, открытая из выдачи поиска, несёт ?q= и подсвечивает найденное —
   // тем же хуком, что режим чтения и глава. Без q не делает ничего: ни запроса
   // за леммами, ни обхода DOM.
-  const [searchParams] = useSearchParams();
   const highlightTerms = useSearchTerms(searchParams.get('q') ?? '');
   // Внешняя ссылка на место в тексте несёт пару якорей — ?quote= (начало) и
   // &to= (конец): та же полоса, что и у q=, но точная цитата вместо лемм, и с

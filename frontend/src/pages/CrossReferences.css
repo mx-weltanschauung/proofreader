@@ -1,0 +1,192 @@
+.cross-references {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 2.5rem;
+}
+
+.cross-references h1 {
+  margin: 0;
+}
+
+.cross-references > .back-link {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+}
+
+.cross-references-edition-name,
+.cross-references-edition {
+  color: var(--color-text-secondary);
+}
+
+.cross-references-toolbar {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.cross-references-volume-picker,
+.cross-references-target-picker,
+.cross-references-toolbar label {
+  display: grid;
+  gap: 0.25rem;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.cross-references select {
+  min-height: 2.5rem;
+  max-width: 100%;
+  padding: 0.35rem 0.5rem;
+  color: var(--color-text-primary);
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  font: inherit;
+}
+
+.cross-references-workspace {
+  display: grid;
+  grid-template-columns: minmax(11rem, 1fr) minmax(0, 3fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.cross-references-queue {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 45rem;
+  margin: 0 0 0.6rem;
+  padding: 0.15rem;
+  overflow: auto;
+  list-style: none;
+}
+
+.cross-references-row {
+  display: grid;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  color: var(--color-text-primary);
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: 5px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.cross-references-row:is(:hover, [aria-pressed='true']) {
+  border-color: var(--color-link);
+}
+
+.cross-references-row[aria-pressed='true'] {
+  background: var(--color-info-tint);
+}
+
+.cross-references-row span {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+}
+
+.cross-references-row .cross-references-row-issue,
+.cross-references-issue {
+  color: var(--color-warning-ink);
+}
+
+.cross-references-issue {
+  padding: 0.45rem 0.65rem;
+  background: var(--color-warning-tint);
+  border-radius: 4px;
+}
+
+.cross-references-citation h2,
+.cross-references-page h3 {
+  margin: 0 0 0.45rem;
+}
+
+.cross-references-citation p,
+.cross-references-page p {
+  margin: 0.35rem 0;
+  overflow-wrap: anywhere;
+}
+
+.cross-references-citation {
+  margin-bottom: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.cross-references-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.cross-references-page {
+  min-width: 0;
+  padding: 0.85rem;
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-card-border);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.cross-references-page .closed-badge {
+  margin-inline-start: 0.45rem;
+}
+
+.cross-references-page-text {
+  max-height: 47vh;
+  margin-top: 0.7rem;
+  padding: 0.6rem 0.5rem 0 0;
+  overflow: auto;
+  border-top: 1px solid var(--color-border-light);
+  font-family: var(--reading-font);
+  line-height: 1.55;
+}
+
+.cross-references-page-text img {
+  max-width: 100%;
+  height: auto;
+}
+
+.cross-references-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.cross-references-error {
+  color: var(--color-error-ink);
+}
+
+@media (max-width: 960px) {
+  .cross-references-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cross-references-queue {
+    max-height: 12rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .cross-references {
+    padding-inline: 0.65rem;
+  }
+
+  .cross-references-comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cross-references-page-text {
+    max-height: 34vh;
+  }
+}

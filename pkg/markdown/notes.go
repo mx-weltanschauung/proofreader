@@ -245,6 +245,13 @@ func (r *Renderer) CollectPagesScoped(scope string, pages []PageContent) ([]stri
 			}
 		}
 
+		if p.Decorate != nil {
+			pageHTML[i] = p.Decorate("", pageHTML[i])
+			for j := range items {
+				items[j].BodyHTML = p.Decorate(items[j].RefID, items[j].BodyHTML)
+			}
+		}
+
 		for _, it := range items {
 			n := &Note{
 				AnchorID: it.AnchorID,

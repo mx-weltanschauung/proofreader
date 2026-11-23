@@ -14,7 +14,8 @@ import (
 
 // Router holds all API handlers and creates routes
 type Router struct {
-	proofread *ProofreadHandler
+	proofread       *ProofreadHandler
+	crossReferences *CrossReferenceHandler
 	// mcpHandler — MCP-сервер читальни (internal/mcp). nil — маршрут отвечает
 	// 404: так собран роутер в тестах, которым сервер не нужен.
 	mcpHandler http.Handler
@@ -109,6 +110,11 @@ func (rt *Router) WithSettings(h *SettingsHandler) *Router {
 // WithMetrics подключает счёт запросов и задержек по маршрутам.
 func (rt *Router) WithMetrics(m *metrics.Metrics) *Router {
 	rt.metrics = m
+	return rt
+}
+
+func (rt *Router) WithCrossReferences(handler *CrossReferenceHandler) *Router {
+	rt.crossReferences = handler
 	return rt
 }
 
@@ -381,6 +387,12 @@ func (rt *Router) Setup() *mux.Router {
 	public.HandleFunc("/editions/{id}", rt.editionHandler.Get).Methods("GET")
 	public.HandleFunc("/editions/{id}/works", rt.editionHandler.ListWorks).Methods("GET")
 	public.HandleFunc("/editions/{id}/highlights", rt.highlightHandler.Get).Methods("GET")
+
+	public.HandleFunc("/cross-references/{referenceId}/open", rt.crossReferences.Open).Methods("GET")
+	const references = "/editions/{id}/works/{workId}/cross-references"
+	staff.HandleFunc(references, rt.crossReferences.List).Methods("GET")
+	staff.HandleFunc(references+"/scan", rt.crossReferences.Scan).Methods("POST")
+	staff.HandleFunc(references+"/{referenceId}", rt.crossReferences.Decide).Methods("PATCH")
 
 	// Всё, что рисует главная, одним ответом: собрания со своими томами и
 	// работы вне собраний. Полки эти же данные собирали шестью запросами в

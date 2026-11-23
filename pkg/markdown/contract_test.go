@@ -39,11 +39,12 @@ func TestPublicOutputsCarryNoDocumentWrapper(t *testing.T) {
 	scopedHTML, _ := r.CollectPagesScoped("v1-", []PageContent{{PageNumber: 1, Content: contractMarkdown}})
 
 	outputs := map[string]string{
-		"Render":             r.Render(contractMarkdown),
-		"CollectPages":       pageHTML[0],
-		"CollectPagesScoped": scopedHTML[0],
-		"RenderNotes":        RenderNotes(notes),
-		"RenderNotesWith":    RenderNotesWith(notes, NotesOptions{Inline: true}),
+		"Render":              r.Render(contractMarkdown),
+		"RenderPageWithNotes": r.RenderPageWithNotes("", PageContent{PageNumber: 1, Content: contractMarkdown}),
+		"CollectPages":        pageHTML[0],
+		"CollectPagesScoped":  scopedHTML[0],
+		"RenderNotes":         RenderNotes(notes),
+		"RenderNotesWith":     RenderNotesWith(notes, NotesOptions{Inline: true}),
 	}
 
 	for name, got := range outputs {

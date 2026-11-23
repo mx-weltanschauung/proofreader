@@ -18,6 +18,7 @@ const EDITION: Edition = {
   title: 'Сочинения, 2-е изд.',
   slug: 'mae-2',
   description: '',
+  cross_references_enabled: true,
   created_at: '',
   updated_at: '',
 };
@@ -110,6 +111,7 @@ describe('EditionDetail', () => {
     expect(container.querySelectorAll('.volume-slab')).toHaveLength(WORKS.length);
     // Гостю правка избранного не предлагается.
     expect(screen.queryByRole('link', { name: 'Избранное' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Сверка отсылок' })).toBeNull();
     // Обрезки на этом экране нет: собрание показывается целиком. Ищем именно
     // плитку «ещё N →», а не слово «ещё»: голым словом проверка ловила и
     // полосу пропуска («Тома 12—15 ещё не сняты»), которая к обрезке
@@ -237,6 +239,10 @@ describe('EditionDetail', () => {
       'href',
       `/editions/${EDITION.id}-${EDITION.slug}/highlights`,
     );
+    expect(screen.getByRole('link', { name: 'Сверка отсылок' })).toHaveAttribute(
+      'href',
+      `/editions/${EDITION.id}-${EDITION.slug}/cross-references`,
+    );
     expect(screen.getByRole('button', { name: 'Удалить' })).toHaveClass('btn-danger');
   });
 
@@ -251,7 +257,9 @@ describe('EditionDetail', () => {
       isAuthenticated: true,
       isLoading: false,
     });
-    vi.spyOn(editionsApi, 'get').mockImplementation(() => ok(EDITION));
+    vi.spyOn(editionsApi, 'get').mockImplementation(() =>
+      ok({ ...EDITION, cross_references_enabled: undefined }),
+    );
     vi.spyOn(editionsApi, 'volumes').mockImplementation(() => ok([]));
 
     renderDetail();
@@ -262,6 +270,7 @@ describe('EditionDetail', () => {
     );
     expect(screen.getByText(/В собрании пока нет работ/)).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Вид списка томов' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Сверка отсылок' })).toBeNull();
   });
 
   it('показывает предваряющую работу над томами и не считает её томом', async () => {
