@@ -1,0 +1,38 @@
+.read-later-list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.read-later-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 0;
+  border-block-start: 1px solid var(--color-border-light);
+}
+
+.read-later-row > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.read-later-source {
+  margin-block-start: 0.25rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.read-later-row a {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.read-later-empty {
+  color: var(--color-text-secondary);
+}
+
+.read-later-empty p + p {
+  margin-block-start: 0.5rem;
+}

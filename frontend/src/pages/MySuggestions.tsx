@@ -10,6 +10,7 @@ import {
 } from '../services/api';
 import type { Collection, Document, RejectReason, SuggestionRow } from '../types';
 import { useAuth } from '../hooks/useAuth';
+import { ReadLaterShelf } from '../components/ReadLaterShelf';
 import { joinPathFor } from '../utils/returnUrl';
 import { collectionPath } from '../utils/paths';
 import { documentPath } from '../utils/documentPaths';
@@ -222,12 +223,16 @@ export const MySuggestions: React.FC = () => {
   return (
     <div className="my-suggestions-container">
       <h1>Моё</h1>
-      <p>
-        <Link to="/mine/read-later" className="btn btn-secondary">
-          Отложено
-        </Link>
-      </p>
+      {user && (
+        <section aria-labelledby="mine-read-later-title">
+          <h2 className="my-suggestions-section-title" id="mine-read-later-title">
+            Отложено
+          </h2>
+          <ReadLaterShelf key={user.id} userId={user.id} preview />
+        </section>
+      )}
 
+      <h2 className="my-suggestions-section-title">Предложенные правки</h2>
       {isLoading && <div className="loading-state">Загрузка…</div>}
       {loadError && <div className="error-state">{loadError}</div>}
 
