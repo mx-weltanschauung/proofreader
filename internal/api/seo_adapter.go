@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"proofreader/internal/models"
@@ -106,6 +107,10 @@ func (a *SEOCollectionSource) GetByAuthorSlug(ctx context.Context, nickname, slu
 		return nil, fmt.Errorf("%w: подборка %q пришёл пустым без ошибки", seo.ErrNotFound, slug)
 	}
 
+	if collection.PublishedAt == nil {
+		return collection, nil
+	}
+
 	rows, err := a.collections.ItemRows(ctx, collection.ID)
 	if err != nil {
 		return nil, fmt.Errorf("состав подборки %q: %w", slug, err)
@@ -124,6 +129,17 @@ func (a *SEOCollectionSource) GetByAuthorSlug(ctx context.Context, nickname, slu
 	// Тот же вызов, что и в CollectionHandler.Get — состав не должен
 	// разойтись между API и страницей краулера.
 	collection.Items = buildCollectionTOC(rows, chapters, closed, true)
+
+	if viewErr := checkCollectionView(ctx, a.collections, nil, collection); viewErr != nil {
+		switch viewErr.status {
+		case http.StatusGone:
+			return nil, seo.ErrNotFound
+		case http.StatusNotFound:
+			return nil, seo.ErrNeverPublished
+		default:
+			return nil, seo.ErrBusy
+		}
+	}
 
 	return collection, nil
 }

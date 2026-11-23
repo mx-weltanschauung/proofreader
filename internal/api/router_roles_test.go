@@ -176,6 +176,10 @@ var routeAccess = map[string]access{
 	// Подборка: владение читателем, черновик и публикация. Правку и снятие с
 	// публикации может позвать только владелец (или сотрудник — легаси-строки
 	// без владельца), см. mayEdit в collection_handler.go.
+	"POST /api/collections/{nickname}/{slug}/program/submit": accessReader,
+	"GET /api/collection-programs/review":                    accessStaff,
+	"POST /api/collection-programs/review/{id}":              accessStaff,
+
 	"POST /api/collections":                             accessReader,
 	"PUT /api/collections/{slug}":                       accessReader,
 	"DELETE /api/collections/{slug}":                    accessReader,

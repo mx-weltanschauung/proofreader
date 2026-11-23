@@ -326,6 +326,17 @@ export interface Collection {
   items?: CollectionEntry[];
   meetings?: CollectionMeeting[];
   program_revision?: number;
+  program_review_status?: 'pending' | 'rejected';
+  program_reject_reason?: string;
+}
+
+export interface CollectionProgramReviewEntry {
+  id: number;
+  title: string;
+  slug: string;
+  author_nickname: string;
+  revision: number;
+  submitted_at: string;
 }
 
 /** Строка состава как её возвращает добавление элемента. */

@@ -154,3 +154,16 @@ func TestSEOCollectionSourceKeepsOtherErrors(t *testing.T) {
 		t.Fatal("поломка базы выдана за отсутствие подборки")
 	}
 }
+
+func TestReaderCollectionSEORejectsProgramWithdrawnWhileLoading(t *testing.T) {
+	f := collectionFixture()
+	c := f.collections[0]
+	c.AuthorNickname = "avtor"
+	c.OwnerID = ptrInt64(1)
+	c.PublishIPHash = "published"
+	src := NewSEOCollectionSource(&changingCollectionReviewStore{fakeCollectionStore: f})
+	got, err := src.GetByAuthorSlug(context.Background(), c.AuthorNickname, c.Slug)
+	if got != nil || !errors.Is(err, seo.ErrNotFound) {
+		t.Fatalf("SEO получил снятый состав: %+v, %v", got, err)
+	}
+}

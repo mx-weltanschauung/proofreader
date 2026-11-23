@@ -139,6 +139,9 @@ func (h *DownloadHandler) Collection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nickname, slug := collectionKey(r)
+	if nickname != "" {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	if slug == "" {
 		http.Error(w, "Не указан подборка", http.StatusBadRequest)
 		return
@@ -163,7 +166,14 @@ func (h *DownloadHandler) Collection(w http.ResponseWriter, r *http.Request) {
 
 	source := h.sourceFor(r)
 	h.serve(w, r, "collection-"+asciiSlug(slug), func(ctx context.Context) (*book.Book, error) {
-		return source.Collection(ctx, nickname, slug, closed)
+		b, err := source.Collection(ctx, nickname, slug, closed)
+		if err != nil {
+			return nil, err
+		}
+		if viewErr := checkCollectionView(ctx, h.source.collections, claims, collection); viewErr != nil {
+			return nil, viewErr
+		}
+		return b, nil
 	})
 }
 
@@ -191,6 +201,11 @@ func (h *DownloadHandler) serve(
 
 	b, err := build(r.Context())
 	if err != nil {
+		var viewErr *collectionViewError
+		if errors.As(err, &viewErr) {
+			http.Error(w, viewErr.message, viewErr.status)
+			return
+		}
 		if errors.Is(err, ErrNotFound) {
 			http.Error(w, "Не найдено", http.StatusNotFound)
 			return

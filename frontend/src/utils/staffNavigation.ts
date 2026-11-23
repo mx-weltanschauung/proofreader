@@ -29,6 +29,7 @@ export const STAFF_GROUPS: StaffGroup[] = [
     title: 'Работа',
     links: [
       { to: '/documents/review', label: 'Разборы на проверку' },
+      { to: '/collection-programs/review', label: 'Программы на проверку' },
       { to: '/reader-comments/review', label: 'Комментарии', count: 'comments' },
       { to: '/admin/audio', label: 'Озвучка' },
     ],

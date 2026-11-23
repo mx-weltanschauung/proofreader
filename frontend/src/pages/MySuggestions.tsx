@@ -284,7 +284,13 @@ export const MySuggestions: React.FC = () => {
                       : 'my-suggestions-status my-suggestions-status-новое'
                   }
                 >
-                  {collection.published_at ? 'опубликовано' : 'черновик'}
+                  {collection.published_at
+                    ? 'опубликовано'
+                    : collection.program_review_status === 'pending'
+                      ? 'на проверке'
+                      : collection.program_review_status === 'rejected'
+                        ? 'возвращено на доработку'
+                        : 'черновик'}
                 </span>
               </div>
             </li>

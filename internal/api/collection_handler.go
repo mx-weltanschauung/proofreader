@@ -71,7 +71,7 @@ func collectionVisibleTo(claims *auth.Claims, c *models.Collection) (status int,
 	if c.PublishedAt != nil {
 		return 0, "", true
 	}
-	if mayEdit(claims, c) {
+	if mayEdit(claims, c) || mayReviewCollection(claims, c) {
 		return 0, "", true
 	}
 	if c.PublishIPHash == "" {
@@ -232,6 +232,9 @@ func (h *CollectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
 	nickname, slug := collectionKey(r)
+	if nickname != "" {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	collection, err := h.collectionStore.GetByAuthorSlug(ctx, nickname, slug)
 	if err != nil || collection == nil {
 		writeError(w, http.StatusNotFound, "Подборка не найдена")
@@ -271,6 +274,15 @@ func (h *CollectionHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	collection.Items = buildCollectionTOC(composition.Items, chapters, closed, !isStaffRequest(r))
 
+	if viewErr := checkCollectionView(ctx, h.collectionStore, claims, collection); viewErr != nil {
+		writeError(w, viewErr.status, viewErr.message)
+		return
+	}
+	if !mayEdit(claims, collection) && !mayReviewCollection(claims, collection) {
+		public := *collection
+		public.ProgramReviewStatus, public.ProgramRejectReason = "", ""
+		collection = &public
+	}
 	writeJSON(w, collection)
 }
 
@@ -349,6 +361,9 @@ func (h *CollectionHandler) Update(w http.ResponseWriter, r *http.Request) {
 	collection.Description = req.Description
 
 	if err := h.collectionStore.Update(ctx, collection); err != nil {
+		if writeCollectionReviewConflict(w, err) {
+			return
+		}
 		// Переименование в слаг, уже занятый этим же автором (например, в его
 		// другой подборке), бьёт в тот же составной индекс, что и Create —
 		// бриф называет свойство «повтор слага под одним ником отвечает 409»
@@ -408,6 +423,9 @@ func (h *CollectionHandler) SaveProgram(w http.ResponseWriter, r *http.Request) 
 	}
 
 	err = h.collectionStore.SaveProgram(ctx, collection.ID, *req.Revision, req.Meetings, req.Unassigned)
+	if writeCollectionReviewConflict(w, err) {
+		return
+	}
 	switch {
 	case errors.Is(err, repository.ErrCollectionCompositionChanged):
 		writeError(w, http.StatusConflict, "Программа или состав изменились. Откройте программу заново.")
@@ -482,6 +500,9 @@ func (h *CollectionHandler) Publish(w http.ResponseWriter, r *http.Request) {
 	published, publishedAt, err := h.collectionStore.PublishWithinLimit(
 		ctx, collection.ID, ipHash, limit, time.Now().Add(-24*time.Hour))
 	if err != nil {
+		if writeCollectionReviewConflict(w, err) {
+			return
+		}
 		log.Printf("publish collection: %v", err)
 		writeError(w, http.StatusInternalServerError, "Не удалось опубликовать подборку")
 		return
@@ -493,6 +514,7 @@ func (h *CollectionHandler) Publish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	collection.PublishedAt = &publishedAt
+	collection.ProgramReviewStatus, collection.ProgramRejectReason = "", ""
 	writeJSON(w, collection)
 }
 
@@ -520,6 +542,7 @@ func (h *CollectionHandler) Unpublish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	collection.PublishedAt = nil
+	collection.ProgramReviewStatus, collection.ProgramRejectReason = "", ""
 	writeJSON(w, collection)
 }
 
@@ -613,6 +636,9 @@ func (h *CollectionHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 	item, err := h.collectionStore.AddItem(
 		ctx, collection.ID, req.Kind, req.ChapterID, req.WorkID, req.AuthorOverride)
 	if err != nil {
+		if writeCollectionReviewConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "Не удалось добавить элемент в подборку")
 		return
 	}
@@ -651,6 +677,9 @@ func (h *CollectionHandler) UpdateItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.collectionStore.UpdateItemAuthor(ctx, collection.ID, itemID, req.AuthorOverride); err != nil {
+		if writeCollectionReviewConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusNotFound, "Элемент подборки не найден")
 		return
 	}
@@ -681,6 +710,9 @@ func (h *CollectionHandler) DeleteItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.collectionStore.DeleteItem(ctx, collection.ID, itemID); err != nil {
+		if writeCollectionReviewConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusNotFound, "Элемент подборки не найден")
 		return
 	}
@@ -717,6 +749,9 @@ func (h *CollectionHandler) MoveItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.collectionStore.MoveItem(ctx, collection.ID, itemID, req.OrderNumber); err != nil {
+		if writeCollectionReviewConflict(w, err) {
+			return
+		}
 		writeError(w, http.StatusNotFound, "Элемент подборки не найден")
 		return
 	}
@@ -737,6 +772,9 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	nickname, slug := collectionKey(r)
+	if nickname != "" {
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	collection, err := h.collectionStore.GetByAuthorSlug(ctx, nickname, slug)
 	if err != nil || collection == nil {
 		writeError(w, http.StatusNotFound, "Подборка не найдена")
@@ -754,6 +792,11 @@ func (h *CollectionHandler) ItemPages(w http.ResponseWriter, r *http.Request) {
 	item, err := h.collectionStore.ItemByID(ctx, collection.ID, itemID)
 	if err != nil || item == nil {
 		writeError(w, http.StatusNotFound, "Элемент подборки не найден")
+		return
+	}
+
+	if viewErr := checkCollectionView(ctx, h.collectionStore, claims, collection); viewErr != nil {
+		writeError(w, viewErr.status, viewErr.message)
 		return
 	}
 

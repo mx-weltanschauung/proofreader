@@ -225,6 +225,9 @@ type CollectionStore interface {
 	// PublishWithinLimit держит предел частоты (3 в сутки) и запись под одной
 	// блокировкой — тот же приём, что у PageSuggestionStore.CreateWithinLimit.
 	PublishWithinLimit(ctx context.Context, id int64, ipHash string, limit int, since time.Time) (bool, time.Time, error)
+	SubmitProgram(ctx context.Context, id, revision int64, ipHash string, limit int, since time.Time) (bool, error)
+	ProgramsForReview(ctx context.Context) ([]models.CollectionProgramReviewEntry, error)
+	ResolveProgram(ctx context.Context, id, revision int64, reason string) error
 	Unpublish(ctx context.Context, id int64) error
 	AddItem(ctx context.Context, collectionID int64, kind string, chapterID, workID *int64, authorOverride string) (*models.CollectionItem, error)
 	UpdateItemAuthor(ctx context.Context, collectionID, itemID int64, authorOverride string) error

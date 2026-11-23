@@ -18,6 +18,7 @@ vi.mock('../services/api', () => ({
     removeItem: vi.fn(),
     moveItem: vi.fn(),
     publish: vi.fn(),
+    submitProgram: vi.fn(),
     unpublish: vi.fn(),
   },
   worksApi: { list: vi.fn() },
@@ -170,6 +171,29 @@ describe('CollectionForm', () => {
         undefined,
       );
     });
+  });
+
+  it('отправляет читательскую программу на проверку и показывает отзыв', async () => {
+    const program: Collection = {
+      ...COLLECTION,
+      author_nickname: 'читатель',
+      meetings: [{ position: 1, title: 'Занятие', question: '' }],
+      program_revision: 4,
+    };
+    useAuth.setState({
+      user: { id: 1, email: '', role: 'reader', nickname: 'читатель' },
+      isAuthenticated: true,
+    });
+    vi.mocked(collectionsApi.get)
+      .mockReturnValueOnce(ok(program))
+      .mockReturnValue(ok({ ...program, program_review_status: 'pending' }));
+    vi.mocked(collectionsApi.submitProgram).mockReturnValue(ok(undefined));
+
+    renderForm();
+    await userEvent.click(await screen.findByRole('button', { name: 'Отправить на проверку' }));
+    expect(collectionsApi.submitProgram).toHaveBeenCalledWith('materializm', 4, 'читатель');
+    expect(await screen.findByRole('button', { name: 'Отозвать с проверки' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Изменить программу' })).toBeNull();
   });
 
   it('показывает кнопку «Опубликовать» у черновика владельца', async () => {

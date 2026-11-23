@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"strings"
 	"time"
 
@@ -49,7 +48,8 @@ type ItemRow struct {
 	WorkSlug string
 }
 
-const collectionColumns = `id, title, slug, description, owner_id, author_nickname, published_at, publish_ip_hash, created_at, updated_at`
+const collectionColumns = `id, title, slug, description, owner_id, author_nickname, published_at, publish_ip_hash, created_at, updated_at,
+	program_revision, program_review_status, program_reject_reason`
 
 // Create creates a new collection. AuthorNickname приезжает уже выставленным
 // вызывающим (пусто у сотрудника, ник читателя у него самого) — здесь только
@@ -105,6 +105,7 @@ func (r *CollectionRepository) GetByAuthorSlug(
 	err := r.pool.QueryRow(ctx, query, nickname, slug).Scan(
 		&c.ID, &c.Title, &c.Slug, &c.Description, &c.OwnerID,
 		&c.AuthorNickname, &c.PublishedAt, &c.PublishIPHash, &c.CreatedAt, &c.UpdatedAt,
+		&c.Revision, &c.ProgramReviewStatus, &c.ProgramRejectReason,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -137,6 +138,7 @@ func (r *CollectionRepository) List(ctx context.Context) ([]*models.Collection, 
 		if err := rows.Scan(
 			&c.ID, &c.Title, &c.Slug, &c.Description, &c.OwnerID,
 			&c.AuthorNickname, &c.PublishedAt, &c.PublishIPHash, &c.CreatedAt, &c.UpdatedAt,
+			&c.Revision, &c.ProgramReviewStatus, &c.ProgramRejectReason,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan collection: %w", err)
 		}
@@ -164,6 +166,7 @@ func (r *CollectionRepository) ListByOwner(ctx context.Context, ownerID int64) (
 		if err := rows.Scan(
 			&c.ID, &c.Title, &c.Slug, &c.Description, &c.OwnerID,
 			&c.AuthorNickname, &c.PublishedAt, &c.PublishIPHash, &c.CreatedAt, &c.UpdatedAt,
+			&c.Revision, &c.ProgramReviewStatus, &c.ProgramRejectReason,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan collection: %w", err)
 		}
@@ -201,6 +204,7 @@ func (r *CollectionRepository) ListByAuthorNickname(
 		if err := rows.Scan(
 			&c.ID, &c.Title, &c.Slug, &c.Description, &c.OwnerID,
 			&c.AuthorNickname, &c.PublishedAt, &c.PublishIPHash, &c.CreatedAt, &c.UpdatedAt,
+			&c.Revision, &c.ProgramReviewStatus, &c.ProgramRejectReason,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan collection: %w", err)
 		}
@@ -215,14 +219,22 @@ func (r *CollectionRepository) ListByAuthorNickname(
 
 // Update updates a collection
 func (r *CollectionRepository) Update(ctx context.Context, c *models.Collection) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := lockCollectionComposition(ctx, tx, c.ID, false); err != nil {
+		return err
+	}
 	query := `
 		UPDATE collections
-		SET title = $2, slug = $3, description = $4
+		SET title = $2, slug = $3, description = $4, program_revision = program_revision + 1
 		WHERE id = $1
 		RETURNING updated_at
 	`
 
-	err := r.pool.QueryRow(ctx, query, c.ID, c.Title, c.Slug, c.Description).Scan(&c.UpdatedAt)
+	err = tx.QueryRow(ctx, query, c.ID, c.Title, c.Slug, c.Description).Scan(&c.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("collection not found")
@@ -230,7 +242,7 @@ func (r *CollectionRepository) Update(ctx context.Context, c *models.Collection)
 		return fmt.Errorf("failed to update collection: %w", err)
 	}
 
-	return nil
+	return tx.Commit(ctx)
 }
 
 // Delete deletes a collection
@@ -269,18 +281,21 @@ func (r *CollectionRepository) PublishWithinLimit(
 	}
 	defer tx.Rollback(ctx) // откат после успешного Commit безвреден
 
-	// Ключ блокировки считаем в Go: hashtext() в Postgres — внутренняя
-	// недокументированная функция. Префикс имени таблицы в хэше обязателен —
-	// консультативные блокировки делят одно пространство ключей на всю базу,
-	// и без префикса публикация подборки и, скажем, письмо в обратную связь
-	// с одного адреса вставали бы в очередь друг за другом без всякой на то
-	// причины.
-	hasher := fnv.New64a()
-	_, _ = hasher.Write([]byte("collections:" + ipHash))
-	lockKey := int64(hasher.Sum64())
-
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", lockKey); err != nil {
-		return false, time.Time{}, fmt.Errorf("failed to acquire advisory lock: %w", err)
+	if err := lockCollectionPublication(ctx, tx, "collections:", ipHash); err != nil {
+		return false, time.Time{}, err
+	}
+	program, err := lockCollectionProgram(ctx, tx, id)
+	if err != nil {
+		return false, time.Time{}, err
+	}
+	if program.reader {
+		hasMeetings, err := collectionHasMeetings(ctx, tx, id)
+		if err != nil {
+			return false, time.Time{}, err
+		}
+		if hasMeetings {
+			return false, time.Time{}, ErrCollectionProgramReviewRequired
+		}
 	}
 
 	var count int
@@ -295,7 +310,8 @@ func (r *CollectionRepository) PublishWithinLimit(
 
 	var publishedAt time.Time
 	if err := tx.QueryRow(ctx, `
-		UPDATE collections SET published_at = now(), publish_ip_hash = $2
+		UPDATE collections SET published_at = now(), publish_ip_hash = $2,
+		    program_review_status = '', program_reject_reason = '', program_revision = program_revision + 1
 		WHERE id = $1
 		RETURNING published_at`, id, ipHash).Scan(&publishedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -317,7 +333,9 @@ func (r *CollectionRepository) PublishWithinLimit(
 // подборку (410) от никогда не публиковавшейся (404).
 func (r *CollectionRepository) Unpublish(ctx context.Context, id int64) error {
 	result, err := r.pool.Exec(ctx,
-		`UPDATE collections SET published_at = NULL WHERE id = $1`, id)
+		`UPDATE collections SET published_at = NULL,
+		        program_review_status = '', program_reject_reason = '', program_revision = program_revision + 1
+		WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("failed to unpublish collection: %w", err)
 	}
@@ -346,7 +364,7 @@ func (r *CollectionRepository) AddItem(
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := lockCollectionComposition(ctx, tx, collectionID); err != nil {
+	if _, err := lockCollectionComposition(ctx, tx, collectionID, false); err != nil {
 		return nil, err
 	}
 
@@ -423,7 +441,15 @@ func (r *CollectionRepository) AddItem(
 func (r *CollectionRepository) UpdateItemAuthor(
 	ctx context.Context, collectionID, itemID int64, authorOverride string,
 ) error {
-	result, err := r.pool.Exec(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := lockCollectionComposition(ctx, tx, collectionID, false); err != nil {
+		return err
+	}
+	result, err := tx.Exec(ctx, `
 		UPDATE collection_items SET author_override = $3
 		WHERE id = $2 AND collection_id = $1`,
 		collectionID, itemID, authorOverride)
@@ -434,7 +460,10 @@ func (r *CollectionRepository) UpdateItemAuthor(
 		return fmt.Errorf("collection item not found")
 	}
 
-	return nil
+	if err := advanceCollectionRevision(ctx, tx, collectionID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // ItemByID retrieves one item of a collection.
@@ -471,7 +500,7 @@ func (r *CollectionRepository) DeleteItem(ctx context.Context, collectionID, ite
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := lockCollectionComposition(ctx, tx, collectionID); err != nil {
+	if _, err := lockCollectionComposition(ctx, tx, collectionID, false); err != nil {
 		return err
 	}
 
@@ -509,7 +538,7 @@ func (r *CollectionRepository) MoveItem(
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := lockCollectionComposition(ctx, tx, collectionID); err != nil {
+	if _, err := lockCollectionComposition(ctx, tx, collectionID, false); err != nil {
 		return err
 	}
 

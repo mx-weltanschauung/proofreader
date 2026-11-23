@@ -774,6 +774,10 @@ func (rt *Router) Setup() *mux.Router {
 	reader.HandleFunc("/collections/{nickname}/{slug}", rt.collectionHandler.Update).Methods("PUT")
 	reader.HandleFunc("/collections/{nickname}/{slug}", rt.collectionHandler.Delete).Methods("DELETE")
 
+	reader.HandleFunc("/collections/{nickname}/{slug}/program/submit", rt.collectionHandler.SubmitProgram).Methods("POST")
+	staff.HandleFunc("/collection-programs/review", rt.collectionHandler.ProgramQueue).Methods("GET")
+	staff.HandleFunc("/collection-programs/review/{id}", rt.collectionHandler.ResolveProgram).Methods("POST")
+
 	// User management (Administrator only)
 	admin := api.PathPrefix("").Subrouter()
 	admin.HandleFunc("/reader-comments/users/{id}/unban", rt.readerCommentHandler.Unban).Methods("POST")

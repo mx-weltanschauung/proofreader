@@ -103,6 +103,12 @@ func NewHandler(src *Source) *Handler {
 	}
 }
 
+// Публичность читательской подборки может измениться при отзыве программы.
+func readerCollectionPath(path string) bool {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	return len(parts) == 3 && parts[0] == "collections"
+}
+
 // Page — вход краулера. nginx приводит сюда запрос краулера как
 // /seo<путь читальни> (см. frontend/nginx.conf). Второй вход — Text, для
 // MCP-сервера; путь к готовой записи у них общий (resolve).
@@ -121,6 +127,9 @@ func (h *Handler) Page(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		path += rubricQuery(rubric)
+	}
+	if readerCollectionPath(path) {
+		w.Header().Set("Cache-Control", "no-store")
 	}
 	entry, err := h.resolve(r.Context(), path, tryHeavy)
 	switch {
@@ -145,8 +154,11 @@ func (h *Handler) Page(w http.ResponseWriter, r *http.Request) {
 // полёта слота не ждёт никто: acquire зовётся с wait=false, а MCP ждёт слот
 // снаружи, до resolve (см. Text).
 func (h *Handler) resolve(ctx context.Context, path string, acquire AcquireFunc) (*cacheEntry, error) {
-	if cached, ok := h.cache.get(path); ok {
-		return cached, nil
+	mutable := readerCollectionPath(path)
+	if !mutable {
+		if cached, ok := h.cache.get(path); ok {
+			return cached, nil
+		}
 	}
 
 	// Метка поколения снимается ДО всякой работы. Если том снимут, пока идёт
@@ -158,6 +170,10 @@ func (h *Handler) resolve(ctx context.Context, path string, acquire AcquireFunc)
 	route, ok := match(path)
 	if !ok {
 		return nil, ErrUnknownPath
+	}
+
+	if mutable {
+		return h.lead(ctx, path, route, gen, acquire)
 	}
 
 	// Ведущим становится первый: он рендерит, остальные ждут его результата.
@@ -328,7 +344,9 @@ func (h *Handler) lead(ctx context.Context, path string, route route, gen uint64
 		if !doc.CacheKey.IsZero() {
 			entry.etag = docETag(path, h.build(), closures, doc.CacheKey.Unix())
 		}
-		h.cache.putIfFresh(path, entry, gen)
+		if !readerCollectionPath(path) {
+			h.cache.putIfFresh(path, entry, gen)
+		}
 	}
 	return entry, nil
 }
@@ -537,7 +555,7 @@ func writeCached(w http.ResponseWriter, r *http.Request, e *cacheEntry) {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-	} else {
+	} else if w.Header().Get("Cache-Control") == "" {
 		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", listMaxAge))
 	}
 	ct := e.contentType
