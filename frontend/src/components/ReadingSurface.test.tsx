@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import type { AxiosResponse } from 'axios';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { createRef } from 'react';
 import type { ChapterPage, MarginNote, Work } from '../types';
 import { ReadingSurface } from './ReadingSurface';
 import { ReadingPreferencesProvider } from '../contexts/ReadingPreferencesContext';
@@ -99,6 +100,20 @@ describe('ReadingSurface', () => {
   it('без переданной доли ничего про прогресс не пишет', () => {
     const { container } = renderSurface([page(265, '<p>текст</p>')]);
     expect(container.querySelector('.reading-percent')).toBeNull();
+  });
+
+  it('shows reading percent beside the remaining time and exposes main text', () => {
+    const readingContentRef = createRef<HTMLDivElement>();
+    renderSurface([page(265, '<p>текст</p>')], {
+      crumbs: () => 'Том',
+      progressPercent: 42,
+      remainingReadingTime: 'Ещё ≈ 2 мин',
+      readingContentRef,
+    });
+    expect(
+      screen.getByText('42 % · Ещё ≈ 2 мин').closest('.chapter-view-header'),
+    ).toBeInTheDocument();
+    expect(readingContentRef.current).toHaveClass('chapter-pages-content');
   });
 
   it('в потоке ведёт на правку видимой полосы', async () => {

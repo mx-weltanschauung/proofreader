@@ -1975,3 +1975,62 @@ describe('переход к сверке главы', () => {
     },
   );
 });
+
+describe('ChapterView reading time', () => {
+  beforeEach(() => {
+    vi.spyOn(chaptersApi, 'get').mockImplementation(() => ok(CHAPTER));
+    vi.spyOn(worksApi, 'get').mockImplementation(() => ok(WORK));
+    vi.spyOn(chaptersApi, 'list').mockImplementation(() => ok([] as Chapter[]));
+  });
+
+  it('shows total time and updates the remaining time after scrolling through the text', async () => {
+    let scrollY = 0;
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => scrollY });
+    Object.defineProperty(document.documentElement, 'scrollTop', {
+      configurable: true,
+      get: () => scrollY,
+    });
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      configurable: true,
+      value: 1000,
+    });
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      configurable: true,
+      value: 500,
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.classList.contains('chapter-view-header')) return new DOMRect(0, 0, 500, 50);
+      if (this.classList.contains('chapter-pages-content'))
+        return new DOMRect(0, 100 - scrollY, 500, 400);
+      if (this.classList.contains('chapter-page-section'))
+        return new DOMRect(0, 100 - scrollY, 500, 400);
+      return new DOMRect(0, 0, 500, 0);
+    });
+    vi.spyOn(chaptersApi, 'listPages').mockImplementation(() =>
+      ok({
+        pages: [{ page_number: 245, html: `<p>${'слово '.repeat(360)}</p>`, blank: false }],
+        footnotes_html: '',
+      }),
+    );
+
+    renderChapter();
+    expect(await screen.findByText('≈ 2 мин чтения')).toBeInTheDocument();
+    expect(await screen.findByText('0 % · Ещё ≈ 2 мин')).toBeInTheDocument();
+
+    scrollY = 426;
+    void act(() => window.dispatchEvent(new Event('scroll')));
+    expect(await screen.findByText('85 % · Текст прочитан')).toBeInTheDocument();
+  });
+
+  it('hides both estimates when the chapter has no readable text', async () => {
+    vi.spyOn(chaptersApi, 'listPages').mockImplementation(() =>
+      ok({ pages: [{ page_number: 245, html: '', blank: true }], footnotes_html: '' }),
+    );
+    renderChapter();
+    await screen.findByText('1 страница');
+    expect(screen.queryByText(/мин чтения/)).toBeNull();
+    expect(screen.queryByText(/Ещё|Текст прочитан/)).toBeNull();
+  });
+});

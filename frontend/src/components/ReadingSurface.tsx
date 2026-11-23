@@ -79,6 +79,10 @@ export interface ReadingSurfaceProps {
    * надписи нет вовсе: экран зовут и оттуда, где прогресса не считают.
    */
   progressPercent?: number;
+  /** Оценка остатка для главы; другие поверхности чтения её не передают. */
+  remainingReadingTime?: string;
+  /** Даёт экрану главы доступ только к колонке основного текста. */
+  readingContentRef?: React.RefObject<HTMLDivElement>;
   /** Панель сжимается при прокрутке; реф нужен потребителю для useAnchorAboveFold. */
   toolbarRef?: React.RefObject<HTMLDivElement>;
   /**
@@ -135,6 +139,8 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
   header,
   toolbarExtra,
   progressPercent,
+  remainingReadingTime,
+  readingContentRef,
   crumbs,
   nav,
   pageHref,
@@ -155,7 +161,8 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
   const showPageInfo = prefs.pageNumbers;
   const [immersive, setImmersive] = useState(false);
   const [condensed, setCondensed] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
+  const ownContentRef = useRef<HTMLDivElement>(null);
+  const contentRef = readingContentRef ?? ownContentRef;
   const footnotesRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pageInfoRef = useRef<HTMLButtonElement>(null);
@@ -307,11 +314,17 @@ export const ReadingSurface: React.FC<ReadingSurfaceProps> = ({
       <div ref={sentinelRef} className="chapter-view-sentinel" aria-hidden="true" />
       <div ref={panelRef} className={`chapter-view-header ${condensed ? 'is-condensed' : ''}`}>
         <div className="chapter-view-crumbs">{crumbs?.(condensed)}</div>
+        {remainingReadingTime && (
+          <span className="chapter-view-time-remaining">
+            {progressPercent === undefined
+              ? remainingReadingTime
+              : `${progressPercent} % · ${remainingReadingTime}`}
+          </span>
+        )}
         <div className="chapter-view-actions">
-          {/* Первой в правой группе, вплотную под полосой прогресса: номер
-              видимой полосы (он же переход к другой), а без перехода — доля
-              прочитанного цифрой. Долю на глаз показывает сама полоса с
-              засечками через десять процентов. */}
+          {/* Первой в правой группе: номер видимой полосы (он же переход к
+              другой), а без перехода — доля прочитанного цифрой. У главы
+              процент также стоит рядом с оставшимся временем выше. */}
           {pageJump ? (
             <PageJump {...pageJump} />
           ) : (

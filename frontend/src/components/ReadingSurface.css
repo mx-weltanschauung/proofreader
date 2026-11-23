@@ -17,9 +17,8 @@
   transition: width 0.1s linear;
 }
 
-/* Засечки через десять процентов (ProgressTicks): по ним долю читают на
-   глаз, раз цифрой панель её больше не печатает. Слой над полосой, а не её
-   фон — засечки видны и на заполненной части, и на пустой. Чуть выше
+/* Засечки через десять процентов (ProgressTicks): по ним виден шаг шкалы.
+   Слой над полосой, а не её фон — засечки видны и на заполненной части, и на пустой. Чуть выше
    полосы, чтобы отметка читалась отметкой, а не разрывом черты; цвет —
    рамочный, тот же, что у прочих тонких линий интерфейса. */
 .progress-ticks {
@@ -92,9 +91,18 @@
    заголовки длинные; min-width: 0 нужен, чтобы flex-элемент вообще позволил
    себе сжаться. */
 .chapter-view-crumbs {
+  flex: 1 1 auto;
   min-width: 0;
   font-size: 0.875rem;
   color: var(--color-text-primary);
+}
+
+.chapter-view-time-remaining {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Colour transitions are welcome; size ones are not. Animating the buttons'
@@ -560,7 +568,7 @@
      тому), а каждая её строка стоит высоты липкой панели, которая на телефоне
      и так съедает верх экрана. */
   .chapter-view-crumbs {
-    flex: 1 1 100%;
+    flex: 1 1 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -569,6 +577,7 @@
   /* Кнопки переносятся и внутри своего ряда: вчетвером они не влезают в
      ширину телефона даже на отдельной строке. */
   .chapter-view-actions {
+    flex: 1 1 100%;
     flex-wrap: wrap;
     gap: 0.5rem;
   }
