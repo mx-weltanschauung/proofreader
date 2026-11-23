@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"proofreader/internal/models"
 )
@@ -62,6 +63,61 @@ func TestScansHiddenInheritance(t *testing.T) {
 	}
 	if ids[open.ID] {
 		t.Errorf("open work %d included in WorksWithHiddenScans", open.ID)
+	}
+}
+
+func TestWorkSummariesPreserveScanRestrictionReasons(t *testing.T) {
+	f, closed := newClosedFixture(t)
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	works := NewWorkRepository(pool)
+	editions := NewEditionRepository(pool)
+
+	grandchild := newChild(t, works, f.childInClosedEdition, "служебная второго уровня")
+	journalChild := newChild(t, works, f.inClosedJournal, "служебная номера журнала")
+	cycleA := newChild(t, works, f.open, "цикл A")
+	cycleB := newChild(t, works, cycleA, "цикл B")
+
+	for _, assignment := range []struct {
+		edition *models.Edition
+		ids     []int64
+	}{
+		{f.openEdit, []int64{f.open.ID, grandchild.ID, journalChild.ID, cycleB.ID}},
+		{f.closedEdition, []int64{f.childInClosedEdition.ID, cycleA.ID}},
+	} {
+		if _, err := pool.Exec(ctx, `UPDATE works SET edition_id = $1 WHERE id = ANY($2)`, assignment.edition.ID, assignment.ids); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE works SET parent_work_id = $2 WHERE id = $1`, cycleA.ID, cycleB.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE works SET scans_hidden = true WHERE id = $1`, f.closedSelfAndEdition.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE editions SET scans_hidden = true WHERE id = $1`, f.closedEdition.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE journals SET scans_hidden = true WHERE id = $1`, f.closedJournal.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	summaries, err := editions.ListAllWorkSummaries(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summaries) != 8 {
+		t.Fatalf("got %d summaries, want 8", len(summaries))
+	}
+	for _, s := range summaries {
+		want, err := closed.ScansHiddenBy(ctx, s.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.ScansHiddenBy != want {
+			t.Errorf("%s: ScansHiddenBy = %q; want %q", s.Title, s.ScansHiddenBy, want)
+		}
 	}
 }
 

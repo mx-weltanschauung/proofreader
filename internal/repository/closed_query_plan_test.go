@@ -41,6 +41,25 @@ func TestScansHiddenWorksDoesNotCallFunctionPerWork(t *testing.T) {
 	}
 }
 
+func TestWorkSummariesDoNotCallScanRestrictionPerWork(t *testing.T) {
+	pool := testPool(t)
+	for _, query := range []struct {
+		name string
+		sql  string
+		args []any
+	}{
+		{name: "shelf", sql: listAllWorkSummariesQuery},
+		{name: "edition", sql: listWorkSummariesQuery, args: []any{int64(1)}},
+	} {
+		t.Run(query.name, func(t *testing.T) {
+			plan := explainClosedQuery(t, pool, "VERBOSE "+query.sql, query.args...)
+			if strings.Contains(plan, "work_scans_hidden_by(") {
+				t.Fatalf("volume summaries call the per-work scan restriction function:\n%s", plan)
+			}
+		})
+	}
+}
+
 type closedPlanNode struct {
 	Relation    string `json:"Relation Name"`
 	Alias       string
