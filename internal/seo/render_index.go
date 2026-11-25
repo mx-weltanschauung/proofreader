@@ -310,6 +310,10 @@ func (s *Source) Home(ctx context.Context) (*Doc, error) {
 	if err != nil {
 		return nil, fmt.Errorf("издания: %w", err)
 	}
+	journals, err := s.Journals.List(ctx, false)
+	if err != nil {
+		return nil, fmt.Errorf("журналы: %w", err)
+	}
 
 	var body strings.Builder
 	body.WriteString("<h1>" + Esc(site.Name()) + "</h1>\n")
@@ -324,8 +328,16 @@ func (s *Source) Home(ctx context.Context) (*Doc, error) {
 		fmt.Fprintf(&body, `<li><a href="%s">%s</a></li>`+"\n",
 			editionPath(ed.ID, effectiveEditionSlug(ed)), Esc(OneLine(ed.Title)))
 	}
-	body.WriteString(`</ul>
-<ul>
+	body.WriteString("</ul>\n")
+	if len(journals) > 0 {
+		body.WriteString("<h2>Журналы</h2>\n<ul>\n")
+		for _, journal := range journals {
+			fmt.Fprintf(&body, `<li><a href="%s">%s</a></li>`+"\n",
+				Esc(journalPath(journal.Slug)), Esc(OneLine(journal.Title)))
+		}
+		body.WriteString("</ul>\n")
+	}
+	body.WriteString(`<ul>
 <li><a href="/concepts">Предметный указатель</a></li>
 <li><a href="/collections">Подборки</a></li>
 <li><a href="/documents">Разборы</a></li>

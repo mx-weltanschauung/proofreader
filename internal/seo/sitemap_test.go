@@ -319,7 +319,7 @@ func TestSitemapIndexListsEveryChunk(t *testing.T) {
 	for _, want := range []string{
 		"/sitemap-works.xml", "/sitemap-editions.xml",
 		"/sitemap-concepts.xml", "/sitemap-collections.xml",
-		"/sitemap-documents.xml",
+		"/sitemap-documents.xml", "/sitemap-journals.xml",
 		"/sitemap-chapters-1.xml", "/sitemap-chapters-2.xml",
 	} {
 		if !strings.Contains(body, want) {

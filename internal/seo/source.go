@@ -44,6 +44,11 @@ type EditionSource interface {
 	ListWorks(ctx context.Context, editionID int64) ([]*models.Work, error)
 }
 
+type JournalSource interface {
+	GetBySlug(ctx context.Context, slug string, includeClosed bool) (*models.Journal, error)
+	List(ctx context.Context, includeClosed bool) ([]models.JournalSummary, error)
+}
+
 type ConceptSource interface {
 	GetConceptBySlug(ctx context.Context, slug string) (*models.IndexConcept, error)
 	ListConcepts(ctx context.Context, query, letter string, limit, offset int) ([]*models.IndexConcept, error)
@@ -169,6 +174,7 @@ type Source struct {
 	Chapters    ChapterSource
 	Pages       PageSource
 	Editions    EditionSource
+	Journals    JournalSource
 	Concepts    ConceptSource
 	Collections CollectionSource
 	Documents   DocumentSource

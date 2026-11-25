@@ -153,6 +153,7 @@ func NewServer(d ServerDeps) *mux.Router {
 		Chapters:    viewChapters,
 		Pages:       viewPages,
 		Editions:    openEditions,
+		Journals:    journalRepo,
 		Concepts:    tokenlessIndex,
 		Collections: NewSEOCollectionSource(collectionRepo).WithClosed(closedRepo),
 		Documents: NewSEODocumentSource(
