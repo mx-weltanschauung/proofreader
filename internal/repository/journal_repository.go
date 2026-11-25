@@ -101,16 +101,25 @@ func (r *JournalRepository) List(ctx context.Context, includeClosed bool) ([]mod
 	return out, rows.Err()
 }
 
-// Detail — журнал и номера по годам; порядок — год, затем первый номер.
-// includeClosed == false: закрытый журнал — ErrJournalNotFound, номера
-// закрытых работ в годы не попадают.
-func (r *JournalRepository) Detail(ctx context.Context, slug string, includeClosed bool) (*models.JournalDetail, error) {
+// GetBySlug читает метаданные журнала. При includeClosed == false закрытый
+// журнал выглядит так же, как отсутствующий.
+func (r *JournalRepository) GetBySlug(ctx context.Context, slug string, includeClosed bool) (*models.Journal, error) {
 	j, err := scanJournal(r.pool.QueryRow(ctx, `SELECT `+journalColumns+` FROM journals WHERE slug = $1`, slug))
 	if err != nil {
 		return nil, err
 	}
 	if j.Closed && !includeClosed {
 		return nil, ErrJournalNotFound
+	}
+	return j, nil
+}
+
+// Detail — журнал и номера по годам; порядок — год, затем первый номер.
+// При includeClosed == false номера закрытых работ в годы не попадают.
+func (r *JournalRepository) Detail(ctx context.Context, slug string, includeClosed bool) (*models.JournalDetail, error) {
+	j, err := r.GetBySlug(ctx, slug, includeClosed)
+	if err != nil {
+		return nil, err
 	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT ji.id, ji.year, ji.label, ji.months, w.id, w.title, w.role

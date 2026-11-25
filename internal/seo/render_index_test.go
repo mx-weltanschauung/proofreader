@@ -118,6 +118,7 @@ func indexSource() *Source {
 	return &Source{
 		BaseURL:  "https://lib.example.org",
 		Renderer: markdown.NewRenderer(),
+		Journals: fakeJournals{},
 		Concepts: &fakeConcepts{
 			bySlug: map[string]*models.IndexConcept{
 				"abstraktnyj-trud": concept,

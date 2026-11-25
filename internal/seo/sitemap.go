@@ -27,6 +27,7 @@ var sitemapKinds = map[string]bool{
 	"works":       true,
 	"chapters":    true,
 	"editions":    true,
+	"journals":    true,
 	"concepts":    true,
 	"collections": true,
 	"documents":   true,
@@ -155,7 +156,7 @@ func (h *Handler) SitemapIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	idx := sitemapIndex{NS: sitemapNS}
-	for _, kind := range []string{"works", "editions", "concepts", "collections", "documents"} {
+	for _, kind := range []string{"works", "editions", "journals", "concepts", "collections", "documents"} {
 		idx.Maps = append(idx.Maps, sitemapEntry{Loc: h.src.abs("/sitemap-" + kind + ".xml")})
 	}
 	chunks := (len(chapters) + sitemapChunk - 1) / sitemapChunk
@@ -217,6 +218,20 @@ func (h *Handler) sitemapEntries(ctx context.Context, kind string) ([]urlEntry, 
 			out = append(out, urlEntry{
 				Loc:     h.src.abs(editionPath(row.ID, row.Slug)),
 				LastMod: stamp(row.UpdatedAt),
+			})
+		}
+		return out, nil
+
+	case "journals":
+		rows, err := h.src.Journals.List(ctx, false)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]urlEntry, 0, len(rows))
+		for _, journal := range rows {
+			out = append(out, urlEntry{
+				Loc:     h.src.abs(journalPath(journal.Slug)),
+				LastMod: stamp(journal.UpdatedAt),
 			})
 		}
 		return out, nil

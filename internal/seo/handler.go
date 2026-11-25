@@ -729,6 +729,12 @@ func match(path string) (route, bool) {
 			},
 		}, true
 
+	case len(parts) == 2 && parts[0] == "journals":
+		slug := parts[1]
+		return route{render: func(ctx context.Context, s *Source) (*Doc, error) {
+			return s.Journal(ctx, slug)
+		}}, true
+
 	case len(parts) == 1 && parts[0] == "concepts":
 		return route{render: func(ctx context.Context, s *Source) (*Doc, error) {
 			return s.ConceptList(ctx)
